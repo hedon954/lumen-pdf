@@ -63,7 +63,8 @@ final class BridgeService {
         pdfPath: String, pdfName: String, pageIndex: UInt32,
         selectionBounds: String, phonetic: String, partOfSpeech: String,
         contextTranslation: String, contextExplanation: String,
-        generalDefinition: String, translationSource: String,
+        generalDefinition: String, contextSentenceTranslation: String,
+        translationSource: String,
         annotationId: String? = nil
     ) throws -> VocabularyEntry {
         try _saveVocabulary(SaveVocabularyRequest(
@@ -72,6 +73,7 @@ final class BridgeService {
             selectionBounds: selectionBounds, phonetic: phonetic,
             partOfSpeech: partOfSpeech, contextTranslation: contextTranslation,
             contextExplanation: contextExplanation, generalDefinition: generalDefinition,
+            contextSentenceTranslation: contextSentenceTranslation,
             translationSource: translationSource, annotationId: annotationId
         ))
     }
@@ -103,11 +105,12 @@ final class BridgeService {
     @discardableResult
     func updateVocabulary(id: String, phonetic: String, partOfSpeech: String,
                           contextTranslation: String, contextExplanation: String,
-                          generalDefinition: String) throws -> VocabularyEntry {
+                          generalDefinition: String, contextSentenceTranslation: String) throws -> VocabularyEntry {
         try _updateVocabulary(UpdateVocabularyRequest(
             id: id, phonetic: phonetic, partOfSpeech: partOfSpeech,
             contextTranslation: contextTranslation, contextExplanation: contextExplanation,
-            generalDefinition: generalDefinition
+            generalDefinition: generalDefinition,
+            contextSentenceTranslation: contextSentenceTranslation
         ))
     }
 

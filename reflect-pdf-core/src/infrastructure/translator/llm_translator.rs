@@ -34,7 +34,8 @@ Respond with ONLY valid JSON in this exact format:
   "part_of_speech": "noun/verb/adjective/etc",
   "context_translation": "Translation of the word in this specific context to {lang}",
   "context_explanation": "Why does it mean this here? Explain the nuance in {lang}",
-  "general_definition": "General English definition"
+  "general_definition": "General English definition",
+  "context_sentence_translation": "Full translation of the ENTIRE context sentence above to {lang} (not just the word)"
 }}"#,
             word = word,
             sentence = sentence,
@@ -85,6 +86,7 @@ struct LlmTranslationJson {
     context_translation: Option<String>,
     context_explanation: Option<String>,
     general_definition: Option<String>,
+    context_sentence_translation: Option<String>,
 }
 
 #[async_trait::async_trait]
@@ -133,6 +135,7 @@ impl Translator for LlmTranslator {
             context_translation: parsed.context_translation.unwrap_or_default(),
             context_explanation: parsed.context_explanation.unwrap_or_default(),
             general_definition: parsed.general_definition.unwrap_or_default(),
+            context_sentence_translation: parsed.context_sentence_translation.unwrap_or_default(),
             source: "llm".to_string(),
         })
     }

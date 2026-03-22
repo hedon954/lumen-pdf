@@ -99,3 +99,19 @@
 ---
 
 ![image-20260323000746767](https://hedonspace.oss-cn-beijing.aliyuncs.com/img/image-20260323000746767.png)
+
+---
+
+很好，但是样式需要优化一下：
+
+![](https://hedonspace.oss-cn-beijing.aliyuncs.com/img/image-20260323001522164.png)
+
+不需要单独的【整句译文】，就放在【原文语境】里面英文换行下面就行了。另外，这里为什么原文语境的英文会这么奇奇怪怪换行呢？是不是使其是一个连贯的句子呢？这样看着很怪。
+
+---
+
+非常好，但这一块的样式有点丑，这里这个信息，不需要吧。
+
+另外，单词本中，应该也包含语境解释这部分的内容。
+
+![](https://hedonspace.oss-cn-beijing.aliyuncs.com/img/image-20260323001956676.png)
