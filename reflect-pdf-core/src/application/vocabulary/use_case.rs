@@ -37,4 +37,8 @@ impl VocabularyUseCase {
     pub fn update_annotation_id(&self, id: &str, annotation_id: &str) -> Result<(), ReflectError> {
         self.repo.update_annotation_id(id, annotation_id)
     }
+
+    pub fn increment_query_count(&self, id: &str) -> Result<(), ReflectError> {
+        self.repo.increment_query_count(id)
+    }
 }

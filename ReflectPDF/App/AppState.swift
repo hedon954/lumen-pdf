@@ -1,21 +1,38 @@
 import Foundation
 import AppKit
+import PDFKit
 import Combine
+
+enum MainTab { case reader, vocabulary }
 
 @MainActor
 final class AppState: ObservableObject {
     @Published var library: [PdfDocument] = []
-    @Published var selectedDocument: PdfDocument?
+    @Published var selectedDocument: PdfDocument? {
+        didSet {
+            // Persist last opened file path for auto-restore on launch
+            if let path = selectedDocument?.filePath {
+                UserDefaults.standard.set(path, forKey: "lastOpenedFilePath")
+            }
+            loadKitDocument()
+        }
+    }
     @Published var vocabulary: [VocabularyEntry] = []
-    @Published var sidebarTab: SidebarTab = .library
+    @Published var activeTab: MainTab = .reader
     @Published var toastMessage: String?
 
-    private var bridge = BridgeService.shared
+    /// PDFKit document object – used for TOC sidebar and annotation highlights.
+    @Published var kitDocument: PDFKit.PDFDocument?
+
+    private let bridge = BridgeService.shared
 
     init() {
         bridge.initializeIfNeeded()
         refreshLibrary()
+        restoreLastDocument()
     }
+
+    // MARK: - Library
 
     func refreshLibrary() {
         library = (try? bridge.listPdfDocuments()) ?? []
@@ -46,7 +63,10 @@ final class AppState: ObservableObject {
 
     func removeFromLibrary(_ doc: PdfDocument) {
         try? bridge.deletePdfDocument(filePath: doc.filePath)
-        if selectedDocument?.id == doc.id { selectedDocument = nil }
+        if selectedDocument?.id == doc.id {
+            selectedDocument = nil
+            kitDocument = nil
+        }
         refreshLibrary()
     }
 
@@ -55,15 +75,49 @@ final class AppState: ObservableObject {
         refreshLibrary()
     }
 
+    // MARK: - Vocabulary highlight
+
+    /// Apply yellow highlight annotations for all saved words in the current PDF.
+    func applyHighlights() {
+        guard let kitDoc = kitDocument,
+              let filePath = selectedDocument?.filePath else { return }
+        let entries = (try? bridge.listVocabulary()) ?? []
+        let relevant = entries.filter { $0.pdfPath == filePath }
+        for entry in relevant {
+            guard let page = kitDoc.page(at: Int(entry.pageIndex)) else { continue }
+            let bounds = NSRectFromString(entry.selectionBounds)
+            guard bounds != .zero else { continue }
+            // Skip if annotation already present (check annotationId)
+            let alreadyAdded = page.annotations.contains { $0.userName == entry.id }
+            guard !alreadyAdded else { continue }
+            let annotation = PDFAnnotation(bounds: bounds, forType: .highlight, withProperties: nil)
+            annotation.color = NSColor.systemYellow.withAlphaComponent(0.5)
+            annotation.userName = entry.id
+            page.addAnnotation(annotation)
+        }
+    }
+
+    // MARK: - Private
+
+    private func loadKitDocument() {
+        guard let filePath = selectedDocument?.filePath else {
+            kitDocument = nil
+            return
+        }
+        let url = URL(fileURLWithPath: filePath)
+        kitDocument = PDFKit.PDFDocument(url: url)
+    }
+
+    private func restoreLastDocument() {
+        guard let path = UserDefaults.standard.string(forKey: "lastOpenedFilePath"),
+              let doc = library.first(where: { $0.filePath == path }) else { return }
+        selectedDocument = doc
+    }
+
     func showToast(_ message: String) {
         toastMessage = message
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
             self?.toastMessage = nil
         }
     }
-}
-
-enum SidebarTab {
-    case library
-    case vocabulary
 }

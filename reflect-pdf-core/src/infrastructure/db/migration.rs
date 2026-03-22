@@ -21,7 +21,8 @@ pub fn run(conn: &Connection) -> Result<(), ReflectError> {
             general_definition  TEXT NOT NULL DEFAULT '',
             translation_source  TEXT NOT NULL DEFAULT '',
             annotation_id       TEXT,
-            created_at          INTEGER NOT NULL
+            created_at          INTEGER NOT NULL,
+            query_count         INTEGER NOT NULL DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS translation_cache (
@@ -46,6 +47,11 @@ pub fn run(conn: &Connection) -> Result<(), ReflectError> {
             added_at           INTEGER NOT NULL
         );
     ")?;
+
+    // Add query_count to existing databases (ignore error if column already exists)
+    let _ = conn.execute_batch(
+        "ALTER TABLE vocabulary_entries ADD COLUMN query_count INTEGER NOT NULL DEFAULT 0;"
+    );
 
     Ok(())
 }
