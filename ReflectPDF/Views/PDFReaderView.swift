@@ -213,6 +213,7 @@ struct PDFReaderView: View {
             contextTranslation: result.contextTranslation,
             contextExplanation: result.contextExplanation,
             generalDefinition: result.generalDefinition,
+            contextSentenceTranslation: result.contextSentenceTranslation,
             translationSource: result.source
         ) else { return nil }
 

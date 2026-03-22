@@ -46,26 +46,17 @@ struct TranslationBubble: View {
 
     private var header: some View {
         HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(request.result?.word ?? request.word)
-                        .font(.title2.bold())
-
-                    if let phonetic = request.result?.phonetic, !phonetic.isEmpty {
-                        Text("[\(phonetic)]")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    if let pos = request.result?.partOfSpeech, !pos.isEmpty {
-                        Text(pos)
-                            .font(.caption)
-                            .padding(.horizontal, 6).padding(.vertical, 2)
-                            .background(.blue.opacity(0.12), in: Capsule())
-                            .foregroundStyle(.blue)
-                    }
+            VStack(alignment: .leading, spacing: 4) {
+                // 纵向排列：单词独占一行按词换行，避免与音标挤在同一行导致「拦腰断词」
+                Text(request.result?.word ?? request.word)
+                    .font(.title2.bold())
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let phonetic = request.result?.phonetic, !phonetic.isEmpty {
+                    Text("[\(phonetic)]")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
                 }
-
                 if let src = request.result?.source, src == "fallback" {
                     Label("基础翻译", systemImage: "info.circle")
                         .font(.caption2).foregroundStyle(.orange)
@@ -131,12 +122,23 @@ struct TranslationBubble: View {
                         }
                     }
                     BubbleSection("原文语境") {
-                        Text(request.sentence)
-                            .font(.callout)
-                            .foregroundStyle(.primary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(8)
-                            .background(.quinary, in: RoundedRectangle(cornerRadius: 6))
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text(ContextSentenceFormatting.displayParagraph(request.sentence))
+                                .font(.callout)
+                                .foregroundStyle(.primary)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                            if !result.contextSentenceTranslation.isEmpty {
+                                Text(result.contextSentenceTranslation)
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                                    .multilineTextAlignment(.leading)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(.quinary, in: RoundedRectangle(cornerRadius: 8))
                     }
                 }
                 .padding(14)

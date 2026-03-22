@@ -13,6 +13,7 @@ pub struct VocabularyEntry {
     pub context_translation: String,
     pub context_explanation: String,
     pub general_definition: String,
+    pub context_sentence_translation: String,
     pub translation_source: String,
     pub annotation_id: Option<String>,
     pub created_at: i64,
@@ -28,6 +29,7 @@ pub struct UpdateVocabularyRequest {
     pub context_translation: String,
     pub context_explanation: String,
     pub general_definition: String,
+    pub context_sentence_translation: String,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -44,6 +46,7 @@ pub struct SaveVocabularyRequest {
     pub context_translation: String,
     pub context_explanation: String,
     pub general_definition: String,
+    pub context_sentence_translation: String,
     pub translation_source: String,
     pub annotation_id: Option<String>,
 }

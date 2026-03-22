@@ -19,6 +19,7 @@ pub fn run(conn: &Connection) -> Result<(), ReflectError> {
             context_translation TEXT NOT NULL DEFAULT '',
             context_explanation TEXT NOT NULL DEFAULT '',
             general_definition  TEXT NOT NULL DEFAULT '',
+            context_sentence_translation TEXT NOT NULL DEFAULT '',
             translation_source  TEXT NOT NULL DEFAULT '',
             annotation_id       TEXT,
             created_at          INTEGER NOT NULL,
@@ -51,6 +52,9 @@ pub fn run(conn: &Connection) -> Result<(), ReflectError> {
     // Add query_count to existing databases (ignore error if column already exists)
     let _ = conn.execute_batch(
         "ALTER TABLE vocabulary_entries ADD COLUMN query_count INTEGER NOT NULL DEFAULT 0;"
+    );
+    let _ = conn.execute_batch(
+        "ALTER TABLE vocabulary_entries ADD COLUMN context_sentence_translation TEXT NOT NULL DEFAULT '';"
     );
 
     Ok(())

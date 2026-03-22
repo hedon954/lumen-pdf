@@ -16,6 +16,8 @@ struct VocabularyListView: View {
             $0.word.lowercased().contains(q)
             || $0.contextTranslation.lowercased().contains(q)
             || $0.generalDefinition.lowercased().contains(q)
+            || $0.contextSentenceTranslation.lowercased().contains(q)
+            || $0.contextExplanation.lowercased().contains(q)
         }
     }
 
@@ -47,10 +49,10 @@ struct VocabularyListView: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(.quinary, in: RoundedRectangle(cornerRadius: 8))
-            .padding(10)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .background(.quinary, in: RoundedRectangle(cornerRadius: 10))
+            .padding(12)
 
             Divider()
 
@@ -62,7 +64,7 @@ struct VocabularyListView: View {
                 Spacer()
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 12) {
+                    LazyVStack(spacing: 16) {
                         ForEach(grouped, id: \.word) { group in
                             GroupedVocabularyCard(
                                 word: group.word,
@@ -138,40 +140,43 @@ private struct GroupedVocabularyCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
 
-            // ── Word header ───────────────────────────────────────────────────
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(word).font(.title3.bold())
-
-                if !primary.phonetic.isEmpty {
-                    Text("[\(primary.phonetic)]")
-                        .font(.callout).foregroundStyle(.secondary)
-                }
-                if !primary.partOfSpeech.isEmpty {
-                    Text(primary.partOfSpeech)
-                        .font(.caption)
-                        .padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(.blue.opacity(0.1), in: Capsule())
-                        .foregroundStyle(.blue)
+            // ── Word header（词性不展示，避免标签过长占版面）──────────────────────
+            HStack(alignment: .top, spacing: 10) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(word)
+                        .font(.title2.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if !primary.phonetic.isEmpty {
+                        Text("[\(primary.phonetic)]")
+                            .font(.body).foregroundStyle(.secondary)
+                    }
                 }
                 Spacer()
                 Button { audio.speak(word) } label: {
-                    Image(systemName: "speaker.wave.1.fill").foregroundStyle(.secondary)
+                    Image(systemName: "speaker.wave.1.fill")
+                        .font(.body)
+                        .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.horizontal, 14)
-            .padding(.top, 14)
-            .padding(.bottom, 8)
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
+            .padding(.bottom, 10)
 
             // ── General definition (word-level) ───────────────────────────────
             if !primary.generalDefinition.isEmpty {
                 Text(primary.generalDefinition)
-                    .font(.callout).foregroundStyle(.secondary).lineLimit(2)
-                    .padding(.horizontal, 14)
-                    .padding(.bottom, 10)
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .lineSpacing(3)
+                    .lineLimit(4)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 12)
             }
 
-            Divider()
+            Divider().opacity(0.35)
 
             // ── Context entries ───────────────────────────────────────────────
             ForEach(entries) { entry in
@@ -181,9 +186,25 @@ private struct GroupedVocabularyCard: View {
                 }
             }
         }
-        .background(.background, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.separator, lineWidth: 0.5))
-        .shadow(color: .black.opacity(0.05), radius: 3, x: 0, y: 1)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(.background)
+                .shadow(color: .black.opacity(0.06), radius: 8, x: 0, y: 2)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [
+                            Color.primary.opacity(0.16),
+                            Color.primary.opacity(0.05)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1
+                )
+        )
     }
 }
 
@@ -196,19 +217,62 @@ private struct ContextRow: View {
     let onJump: (VocabularyEntry) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
 
-            // Context translation
+            // Word-in-context translation
             if !entry.contextTranslation.isEmpty {
-                Text(entry.contextTranslation).font(.body)
+                Text(entry.contextTranslation)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(.primary)
             }
 
-            // Original sentence
-            if !entry.sentence.isEmpty {
-                Text("「\(entry.sentence)」")
-                    .font(.caption).foregroundStyle(.tertiary).italic().lineLimit(3)
-                    .padding(.horizontal, 8).padding(.vertical, 4)
-                    .background(.quinary, in: RoundedRectangle(cornerRadius: 6))
+            // 语境解释（与保存到单词本的数据一致）
+            if !entry.contextExplanation.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("语境解释")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .textCase(.uppercase)
+                    Text(entry.contextExplanation)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+            }
+
+            // 原文语境：英文（合并 PDF 换行）+ 下方整句译文
+            if !entry.sentence.isEmpty || !entry.contextSentenceTranslation.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("原文语境")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .textCase(.uppercase)
+                    if !entry.sentence.isEmpty {
+                        Text("「\(ContextSentenceFormatting.displayParagraph(entry.sentence))」")
+                            .font(.callout)
+                            .foregroundStyle(.primary)
+                            .italic()
+                            .fixedSize(horizontal: false, vertical: true)
+                            .multilineTextAlignment(.leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    if !entry.contextSentenceTranslation.isEmpty {
+                        Text(entry.contextSentenceTranslation)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .multilineTextAlignment(.leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.quinary.opacity(0.85), in: RoundedRectangle(cornerRadius: 8))
             }
 
             // Footer: source info + actions
@@ -245,8 +309,8 @@ private struct ContextRow: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
     }
 
     @ViewBuilder
@@ -276,6 +340,7 @@ private struct VocabularyEditSheet: View {
     @State private var contextTranslation: String
     @State private var contextExplanation: String
     @State private var generalDefinition: String
+    @State private var contextSentenceTranslation: String
 
     init(entry: VocabularyEntry, onSave: @escaping () -> Void) {
         self.entry = entry
@@ -285,6 +350,7 @@ private struct VocabularyEditSheet: View {
         _contextTranslation = State(initialValue: entry.contextTranslation)
         _contextExplanation = State(initialValue: entry.contextExplanation)
         _generalDefinition  = State(initialValue: entry.generalDefinition)
+        _contextSentenceTranslation = State(initialValue: entry.contextSentenceTranslation)
     }
 
     var body: some View {
@@ -295,6 +361,7 @@ private struct VocabularyEditSheet: View {
             editRow("词性", text: $partOfSpeech)
             editArea("语境翻译", text: $contextTranslation, height: 54)
             editArea("语境解释", text: $contextExplanation, height: 54)
+            editArea("整句译文", text: $contextSentenceTranslation, height: 54)
             editArea("通用释义", text: $generalDefinition,  height: 54)
             HStack(spacing: 4) {
                 Image(systemName: "doc.text").font(.caption2).foregroundStyle(.tertiary)
@@ -310,7 +377,8 @@ private struct VocabularyEditSheet: View {
                         id: entry.id, phonetic: phonetic, partOfSpeech: partOfSpeech,
                         contextTranslation: contextTranslation,
                         contextExplanation: contextExplanation,
-                        generalDefinition: generalDefinition
+                        generalDefinition: generalDefinition,
+                        contextSentenceTranslation: contextSentenceTranslation
                     )
                     onSave(); dismiss()
                 }
@@ -318,7 +386,7 @@ private struct VocabularyEditSheet: View {
             }
         }
         .padding(20)
-        .frame(width: 400, height: 520)
+        .frame(width: 420, height: 580)
     }
 
     private func editRow(_ label: String, text: Binding<String>) -> some View {

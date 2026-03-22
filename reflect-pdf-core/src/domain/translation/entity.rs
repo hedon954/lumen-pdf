@@ -48,5 +48,8 @@ pub struct TranslationResult {
     pub context_translation: String,
     pub context_explanation: String,
     pub general_definition: String,
+    /// Full translation of the entire context sentence (helps LLM / reading).
+    #[serde(default)]
+    pub context_sentence_translation: String,
     pub source: String,
 }
