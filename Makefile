@@ -1,4 +1,4 @@
-.PHONY: setup build-rust gen-project test clean
+.PHONY: setup build-rust gen-project test dmg clean
 
 ## 首次使用：安装工具 + 生成 Xcode 项目
 setup:
@@ -19,6 +19,11 @@ gen-project:
 ## 运行 Rust 单元测试
 test:
 	cd reflect-pdf-core && cargo test
+
+## 打包为 DMG（本地开发版，不签名）
+## 使用 Developer ID 签名：TEAM_ID=XXXXXXXXXX make dmg
+dmg:
+	./scripts/package-dmg.sh
 
 ## 清除构建产物
 clean:

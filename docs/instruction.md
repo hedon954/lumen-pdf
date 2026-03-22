@@ -115,3 +115,7 @@
 另外，单词本中，应该也包含语境解释这部分的内容。
 
 ![](https://hedonspace.oss-cn-beijing.aliyuncs.com/img/image-20260323001956676.png)
+
+---
+
+现在，请你根据我的 git commit logs 以及当前代码的最新状态，创建新的 prd 和 tdd，并更新 REAMDE，同时提供安装方式。 
