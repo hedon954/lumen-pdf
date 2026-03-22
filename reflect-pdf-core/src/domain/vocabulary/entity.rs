@@ -16,6 +16,8 @@ pub struct VocabularyEntry {
     pub translation_source: String,
     pub annotation_id: Option<String>,
     pub created_at: i64,
+    /// Number of times the user has looked this word up.
+    pub query_count: u32,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]

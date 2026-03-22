@@ -35,13 +35,15 @@ fn row_to_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<VocabularyEntry> {
         translation_source: row.get(13)?,
         annotation_id: row.get(14)?,
         created_at: row.get(15)?,
+        query_count: row.get::<_, i64>(16).unwrap_or(0) as u32,
     })
 }
 
 const SELECT_COLS: &str = "id, word, sentence, sentence_hash, pdf_path, pdf_name,
     page_index, selection_bounds, phonetic, part_of_speech,
     context_translation, context_explanation, general_definition,
-    translation_source, annotation_id, created_at";
+    translation_source, annotation_id, created_at,
+    COALESCE(query_count, 0) AS query_count";
 
 impl VocabularyRepository for SqliteVocabularyRepo {
     fn save(&self, req: SaveVocabularyRequest) -> Result<VocabularyEntry, ReflectError> {
@@ -52,8 +54,9 @@ impl VocabularyRepository for SqliteVocabularyRepo {
             "INSERT INTO vocabulary_entries
              (id, word, sentence, sentence_hash, pdf_path, pdf_name, page_index,
               selection_bounds, phonetic, part_of_speech, context_translation,
-              context_explanation, general_definition, translation_source, annotation_id, created_at)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)",
+              context_explanation, general_definition, translation_source, annotation_id, created_at,
+              query_count)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,0)",
             rusqlite::params![
                 id, req.word, req.sentence, req.sentence_hash,
                 req.pdf_path, req.pdf_name, req.page_index,
@@ -80,6 +83,7 @@ impl VocabularyRepository for SqliteVocabularyRepo {
             translation_source: req.translation_source,
             annotation_id: req.annotation_id,
             created_at: now,
+            query_count: 0,
         })
     }
 
@@ -132,6 +136,15 @@ impl VocabularyRepository for SqliteVocabularyRepo {
         conn.execute(
             "UPDATE vocabulary_entries SET annotation_id = ?1 WHERE id = ?2",
             rusqlite::params![annotation_id, id],
+        )?;
+        Ok(())
+    }
+
+    fn increment_query_count(&self, id: &str) -> Result<(), ReflectError> {
+        let conn = self.pool.get()?;
+        conn.execute(
+            "UPDATE vocabulary_entries SET query_count = query_count + 1 WHERE id = ?1",
+            rusqlite::params![id],
         )?;
         Ok(())
     }

@@ -8,4 +8,5 @@ pub trait VocabularyRepository: Send + Sync {
     fn list(&self) -> Result<Vec<VocabularyEntry>, ReflectError>;
     fn delete(&self, id: &str) -> Result<(), ReflectError>;
     fn update_annotation_id(&self, id: &str, annotation_id: &str) -> Result<(), ReflectError>;
+    fn increment_query_count(&self, id: &str) -> Result<(), ReflectError>;
 }

@@ -123,6 +123,12 @@ pub fn update_vocabulary_annotation(id: String, annotation_id: String) -> Result
         .update_annotation_id(&id, &annotation_id)
 }
 
+#[uniffi::export]
+pub fn increment_vocabulary_query_count(id: String) -> Result<(), ReflectError> {
+    VocabularyUseCase::new(Arc::new(SqliteVocabularyRepo::new(pool()?.clone())))
+        .increment_query_count(&id)
+}
+
 // ── PDF Document API ─────────────────────────────────────────────────────────
 
 #[uniffi::export]

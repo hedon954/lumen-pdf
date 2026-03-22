@@ -10,6 +10,7 @@ private let _getVocabByHash: (String, String) throws -> VocabularyEntry? = getVo
 private let _listVocabulary: () throws -> [VocabularyEntry]              = listVocabulary
 private let _deleteVocabulary: (String) throws -> Void                   = deleteVocabulary(id:)
 private let _updateAnnotation: (String, String) throws -> Void           = updateVocabularyAnnotation(id:annotationId:)
+private let _incrementQueryCount: (String) throws -> Void                = incrementVocabularyQueryCount(id:)
 private let _upsertPdf: (UpsertPdfRequest) throws -> PdfDocument         = upsertPdfDocument(req:)
 private let _savePosition: (String, UInt32, Double) throws -> Void       = saveReadingPosition(filePath:page:scrollOffset:)
 private let _listPdfDocuments: () throws -> [PdfDocument]                = listPdfDocuments
@@ -92,6 +93,10 @@ final class BridgeService {
 
     func updateVocabularyAnnotation(id: String, annotationId: String) throws {
         try _updateAnnotation(id, annotationId)
+    }
+
+    func incrementQueryCount(id: String) {
+        try? _incrementQueryCount(id)
     }
 
     // MARK: - PDF Documents

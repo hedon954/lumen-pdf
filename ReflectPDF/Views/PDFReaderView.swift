@@ -63,6 +63,8 @@ struct PDFReaderView: View {
             totalPages: UInt32(totalPages)
         )
         appState.refreshLibrary()
+        // Restore saved-word highlights after doc loads
+        appState.applyHighlights()
 
         if document.lastPage > 0 {
             appState.showToast("已定位到 P\(document.lastPage + 1)")
@@ -73,6 +75,7 @@ struct PDFReaderView: View {
         // Check saved vocabulary first (no LLM call)
         let hash = session.sentenceHash(sentence)
         if let saved = try? BridgeService.shared.getVocabularyByWordAndHash(word: word, sentenceHash: hash) {
+            BridgeService.shared.incrementQueryCount(id: saved.id)
             translationRequest = TranslationBubbleRequest(
                 word: word,
                 sentence: sentence,
@@ -115,6 +118,8 @@ struct PDFReaderView: View {
 
     private func saveToDiary(result: TranslationResult, request: TranslationBubbleRequest) {
         let hash = session.sentenceHash(request.sentence)
+        // Use NSStringFromRect so it can be parsed back with NSRectFromString
+        let boundsStr = NSStringFromRect(request.bounds)
         guard let entry = try? BridgeService.shared.saveVocabulary(
             word: result.word,
             sentence: request.sentence,
@@ -122,7 +127,7 @@ struct PDFReaderView: View {
             pdfPath: document.filePath,
             pdfName: document.fileName,
             pageIndex: UInt32(request.page),
-            selectionBounds: request.bounds.debugDescription,
+            selectionBounds: boundsStr,
             phonetic: result.phonetic,
             partOfSpeech: result.partOfSpeech,
             contextTranslation: result.contextTranslation,
@@ -131,8 +136,21 @@ struct PDFReaderView: View {
             translationSource: result.source
         ) else { return }
 
+        // Add highlight annotation to PDF page immediately
+        highlightEntry(entry)
         appState.refreshVocabulary()
-        _ = entry
+        appState.showToast("已保存「\(entry.word)」")
+    }
+
+    private func highlightEntry(_ entry: VocabularyEntry) {
+        guard let kitDoc = appState.kitDocument,
+              let page = kitDoc.page(at: Int(entry.pageIndex)) else { return }
+        let bounds = NSRectFromString(entry.selectionBounds)
+        guard bounds != .zero else { return }
+        let annotation = PDFAnnotation(bounds: bounds, forType: .highlight, withProperties: nil)
+        annotation.color = NSColor.systemYellow.withAlphaComponent(0.5)
+        annotation.userName = entry.id
+        page.addAnnotation(annotation)
     }
 }
 
@@ -162,20 +180,33 @@ struct PDFKitView: NSViewRepresentable {
             name: .PDFViewPageChanged,
             object: pdfView
         )
-
         NotificationCenter.default.addObserver(
             context.coordinator,
             selector: #selector(Coordinator.selectionChanged(_:)),
             name: .PDFViewSelectionChanged,
             object: pdfView
         )
-
+        // Outline TOC navigation
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(Coordinator.outlineNavigate(_:)),
+            name: .outlineNavigate,
+            object: nil
+        )
+        // Vocabulary jump-to-page
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(Coordinator.jumpToPage(_:)),
+            name: .jumpToPage,
+            object: nil
+        )
+        context.coordinator.pdfView = pdfView
         return pdfView
     }
 
     func updateNSView(_ pdfView: PDFView, context: Context) {
-        guard let url = URL(string: "file://\(filePath)"),
-              let doc = PDFDocument(url: url) else { return }
+        let url = URL(fileURLWithPath: filePath)
+        guard let doc = PDFDocument(url: url) else { return }
 
         if pdfView.document?.documentURL?.path != filePath {
             pdfView.document = doc
@@ -183,7 +214,7 @@ struct PDFKitView: NSViewRepresentable {
             onDocumentLoaded(doc.pageCount)
 
             // Restore reading position
-            if savedPage < doc.pageCount, let page = doc.page(at: savedPage) {
+            if savedPage > 0, savedPage < doc.pageCount, let page = doc.page(at: savedPage) {
                 pdfView.go(to: page)
             }
         }
@@ -191,10 +222,30 @@ struct PDFKitView: NSViewRepresentable {
 
     final class Coordinator: NSObject {
         var parent: PDFKitView
+        weak var pdfView: PDFView?
         private var debounceTimer: Timer?
 
         init(_ parent: PDFKitView) {
             self.parent = parent
+        }
+
+        @objc func outlineNavigate(_ notification: Notification) {
+            guard let dest = notification.userInfo?["destination"] as? PDFDestination,
+                  let pdfView,
+                  let notifDoc = notification.userInfo?["document"] as? PDFKit.PDFDocument,
+                  pdfView.document?.documentURL == notifDoc.documentURL
+            else { return }
+            pdfView.go(to: dest)
+        }
+
+        @objc func jumpToPage(_ notification: Notification) {
+            guard let pageIndex = notification.userInfo?["pageIndex"] as? Int,
+                  let filePath = notification.userInfo?["filePath"] as? String,
+                  let pdfView,
+                  pdfView.document?.documentURL?.path == filePath,
+                  let page = pdfView.document?.page(at: pageIndex)
+            else { return }
+            pdfView.go(to: page)
         }
 
         @objc func pageChanged(_ notification: Notification) {
