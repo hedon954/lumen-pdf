@@ -155,7 +155,6 @@ struct PDFKitView: NSViewRepresentable {
         pdfView.autoScales = true
         pdfView.displayMode = .singlePageContinuous
         pdfView.displayDirection = .vertical
-        pdfView.usePageViewController(false)
 
         NotificationCenter.default.addObserver(
             context.coordinator,

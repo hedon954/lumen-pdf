@@ -1,7 +1,21 @@
 import Foundation
 
-/// Wraps all UniFFI-generated calls from ReflectPdfLib.
-/// Swift types (TranslationResult etc.) mirror the Rust `#[uniffi::Record]` structs.
+// File-scope type-aliased references to UniFFI top-level functions.
+// BridgeService methods have the same names → would shadow them inside the class.
+// By capturing them here at file scope, we can call them unambiguously.
+private let _initialize: (String, AppConfig) throws -> Void              = initialize(dbPath:config:)
+private let _saveVocabulary: (SaveVocabularyRequest) throws -> VocabularyEntry = saveVocabulary(req:)
+private let _getVocabularyEntry: (String) throws -> VocabularyEntry?     = getVocabularyEntry(id:)
+private let _getVocabByHash: (String, String) throws -> VocabularyEntry? = getVocabularyByWordAndHash(word:sentenceHash:)
+private let _listVocabulary: () throws -> [VocabularyEntry]              = listVocabulary
+private let _deleteVocabulary: (String) throws -> Void                   = deleteVocabulary(id:)
+private let _updateAnnotation: (String, String) throws -> Void           = updateVocabularyAnnotation(id:annotationId:)
+private let _upsertPdf: (UpsertPdfRequest) throws -> PdfDocument         = upsertPdfDocument(req:)
+private let _savePosition: (String, UInt32, Double) throws -> Void       = saveReadingPosition(filePath:page:scrollOffset:)
+private let _listPdfDocuments: () throws -> [PdfDocument]                = listPdfDocuments
+private let _deletePdfDocument: (String) throws -> Void                  = deletePdfDocument(filePath:)
+
+/// Wraps all UniFFI-generated top-level calls and manages app initialization.
 final class BridgeService {
     static let shared = BridgeService()
 
@@ -17,20 +31,17 @@ final class BridgeService {
 
     func initializeIfNeeded() {
         guard !isInitialized else { return }
-        let apiKey = KeychainService.load(key: "llm_api_key") ?? ""
         let config = AppConfig(
             llmBaseUrl: UserDefaults.standard.string(forKey: "llm_base_url") ?? "https://api.openai.com/v1",
-            llmApiKey: apiKey,
+            llmApiKey: KeychainService.load(key: "llm_api_key") ?? "",
             llmModel: UserDefaults.standard.string(forKey: "llm_model") ?? "gpt-4o-mini",
             targetLanguage: UserDefaults.standard.string(forKey: "target_language") ?? "简体中文"
         )
-        try? initialize(dbPath: dbURL.path, config: config)
+        try? _initialize(dbURL.path, config)
         isInitialized = true
     }
 
     func updateConfig(baseURL: String, apiKey: String, model: String, targetLanguage: String) {
-        // Re-initialize with new config by restarting (simplest approach for MVP).
-        // A production app would expose a dedicated update_config API.
         isInitialized = false
         initializeIfNeeded()
     }
@@ -38,7 +49,8 @@ final class BridgeService {
     // MARK: - Translation
 
     func translate(word: String, sentence: String) async throws -> TranslationResult {
-        try await ReflectPdfLib.translate(request: TranslationRequest(word: word, sentence: sentence))
+        // translate(request:) has different param label — no shadowing conflict
+        try await ReflectPDF.translate(request: TranslationRequest(word: word, sentence: sentence))
     }
 
     // MARK: - Vocabulary
@@ -52,7 +64,7 @@ final class BridgeService {
         generalDefinition: String, translationSource: String,
         annotationId: String? = nil
     ) throws -> VocabularyEntry {
-        try ReflectPdfLib.saveVocabulary(req: SaveVocabularyRequest(
+        try _saveVocabulary(SaveVocabularyRequest(
             word: word, sentence: sentence, sentenceHash: sentenceHash,
             pdfPath: pdfPath, pdfName: pdfName, pageIndex: pageIndex,
             selectionBounds: selectionBounds, phonetic: phonetic,
@@ -63,43 +75,41 @@ final class BridgeService {
     }
 
     func getVocabularyEntry(id: String) throws -> VocabularyEntry? {
-        try ReflectPdfLib.getVocabularyEntry(id: id)
+        try _getVocabularyEntry(id)
     }
 
     func getVocabularyByWordAndHash(word: String, sentenceHash: String) throws -> VocabularyEntry? {
-        try ReflectPdfLib.getVocabularyByWordAndHash(word: word, sentenceHash: sentenceHash)
+        try _getVocabByHash(word, sentenceHash)
     }
 
     func listVocabulary() throws -> [VocabularyEntry] {
-        try ReflectPdfLib.listVocabulary()
+        try _listVocabulary()
     }
 
     func deleteVocabulary(id: String) throws {
-        try ReflectPdfLib.deleteVocabulary(id: id)
+        try _deleteVocabulary(id)
     }
 
     func updateVocabularyAnnotation(id: String, annotationId: String) throws {
-        try ReflectPdfLib.updateVocabularyAnnotation(id: id, annotationId: annotationId)
+        try _updateAnnotation(id, annotationId)
     }
 
     // MARK: - PDF Documents
 
     @discardableResult
     func upsertPdfDocument(filePath: String, fileName: String, totalPages: UInt32) throws -> PdfDocument {
-        try ReflectPdfLib.upsertPdfDocument(req: UpsertPdfRequest(
-            filePath: filePath, fileName: fileName, totalPages: totalPages
-        ))
+        try _upsertPdf(UpsertPdfRequest(filePath: filePath, fileName: fileName, totalPages: totalPages))
     }
 
     func saveReadingPosition(filePath: String, page: UInt32, scrollOffset: Double) throws {
-        try ReflectPdfLib.saveReadingPosition(filePath: filePath, page: page, scrollOffset: scrollOffset)
+        try _savePosition(filePath, page, scrollOffset)
     }
 
     func listPdfDocuments() throws -> [PdfDocument] {
-        try ReflectPdfLib.listPdfDocuments()
+        try _listPdfDocuments()
     }
 
     func deletePdfDocument(filePath: String) throws {
-        try ReflectPdfLib.deletePdfDocument(filePath: filePath)
+        try _deletePdfDocument(filePath)
     }
 }
