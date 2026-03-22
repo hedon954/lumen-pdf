@@ -1,39 +1,31 @@
 import SwiftUI
+import AppKit
 
 struct TranslationBubble: View {
     let request: TranslationBubbleRequest
     let isLoading: Bool
-    /// Returns the saved VocabularyEntry ID on success, or nil on failure.
     let onSave: (TranslationResult) -> String?
-    /// Called after the entry is deleted; passes the deleted entry ID so the parent
-    /// can remove the corresponding PDF highlight annotation.
     let onDelete: (String) -> Void
     let onDismiss: () -> Void
 
     @StateObject private var audio = AudioService()
-    /// ID of the entry once saved (or pre-existing).
     @State private var savedEntryId: String?
 
-    // Drag state
-    @State private var baseOffset: CGSize = .zero
-    @State private var dragDelta: CGSize = .zero
-    private var effectiveOffset: CGSize {
-        CGSize(width: baseOffset.width + dragDelta.width,
-               height: baseOffset.height + dragDelta.height)
-    }
+    // Drag offset — updated directly from AppKit mouse events (no SwiftUI gesture layer)
+    @State private var offset: CGSize = .zero
 
     var body: some View {
         card
-            .offset(effectiveOffset)
+            .offset(offset)
+            // Suppress all implicit animations on the card during drag
+            .animation(nil, value: offset)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-            .background(                // Tap outside to dismiss
+            .background(
                 Color.clear
                     .contentShape(Rectangle())
                     .onTapGesture { onDismiss() }
             )
-            .onAppear {
-                savedEntryId = request.existingEntryId
-            }
+            .onAppear { savedEntryId = request.existingEntryId }
     }
 
     // MARK: - Card
@@ -50,7 +42,7 @@ struct TranslationBubble: View {
         .frame(width: 380)
     }
 
-    // MARK: - Header (drag handle)
+    // MARK: - Header (AppKit drag handle)
 
     private var header: some View {
         HStack(alignment: .top) {
@@ -82,7 +74,6 @@ struct TranslationBubble: View {
 
             Spacer()
 
-            // Drag hint + controls
             HStack(spacing: 8) {
                 Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
                     .font(.caption).foregroundStyle(.tertiary)
@@ -99,15 +90,12 @@ struct TranslationBubble: View {
             }
         }
         .padding(14)
-        // Drag gesture on the header
-        .gesture(
-            DragGesture()
-                .onChanged { v in dragDelta = v.translation }
-                .onEnded { v in
-                    baseOffset = CGSize(width: baseOffset.width + v.translation.width,
-                                       height: baseOffset.height + v.translation.height)
-                    dragDelta = .zero
-                }
+        // AppKit-level drag capture sits behind the content; buttons on top still fire normally
+        .background(
+            AppKitDragCapture { delta in
+                offset.width  += delta.width
+                offset.height += delta.height
+            }
         )
         .cursor(.openHand)
     }
@@ -142,7 +130,6 @@ struct TranslationBubble: View {
                                 .font(.callout).foregroundStyle(.secondary)
                         }
                     }
-                    // Context sentence – normal body style, no italic/tertiary
                     BubbleSection("原文语境") {
                         Text(request.sentence)
                             .font(.callout)
@@ -171,7 +158,6 @@ struct TranslationBubble: View {
         HStack {
             Spacer()
             if let entryId = savedEntryId {
-                // Already saved — show delete option
                 HStack(spacing: 12) {
                     Label("已保存", systemImage: "checkmark.circle.fill")
                         .font(.callout).foregroundStyle(.green)
@@ -180,8 +166,7 @@ struct TranslationBubble: View {
                         savedEntryId = nil
                         onDelete(entryId)
                     } label: {
-                        Image(systemName: "trash")
-                            .foregroundStyle(.red)
+                        Image(systemName: "trash").foregroundStyle(.red)
                     }
                     .buttonStyle(.plain)
                 }
@@ -199,7 +184,60 @@ struct TranslationBubble: View {
     }
 }
 
-// MARK: - Spinner (avoids AppKit NSProgressIndicator AutoLayout warning)
+// MARK: - AppKit drag capture (bypasses SwiftUI gesture pipeline for frame-perfect drag)
+
+/// Transparent NSView that processes mouseDown/mouseDragged at AppKit level.
+/// Placed as .background() so SwiftUI buttons layered on top still receive clicks normally.
+private struct AppKitDragCapture: NSViewRepresentable {
+    /// Called on the main thread with each incremental drag delta (SwiftUI coordinate space).
+    let onDelta: (CGSize) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(onDelta) }
+    func makeNSView(context: Context) -> NSView { context.coordinator.view }
+    func updateNSView(_ nsView: NSView, context: Context) {
+        context.coordinator.onDelta = onDelta
+    }
+
+    final class Coordinator: NSObject {
+        var onDelta: (CGSize) -> Void
+        lazy var view: CaptureView = CaptureView(coordinator: self)
+        init(_ cb: @escaping (CGSize) -> Void) { onDelta = cb }
+    }
+
+    final class CaptureView: NSView {
+        weak var coordinator: Coordinator?
+        /// Last mouse position in window coordinates.
+        private var lastLoc: CGPoint?
+
+        init(coordinator: Coordinator) {
+            self.coordinator = coordinator
+            super.init(frame: .zero)
+        }
+        required init?(coder: NSCoder) { fatalError() }
+
+        override func mouseDown(with event: NSEvent) {
+            lastLoc = event.locationInWindow
+        }
+
+        override func mouseDragged(with event: NSEvent) {
+            guard let last = lastLoc else { return }
+            let cur = event.locationInWindow
+            // Window coords: Y increases upward; SwiftUI: Y increases downward → negate dy
+            let delta = CGSize(width: cur.x - last.x, height: -(cur.y - last.y))
+            lastLoc = cur
+            coordinator?.onDelta(delta)
+        }
+
+        override func mouseUp(with event: NSEvent) {
+            lastLoc = nil
+        }
+
+        // Accept the first mouse-down even when the window is not key
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    }
+}
+
+// MARK: - Spinner
 
 private struct SpinnerView: View {
     @State private var angle: Double = 0
