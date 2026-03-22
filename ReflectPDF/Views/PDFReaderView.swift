@@ -496,39 +496,76 @@ struct PDFKitView: NSViewRepresentable {
             guard let page = pdfView.currentPage, let pageText = page.string,
                   !pageText.isEmpty else { return nil }
 
-            // Use the on-page position of the selection to find the EXACT sentence
-            // at that location, so the same word on different lines gets different contexts.
-            let selBounds = selection.bounds(for: page)
-            let charIdx = page.characterIndex(at: CGPoint(x: selBounds.midX, y: selBounds.midY))
+            let word = (selection.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
 
-            if charIdx >= 0, charIdx < pageText.count {
-                let seps: Set<Character> = [".", "!", "?", "。", "！", "？", "\n"]
-                let anchor = pageText.index(pageText.startIndex, offsetBy: charIdx)
-
-                // Walk backward to find the start of the sentence
-                var sentStart = anchor
-                while sentStart > pageText.startIndex {
-                    let prev = pageText.index(before: sentStart)
-                    if seps.contains(pageText[prev]) { break }
-                    sentStart = prev
-                }
-                // Walk forward to find the end of the sentence
-                var sentEnd = anchor
-                while sentEnd < pageText.endIndex {
-                    if seps.contains(pageText[sentEnd]) { break }
-                    sentEnd = pageText.index(after: sentEnd)
-                }
-
-                let sentence = String(pageText[sentStart..<sentEnd])
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                if sentence.count >= 4, sentence.count <= 500 { return sentence }
+            // IMPORTANT: Do NOT use `characterIndex(at:)` from geometry — it often maps
+            // to the wrong run of text (e.g. list item vs preceding paragraph). Use the
+            // selection's actual character range on the page string instead (UTF-16).
+            let ns = pageText as NSString
+            // macOS PDFKit: `range(at:on:)` — index 0 is the first contiguous range on this page
+            let selRange = selection.range(at: 0, on: page)
+            guard selRange.location != NSNotFound, selRange.length > 0 else {
+                return fallbackSentence(word: word, in: pageText)
             }
 
-            // Fallback: first sentence containing the selected word
-            let word = selection.string ?? ""
-            for part in pageText.components(separatedBy: CharacterSet(charactersIn: ".!?。！？\n")) {
+            // Anchor at middle of selected text in the page's string (stable for multi-char words)
+            let anchor = min(selRange.location + max(0, selRange.length / 2), ns.length - 1)
+
+            // Full **sentence** for LLM: only split on `.` `!` `?` (and CJK 。！？).
+            // Do **not** split on `;` or `:` — e.g. "…left to right; each node…" stays one sentence.
+            if let extracted = extractFullSentence(from: ns, anchorUTF16: anchor) {
+                return extracted
+            }
+            return fallbackSentence(word: word, in: pageText)
+        }
+
+        /// From the previous `.`/`!`/`?`/`。`/`！`/`？` to the next — one complete sentence (UTF-16).
+        private func extractFullSentence(from ns: NSString, anchorUTF16: Int) -> String? {
+            let len = ns.length
+            guard len > 0, anchorUTF16 >= 0, anchorUTF16 < len else { return nil }
+
+            // First character of the sentence containing `anchor`
+            var start = anchorUTF16
+            while start > 0 {
+                let c = ns.character(at: start - 1)
+                if isSentenceTerminatorUTF16(c) { break }
+                start -= 1
+            }
+
+            // Last character inclusive: up to and including the next sentence terminator
+            var end = anchorUTF16
+            while end < len {
+                let c = ns.character(at: end)
+                if isSentenceTerminatorUTF16(c) {
+                    end += 1 // include terminator
+                    break
+                }
+                end += 1
+            }
+
+            let r = NSRange(location: start, length: end - start)
+            let sentence = ns.substring(with: r).trimmingCharacters(in: .whitespacesAndNewlines)
+            // Allow longer contexts for LLM (semicolon-linked clauses)
+            if sentence.count >= 2, sentence.count <= 2000 { return sentence }
+            return nil
+        }
+
+        /// Only true sentence-ending punctuation (not `;` `:` or newlines).
+        private func isSentenceTerminatorUTF16(_ c: UInt16) -> Bool {
+            switch c {
+            case 0x002E, 0x0021, 0x003F: return true // . ! ?
+            case 0x3002, 0xFF01, 0xFF1F: return true // 。！？
+            default: return false
+            }
+        }
+
+        /// Last resort: first segment between sentence terminators that contains the word.
+        private func fallbackSentence(word: String, in pageText: String) -> String? {
+            guard !word.isEmpty else { return nil }
+            let seps = CharacterSet(charactersIn: ".!?。！？")
+            for part in pageText.components(separatedBy: seps) {
                 let t = part.trimmingCharacters(in: .whitespacesAndNewlines)
-                if t.contains(word), t.count >= 4, t.count <= 500 { return t }
+                if t.contains(word), t.count >= 4, t.count <= 2000 { return t }
             }
             return nil
         }

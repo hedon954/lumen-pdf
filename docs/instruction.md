@@ -89,3 +89,13 @@
 ![](https://hedonspace.oss-cn-beijing.aliyuncs.com/img/image-20260322235943121.png)
 
 比如这个图，原文语境选择的不对。应该是下面这一句，但是选到上面那一句了。
+
+---
+
+非常好，但是我觉得还是可以进一步完善一点。比如说，下面这个，虽然选择是对的，但是句子是不完整的。最好是选择一整个完整的句子。比如从上一个 `.` 到一下 `.` 或者 `?`、`!` 这种表示句子结束的标识，这样会更有助于 LLM 理解。
+
+![](https://hedonspace.oss-cn-beijing.aliyuncs.com/img/image-20260323000432311.png)
+
+---
+
+![image-20260323000746767](https://hedonspace.oss-cn-beijing.aliyuncs.com/img/image-20260323000746767.png)
