@@ -8,6 +8,12 @@ struct SelectionInfo: Equatable {
     let sentence: String
     let bounds: CGRect
     let page: Int
+    /// Center of the action menu in SwiftUI coordinates (relative to PDFKitView's frame).
+    let menuAnchor: CGPoint
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.word == rhs.word && lhs.page == rhs.page && lhs.bounds == rhs.bounds
+    }
 }
 
 struct PDFReaderView: View {
@@ -17,7 +23,6 @@ struct PDFReaderView: View {
 
     @State private var translationRequest: TranslationBubbleRequest?
     @State private var isTranslating = false
-    /// Pending selection waiting for user to choose action (translate / highlight / underline).
     @State private var pendingSelection: SelectionInfo?
 
     var body: some View {
@@ -33,28 +38,26 @@ struct PDFReaderView: View {
                         scrollOffset: offset
                     )
                 },
-                onTextSelected: { word, sentence, bounds, page in
+                onTextSelected: { word, sentence, bounds, page, anchor in
                     guard !word.isEmpty else { return }
-                    // Show action menu instead of immediate translation
-                    pendingSelection = SelectionInfo(word: word, sentence: sentence,
-                                                    bounds: bounds, page: page)
+                    pendingSelection = SelectionInfo(
+                        word: word, sentence: sentence,
+                        bounds: bounds, page: page, menuAnchor: anchor
+                    )
                 },
                 onClearSelection: {
-                    // Selection was cleared (click away) — dismiss pending menu
-                    if translationRequest == nil {
-                        pendingSelection = nil
-                    }
+                    if translationRequest == nil { pendingSelection = nil }
                 },
                 onDocumentLoaded: { totalPages in
                     handleDocumentLoaded(totalPages: totalPages)
                 }
             )
 
-            // Selection action bar (translate / highlight / underline)
+            // Selection action menu — positioned near the selection
             if let sel = pendingSelection, translationRequest == nil {
                 selectionActionBar(sel)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .animation(.spring(duration: 0.22), value: pendingSelection)
+                    .transition(.opacity.combined(with: .scale(scale: 0.88)))
+                    .animation(.spring(duration: 0.18), value: pendingSelection)
             }
 
             // Translation bubble
@@ -62,11 +65,8 @@ struct PDFReaderView: View {
                 TranslationBubble(
                     request: req,
                     isLoading: isTranslating,
-                    onSave: { result in
-                        saveToDiary(result: result, request: req)
-                    },
+                    onSave: { result in saveToDiary(result: result, request: req) },
                     onDelete: { deletedId in
-                        // Remove the highlight annotation from the PDFView
                         NotificationCenter.default.post(
                             name: .removeHighlight,
                             object: nil,
@@ -78,9 +78,7 @@ struct PDFReaderView: View {
                         )
                         appState.refreshVocabulary()
                     },
-                    onDismiss: {
-                        translationRequest = nil
-                    }
+                    onDismiss: { translationRequest = nil }
                 )
                 .transition(.opacity.combined(with: .scale(scale: 0.95)))
                 .animation(.easeOut(duration: 0.15), value: translationRequest != nil)
@@ -88,8 +86,7 @@ struct PDFReaderView: View {
         }
         .toolbar {
             ToolbarItem(placement: .automatic) {
-                Text(document.fileName)
-                    .font(.headline)
+                Text(document.fileName).font(.headline)
             }
         }
         .id(document.id)
@@ -104,37 +101,39 @@ struct PDFReaderView: View {
                                    bounds: sel.bounds, page: sel.page)
                 pendingSelection = nil
             }
-            Divider().frame(height: 24)
+            Divider().frame(height: 22)
             actionBarBtn(icon: "highlighter", label: "高亮") {
                 postFreeAnnotation(type: "highlight", bounds: sel.bounds, page: sel.page)
                 pendingSelection = nil
             }
-            Divider().frame(height: 24)
+            Divider().frame(height: 22)
             actionBarBtn(icon: "underline", label: "划线") {
                 postFreeAnnotation(type: "underline", bounds: sel.bounds, page: sel.page)
                 pendingSelection = nil
             }
-            Divider().frame(height: 24)
+            Divider().frame(height: 22)
             actionBarBtn(icon: "xmark", label: "") {
                 pendingSelection = nil
             }
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 5)
+        .padding(.horizontal, 4)
+        .padding(.vertical, 4)
         .background(.regularMaterial, in: Capsule())
         .overlay(Capsule().strokeBorder(.separator, lineWidth: 0.5))
-        .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 2)
-        .padding(.bottom, 24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        .shadow(color: .black.opacity(0.18), radius: 10, x: 0, y: 3)
+        .fixedSize()
+        .position(x: sel.menuAnchor.x, y: sel.menuAnchor.y)
     }
 
     private func actionBarBtn(icon: String, label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 5) {
-                Image(systemName: icon)
-                if !label.isEmpty { Text(label).font(.callout) }
+            HStack(spacing: 4) {
+                Image(systemName: icon).font(.system(size: 12, weight: .medium))
+                if !label.isEmpty {
+                    Text(label).font(.system(size: 12))
+                }
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 10)
             .padding(.vertical, 7)
         }
         .buttonStyle(.plain)
@@ -163,7 +162,6 @@ struct PDFReaderView: View {
             totalPages: UInt32(totalPages)
         )
         appState.refreshLibrary()
-
         if document.lastPage > 0 {
             appState.showToast("已定位到 P\(document.lastPage + 1)")
         }
@@ -173,30 +171,18 @@ struct PDFReaderView: View {
 
     private func requestTranslation(word: String, sentence: String, bounds: CGRect, page: Int) {
         let hash = session.sentenceHash(sentence)
-        if let saved = try? BridgeService.shared.getVocabularyByWordAndHash(word: word, sentenceHash: hash) {
-            BridgeService.shared.incrementQueryCount(id: saved.id)
-            translationRequest = TranslationBubbleRequest(
-                word: word,
-                sentence: sentence,
-                bounds: bounds,
-                page: page,
-                result: TranslationResult(
-                    word: saved.word,
-                    phonetic: saved.phonetic,
-                    partOfSpeech: saved.partOfSpeech,
-                    contextTranslation: saved.contextTranslation,
-                    contextExplanation: saved.contextExplanation,
-                    generalDefinition: saved.generalDefinition,
-                    source: "cache"
-                ),
-                existingEntryId: saved.id
-            )
-            return
-        }
+
+        // Check if this exact word+sentence context is already saved.
+        // We do NOT use the cached translation — always call LLM so that the same word
+        // in different positions gets a fresh translation for its specific context.
+        let existingEntry = try? BridgeService.shared.getVocabularyByWordAndHash(
+            word: word, sentenceHash: hash
+        )
+        if let e = existingEntry { BridgeService.shared.incrementQueryCount(id: e.id) }
 
         translationRequest = TranslationBubbleRequest(
             word: word, sentence: sentence, bounds: bounds, page: page,
-            result: nil, existingEntryId: nil
+            result: nil, existingEntryId: existingEntry?.id
         )
         isTranslating = true
 
@@ -208,9 +194,7 @@ struct PDFReaderView: View {
                     isTranslating = false
                 }
             } catch {
-                await MainActor.run {
-                    isTranslating = false
-                }
+                await MainActor.run { isTranslating = false }
             }
         }
     }
@@ -222,15 +206,10 @@ struct PDFReaderView: View {
         let hash = session.sentenceHash(request.sentence)
         let boundsStr = NSStringFromRect(request.bounds)
         guard let entry = try? BridgeService.shared.saveVocabulary(
-            word: result.word,
-            sentence: request.sentence,
-            sentenceHash: hash,
-            pdfPath: document.filePath,
-            pdfName: document.fileName,
-            pageIndex: UInt32(request.page),
-            selectionBounds: boundsStr,
-            phonetic: result.phonetic,
-            partOfSpeech: result.partOfSpeech,
+            word: result.word, sentence: request.sentence, sentenceHash: hash,
+            pdfPath: document.filePath, pdfName: document.fileName,
+            pageIndex: UInt32(request.page), selectionBounds: boundsStr,
+            phonetic: result.phonetic, partOfSpeech: result.partOfSpeech,
             contextTranslation: result.contextTranslation,
             contextExplanation: result.contextExplanation,
             generalDefinition: result.generalDefinition,
@@ -238,13 +217,10 @@ struct PDFReaderView: View {
         ) else { return nil }
 
         NotificationCenter.default.post(
-            name: .addHighlight,
-            object: nil,
+            name: .addHighlight, object: nil,
             userInfo: [
-                "entryId": entry.id,
-                "pageIndex": Int(entry.pageIndex),
-                "bounds": boundsStr,
-                "filePath": document.filePath
+                "entryId": entry.id, "pageIndex": Int(entry.pageIndex),
+                "bounds": boundsStr, "filePath": document.filePath
             ]
         )
         appState.refreshVocabulary()
@@ -260,13 +236,11 @@ struct PDFKitView: NSViewRepresentable {
     let savedPage: Int
     let savedScrollOffset: Double
     let onPageChange: (Int, Double) -> Void
-    let onTextSelected: (String, String, CGRect, Int) -> Void
+    let onTextSelected: (String, String, CGRect, Int, CGPoint) -> Void
     let onClearSelection: () -> Void
     let onDocumentLoaded: (Int) -> Void
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(self)
-    }
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     func makeNSView(context: Context) -> PDFView {
         let pdfView = PDFView()
@@ -274,76 +248,45 @@ struct PDFKitView: NSViewRepresentable {
         pdfView.displayMode = .singlePageContinuous
         pdfView.displayDirection = .vertical
 
-        NotificationCenter.default.addObserver(
-            context.coordinator,
-            selector: #selector(Coordinator.pageChanged(_:)),
-            name: .PDFViewPageChanged,
-            object: pdfView
-        )
-        NotificationCenter.default.addObserver(
-            context.coordinator,
-            selector: #selector(Coordinator.selectionChanged(_:)),
-            name: .PDFViewSelectionChanged,
-            object: pdfView
-        )
-        NotificationCenter.default.addObserver(
-            context.coordinator,
-            selector: #selector(Coordinator.outlineNavigate(_:)),
-            name: .outlineNavigate,
-            object: nil
-        )
-        NotificationCenter.default.addObserver(
-            context.coordinator,
-            selector: #selector(Coordinator.jumpToPage(_:)),
-            name: .jumpToPage,
-            object: nil
-        )
-        NotificationCenter.default.addObserver(
-            context.coordinator,
-            selector: #selector(Coordinator.addHighlight(_:)),
-            name: .addHighlight,
-            object: nil
-        )
-        NotificationCenter.default.addObserver(
-            context.coordinator,
-            selector: #selector(Coordinator.removeHighlight(_:)),
-            name: .removeHighlight,
-            object: nil
-        )
-        NotificationCenter.default.addObserver(
-            context.coordinator,
-            selector: #selector(Coordinator.addFreeAnnotation(_:)),
-            name: .addFreeAnnotation,
-            object: nil
-        )
+        let nc = NotificationCenter.default
+        nc.addObserver(context.coordinator, selector: #selector(Coordinator.pageChanged(_:)),
+                       name: .PDFViewPageChanged, object: pdfView)
+        nc.addObserver(context.coordinator, selector: #selector(Coordinator.selectionChanged(_:)),
+                       name: .PDFViewSelectionChanged, object: pdfView)
+        nc.addObserver(context.coordinator, selector: #selector(Coordinator.outlineNavigate(_:)),
+                       name: .outlineNavigate, object: nil)
+        nc.addObserver(context.coordinator, selector: #selector(Coordinator.jumpToPage(_:)),
+                       name: .jumpToPage, object: nil)
+        nc.addObserver(context.coordinator, selector: #selector(Coordinator.addHighlight(_:)),
+                       name: .addHighlight, object: nil)
+        nc.addObserver(context.coordinator, selector: #selector(Coordinator.removeHighlight(_:)),
+                       name: .removeHighlight, object: nil)
+        nc.addObserver(context.coordinator, selector: #selector(Coordinator.addFreeAnnotation(_:)),
+                       name: .addFreeAnnotation, object: nil)
         context.coordinator.pdfView = pdfView
         return pdfView
     }
 
     func updateNSView(_ pdfView: PDFView, context: Context) {
         guard pdfView.document?.documentURL?.path != filePath else { return }
-
         guard let doc = Self.loadDocument(filePath: filePath) else { return }
         pdfView.document = doc
         context.coordinator.parent = self
         onDocumentLoaded(doc.pageCount)
-
         DispatchQueue.main.async {
             if self.savedPage > 0, self.savedPage < doc.pageCount,
                let page = doc.page(at: self.savedPage) {
                 pdfView.go(to: page)
             }
         }
-
         context.coordinator.applyHighlights(to: doc, filePath: filePath)
     }
 
-    /// Load a PDFDocument, falling back to a security-scoped bookmark if direct access fails.
+    /// Load a PDFDocument, with security-scoped bookmark fallback for sandboxed apps.
     static func loadDocument(filePath: String) -> PDFDocument? {
         let url = URL(fileURLWithPath: filePath)
         if let doc = PDFDocument(url: url) { return doc }
-
-        // Sandbox fallback: resolve saved security-scoped bookmark
+        // Sandbox fallback: resolve saved bookmark
         if let data = UserDefaults.standard.data(forKey: "bm_\(filePath)") {
             var isStale = false
             if let resolved = try? URL(resolvingBookmarkData: data,
@@ -351,9 +294,8 @@ struct PDFKitView: NSViewRepresentable {
                                        relativeTo: nil,
                                        bookmarkDataIsStale: &isStale) {
                 _ = resolved.startAccessingSecurityScopedResource()
-                return PDFDocument(url: resolved)
+                if let doc = PDFDocument(url: resolved) { return doc }
             }
-            // Non-security-scope fallback
             if let resolved = try? URL(resolvingBookmarkData: data,
                                        relativeTo: nil,
                                        bookmarkDataIsStale: &isStale) {
@@ -363,22 +305,21 @@ struct PDFKitView: NSViewRepresentable {
         return nil
     }
 
+    // MARK: - Coordinator
+
     final class Coordinator: NSObject {
         var parent: PDFKitView
         weak var pdfView: PDFView?
         private var debounceTimer: Timer?
         var isJumping = false
 
-        init(_ parent: PDFKitView) {
-            self.parent = parent
-        }
+        init(_ parent: PDFKitView) { self.parent = parent }
 
         @objc func outlineNavigate(_ notification: Notification) {
-            guard let pageIndex = notification.userInfo?["pageIndex"] as? Int,
-                  let filePath  = notification.userInfo?["filePath"]  as? String,
-                  let pdfView,
-                  pdfView.document?.documentURL?.path == filePath,
-                  let page = pdfView.document?.page(at: pageIndex)
+            guard let idx   = notification.userInfo?["pageIndex"] as? Int,
+                  let path  = notification.userInfo?["filePath"]  as? String,
+                  let pdfView, pdfView.document?.documentURL?.path == path,
+                  let page  = pdfView.document?.page(at: idx)
             else { return }
             pdfView.go(to: page)
         }
@@ -388,9 +329,8 @@ struct PDFKitView: NSViewRepresentable {
                   let pageIndex = notification.userInfo?["pageIndex"]  as? Int,
                   let boundsStr = notification.userInfo?["bounds"]     as? String,
                   let filePath  = notification.userInfo?["filePath"]   as? String,
-                  let pdfView,
-                  pdfView.document?.documentURL?.path == filePath,
-                  let page = pdfView.document?.page(at: pageIndex)
+                  let pdfView,  pdfView.document?.documentURL?.path == filePath,
+                  let page      = pdfView.document?.page(at: pageIndex)
             else { return }
             addVocabAnnotation(entryId: entryId, boundsStr: boundsStr, to: page)
         }
@@ -399,34 +339,65 @@ struct PDFKitView: NSViewRepresentable {
             guard let entryId   = notification.userInfo?["entryId"]   as? String,
                   let pageIndex = notification.userInfo?["pageIndex"]  as? Int,
                   let filePath  = notification.userInfo?["filePath"]   as? String,
-                  let pdfView,
-                  pdfView.document?.documentURL?.path == filePath,
-                  let page = pdfView.document?.page(at: pageIndex)
+                  let pdfView,  pdfView.document?.documentURL?.path == filePath,
+                  let page      = pdfView.document?.page(at: pageIndex)
             else { return }
-            if let ann = page.annotations.first(where: { $0.userName == entryId }) {
-                page.removeAnnotation(ann)
-            }
+            page.annotations
+                .filter { $0.userName == entryId }
+                .forEach { page.removeAnnotation($0) }
         }
 
+        /// Add a free (non-vocab) annotation with toggle/merge semantics.
         @objc func addFreeAnnotation(_ notification: Notification) {
             guard let typeStr   = notification.userInfo?["annotationType"] as? String,
                   let pageIndex = notification.userInfo?["pageIndex"]      as? Int,
                   let boundsStr = notification.userInfo?["bounds"]         as? String,
                   let filePath  = notification.userInfo?["filePath"]       as? String,
-                  let pdfView,
-                  pdfView.document?.documentURL?.path == filePath,
-                  let page = pdfView.document?.page(at: pageIndex)
+                  let pdfView,  pdfView.document?.documentURL?.path == filePath,
+                  let page      = pdfView.document?.page(at: pageIndex)
             else { return }
 
-            let bounds = NSRectFromString(boundsStr)
+            let bounds  = NSRectFromString(boundsStr)
             guard bounds != .zero else { return }
 
             let annType: PDFAnnotationSubtype = typeStr == "underline" ? .underline : .highlight
-            let ann = PDFAnnotation(bounds: bounds, forType: annType, withProperties: nil)
-            ann.color = typeStr == "underline"
+            let color: NSColor = typeStr == "underline"
                 ? NSColor.systemBlue.withAlphaComponent(0.6)
                 : NSColor.systemYellow.withAlphaComponent(0.5)
-            page.addAnnotation(ann)
+
+            // Free annotations are identified by a fixed userName tag so we can reliably
+            // find them for toggle/merge (PDFAnnotation.type is not reliably populated).
+            let tag = typeStr == "underline" ? "__fu" : "__fh"
+
+            let existing = page.annotations.filter {
+                $0.userName == tag && $0.bounds.intersects(bounds)
+            }
+
+            if existing.isEmpty {
+                // No overlap – add new annotation
+                let ann = PDFAnnotation(bounds: bounds, forType: annType, withProperties: nil)
+                ann.color = color
+                ann.userName = tag      // tag so we can find/remove it later
+                page.addAnnotation(ann)
+            } else {
+                // Compute union of all overlapping existing annotations
+                let unionExisting = existing.dropFirst().reduce(existing[0].bounds) { $0.union($1.bounds) }
+                let isFullyCovered = unionExisting.contains(bounds)
+
+                // Remove existing overlapping annotations
+                existing.forEach { page.removeAnnotation($0) }
+
+                if isFullyCovered {
+                    // All covered → toggle OFF (removed above, done)
+                } else {
+                    // Partial coverage → merge and re-add with combined bounds
+                    let merged = existing.reduce(bounds) { $0.union($1.bounds) }
+                    let ann = PDFAnnotation(bounds: merged, forType: annType, withProperties: nil)
+                    ann.color = color
+                    ann.userName = tag
+                    page.addAnnotation(ann)
+                }
+            }
         }
 
         func applyHighlights(to doc: PDFDocument, filePath: String) {
@@ -449,10 +420,9 @@ struct PDFKitView: NSViewRepresentable {
 
         @objc func jumpToPage(_ notification: Notification) {
             guard let pageIndex = notification.userInfo?["pageIndex"] as? Int,
-                  let filePath = notification.userInfo?["filePath"] as? String,
-                  let pdfView,
-                  pdfView.document?.documentURL?.path == filePath,
-                  let page = pdfView.document?.page(at: pageIndex)
+                  let filePath  = notification.userInfo?["filePath"]  as? String,
+                  let pdfView,  pdfView.document?.documentURL?.path == filePath,
+                  let page      = pdfView.document?.page(at: pageIndex)
             else { return }
             isJumping = true
             pdfView.go(to: page)
@@ -466,8 +436,7 @@ struct PDFKitView: NSViewRepresentable {
                   let currentPage = pdfView.currentPage,
                   let doc = pdfView.document else { return }
             let pageIndex = doc.index(for: currentPage)
-            let scrollOffset = scrollOffset(for: pdfView)
-            parent.onPageChange(pageIndex, scrollOffset)
+            parent.onPageChange(pageIndex, scrollOffset(for: pdfView))
         }
 
         @objc func selectionChanged(_ notification: Notification) {
@@ -475,51 +444,100 @@ struct PDFKitView: NSViewRepresentable {
             guard let pdfView = notification.object as? PDFView else { return }
 
             guard let selection = pdfView.currentSelection,
-                  let selectedString = selection.string,
-                  !selectedString.isEmpty else {
-                // Selection cleared — cancel debounce and notify parent
+                  let selectedStr = selection.string, !selectedStr.isEmpty else {
                 debounceTimer?.invalidate()
-                DispatchQueue.main.async {
-                    self.parent.onClearSelection()
-                }
+                DispatchQueue.main.async { self.parent.onClearSelection() }
                 return
             }
 
             debounceTimer?.invalidate()
             debounceTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self, weak pdfView] _ in
-                guard let self, let pdfView else { return }
-                let word = selectedString.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard let self, let pdfView,
+                      let currentPage = pdfView.currentPage,
+                      let doc = pdfView.document else { return }
+                let word = selectedStr.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !word.isEmpty else { return }
                 let sentence = self.extractSentence(from: pdfView, containing: selection) ?? word
-                let bounds = selection.bounds(for: pdfView.currentPage ?? pdfView.document!.page(at: 0)!)
-                let pageIndex = pdfView.document!.index(for: pdfView.currentPage!)
+                let boundsInPage = selection.bounds(for: currentPage)
+                let pageIndex = doc.index(for: currentPage)
+                let menuAnchor = Self.menuAnchor(boundsInPage: boundsInPage,
+                                                 page: currentPage, pdfView: pdfView)
                 DispatchQueue.main.async {
-                    self.parent.onTextSelected(word, sentence, bounds, pageIndex)
+                    self.parent.onTextSelected(word, sentence, boundsInPage, pageIndex, menuAnchor)
                 }
             }
+        }
+
+        /// Convert selection bounds (page coords) to a SwiftUI-space CGPoint for the action menu.
+        private static func menuAnchor(boundsInPage: CGRect,
+                                       page: PDFPage, pdfView: PDFView) -> CGPoint {
+            // Page coords → pdfView's NSView coordinate space
+            let boundsInPDFView = pdfView.convert(boundsInPage, from: page)
+            // pdfView NSView coords → window coords
+            let boundsInWindow  = pdfView.convert(boundsInPDFView, to: nil)
+            // pdfView's own frame in window coords (establishes the origin offset)
+            let pdfFrameInWindow = pdfView.convert(pdfView.bounds, to: nil)
+
+            // Convert to SwiftUI coordinate space (Y increases downward).
+            // In AppKit (non-flipped), Y increases upward.
+            // pdfFrameInWindow.maxY = AppKit Y of the pdfView's TOP edge.
+            let swiftUICenterX = boundsInWindow.midX - pdfFrameInWindow.minX
+            // Selection's top edge in SwiftUI space = distance from pdfView top
+            let selTopSwiftUI   = pdfFrameInWindow.maxY - boundsInWindow.maxY
+
+            // Position menu CENTER 30 pt above the selection, clamped into view
+            let menuH: CGFloat = 40
+            let menuY = max(selTopSwiftUI - 8 - menuH / 2, menuH / 2 + 4)
+            let menuX = min(max(swiftUICenterX, 120), pdfView.bounds.width - 120)
+            return CGPoint(x: menuX, y: menuY)
         }
 
         private func extractSentence(from pdfView: PDFView, containing selection: PDFSelection) -> String? {
-            guard let page = pdfView.currentPage,
-                  let pageText = page.string else { return nil }
+            guard let page = pdfView.currentPage, let pageText = page.string,
+                  !pageText.isEmpty else { return nil }
 
-            let word = selection.string ?? ""
-            let sentences = pageText.components(separatedBy: CharacterSet(charactersIn: ".!?。！？"))
-            for sentence in sentences {
-                if sentence.contains(word) {
-                    let trimmed = sentence.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if trimmed.count <= 500 { return trimmed }
+            // Use the on-page position of the selection to find the EXACT sentence
+            // at that location, so the same word on different lines gets different contexts.
+            let selBounds = selection.bounds(for: page)
+            let charIdx = page.characterIndex(at: CGPoint(x: selBounds.midX, y: selBounds.midY))
+
+            if charIdx >= 0, charIdx < pageText.count {
+                let seps: Set<Character> = [".", "!", "?", "。", "！", "？", "\n"]
+                let anchor = pageText.index(pageText.startIndex, offsetBy: charIdx)
+
+                // Walk backward to find the start of the sentence
+                var sentStart = anchor
+                while sentStart > pageText.startIndex {
+                    let prev = pageText.index(before: sentStart)
+                    if seps.contains(pageText[prev]) { break }
+                    sentStart = prev
                 }
+                // Walk forward to find the end of the sentence
+                var sentEnd = anchor
+                while sentEnd < pageText.endIndex {
+                    if seps.contains(pageText[sentEnd]) { break }
+                    sentEnd = pageText.index(after: sentEnd)
+                }
+
+                let sentence = String(pageText[sentStart..<sentEnd])
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if sentence.count >= 4, sentence.count <= 500 { return sentence }
             }
-            return String(pageText.prefix(500))
+
+            // Fallback: first sentence containing the selected word
+            let word = selection.string ?? ""
+            for part in pageText.components(separatedBy: CharacterSet(charactersIn: ".!?。！？\n")) {
+                let t = part.trimmingCharacters(in: .whitespacesAndNewlines)
+                if t.contains(word), t.count >= 4, t.count <= 500 { return t }
+            }
+            return nil
         }
 
         private func scrollOffset(for pdfView: PDFView) -> Double {
-            guard let scrollView = pdfView.enclosingScrollView else { return 0.0 }
-            let contentSize = scrollView.documentView?.bounds.height ?? 1
-            guard contentSize > 0 else { return 0.0 }
-            let offset = scrollView.documentVisibleRect.minY / contentSize
-            return max(0.0, min(1.0, offset))
+            guard let sv = pdfView.enclosingScrollView else { return 0 }
+            let h = sv.documentView?.bounds.height ?? 1
+            guard h > 0 else { return 0 }
+            return max(0, min(1, sv.documentVisibleRect.minY / h))
         }
     }
 }
@@ -527,8 +545,8 @@ struct PDFKitView: NSViewRepresentable {
 // MARK: - Notification names
 
 extension Notification.Name {
-    static let addHighlight     = Notification.Name("addHighlight")
-    static let removeHighlight  = Notification.Name("removeHighlight")
+    static let addHighlight      = Notification.Name("addHighlight")
+    static let removeHighlight   = Notification.Name("removeHighlight")
     static let addFreeAnnotation = Notification.Name("addFreeAnnotation")
 }
 
@@ -542,6 +560,5 @@ struct TranslationBubbleRequest: Identifiable, Equatable {
     let page: Int
     var result: TranslationResult?
     let existingEntryId: String?
-
     static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
 }
