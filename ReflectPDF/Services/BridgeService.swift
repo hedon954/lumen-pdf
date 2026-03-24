@@ -40,7 +40,10 @@ final class BridgeService {
             llmModel: UserDefaults.standard.string(forKey: "llm_model") ?? "gpt-4o-mini",
             targetLanguage: UserDefaults.standard.string(forKey: "target_language") ?? "简体中文"
         )
-        try? _initialize(dbURL.path, config)
+        guard (try? _initialize(dbURL.path, config)) != nil else {
+            // Do not flip isInitialized — allow retry on next launch / next call path.
+            return
+        }
         isInitialized = true
     }
 
