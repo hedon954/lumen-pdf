@@ -14,6 +14,17 @@ final class AppState: ObservableObject {
             if let path = selectedDocument?.filePath {
                 UserDefaults.standard.set(path, forKey: "lastOpenedFilePath")
             }
+            // Pre-set currentPageIndex from the stored lastPage so the TOC can
+            // scroll to the correct chapter immediately, before the PDF finishes loading.
+            if let doc = selectedDocument {
+                currentPageIndex = Int(doc.lastPage)
+                currentScrollOffset = doc.lastScrollOffset
+                totalPages = Int(doc.totalPages)
+            } else {
+                currentPageIndex = 0
+                currentScrollOffset = 0
+                totalPages = 0
+            }
             loadKitDocument()
         }
     }
@@ -25,6 +36,10 @@ final class AppState: ObservableObject {
     @Published var kitDocument: PDFKit.PDFDocument?
     /// Current page index (0-based), updated on page change for TOC highlight.
     @Published var currentPageIndex: Int = 0
+    /// Normalized vertical scroll (0…1), kept in sync with saves — must not use stale `PdfDocument` after scroll.
+    @Published var currentScrollOffset: Double = 0
+    /// Total page count of the currently open document (0 = unknown).
+    @Published var totalPages: Int = 0
 
     private let bridge = BridgeService.shared
 
@@ -90,7 +105,8 @@ final class AppState: ObservableObject {
     func saveReadingPosition(filePath: String, page: UInt32, scrollOffset: Double) {
         try? bridge.saveReadingPosition(filePath: filePath, page: page, scrollOffset: scrollOffset)
         currentPageIndex = Int(page)
-        refreshLibrary()
+        currentScrollOffset = scrollOffset
+        // Do not refreshLibrary() here — it is expensive and can fight with PDF restore.
     }
 
     // MARK: - Private

@@ -1,4 +1,4 @@
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, OnceLock, RwLock};
 use crate::error::ReflectError;
 use crate::domain::translation::entity::{TranslationRequest, TranslationResult};
 use crate::domain::vocabulary::entity::{VocabularyEntry, SaveVocabularyRequest, UpdateVocabularyRequest};
@@ -20,34 +20,49 @@ use crate::infrastructure::translator::{
 // ── Global state ────────────────────────────────────────────────────────────
 
 static POOL: OnceLock<DbPool> = OnceLock::new();
-static LLM_CONFIG: OnceLock<LlmConfig> = OnceLock::new();
+// RwLock so the config can be hot-swapped without restarting the app.
+static LLM_CONFIG: RwLock<Option<LlmConfig>> = RwLock::new(None);
 
-/// Called once on app launch before any other API.
+/// Called once on app launch. Safe to call again — the DB pool is only created
+/// once; calling again only updates the LLM config (useful for re-init after
+/// settings change, though `update_llm_config` is preferred for that).
 #[uniffi::export]
 pub fn initialize(db_path: String, config: AppConfig) -> Result<(), ReflectError> {
-    let pool = db::create_pool(&db_path)
-        .map_err(|e| ReflectError::DatabaseError { message: e.to_string() })?;
-
-    // Run migrations
-    {
-        let conn = pool.get()
+    // Pool: only create if not already initialised.
+    if POOL.get().is_none() {
+        let pool = db::create_pool(&db_path)
             .map_err(|e| ReflectError::DatabaseError { message: e.to_string() })?;
-        crate::infrastructure::db::migration::run(&conn)?;
+        {
+            let conn = pool.get()
+                .map_err(|e| ReflectError::DatabaseError { message: e.to_string() })?;
+            crate::infrastructure::db::migration::run(&conn)?;
+        }
+        // Ignore error if another thread beat us to it.
+        let _ = POOL.set(pool);
     }
 
-    POOL.set(pool).map_err(|_| ReflectError::DatabaseError {
-        message: "Pool already initialized".to_string(),
-    })?;
+    // Config: always write (allows subsequent calls to update settings).
+    set_llm_config_inner(config)?;
+    Ok(())
+}
 
-    LLM_CONFIG.set(LlmConfig {
+/// Hot-swap the LLM configuration without touching the DB pool.
+/// Call this when the user saves new settings in the UI — takes effect
+/// immediately for the next translation request.
+#[uniffi::export]
+pub fn update_llm_config(config: AppConfig) -> Result<(), ReflectError> {
+    set_llm_config_inner(config)
+}
+
+fn set_llm_config_inner(config: AppConfig) -> Result<(), ReflectError> {
+    let mut guard = LLM_CONFIG.write()
+        .map_err(|_| ReflectError::DatabaseError { message: "LLM config lock poisoned".into() })?;
+    *guard = Some(LlmConfig {
         base_url: config.llm_base_url,
         api_key: config.llm_api_key,
         model: config.llm_model,
         target_language: config.target_language,
-    }).map_err(|_| ReflectError::DatabaseError {
-        message: "Config already initialized".to_string(),
-    })?;
-
+    });
     Ok(())
 }
 
@@ -55,8 +70,12 @@ fn pool() -> Result<&'static DbPool, ReflectError> {
     POOL.get().ok_or(ReflectError::ConfigNotInitialized)
 }
 
-fn llm_config() -> Result<&'static LlmConfig, ReflectError> {
-    LLM_CONFIG.get().ok_or(ReflectError::ConfigNotInitialized)
+/// Returns a *clone* of the current LLM config (cheap — all fields are `String`).
+fn llm_config() -> Result<LlmConfig, ReflectError> {
+    LLM_CONFIG.read()
+        .map_err(|_| ReflectError::ConfigNotInitialized)?
+        .clone()
+        .ok_or(ReflectError::ConfigNotInitialized)
 }
 
 // ── Config type ─────────────────────────────────────────────────────────────

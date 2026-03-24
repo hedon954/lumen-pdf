@@ -65,14 +65,34 @@ struct ContentView: View {
                 }
             }
 
-            // Center: Tab switcher
+            // Center: Tab switcher + filename + page indicator
             ToolbarItem(placement: .principal) {
-                Picker("", selection: $appState.activeTab) {
-                    Text("PDF 阅读").tag(MainTab.reader)
-                    Text("单词本").tag(MainTab.vocabulary)
+                HStack(spacing: 10) {
+                    Picker("", selection: $appState.activeTab) {
+                        Text("PDF 阅读").tag(MainTab.reader)
+                        Text("单词本").tag(MainTab.vocabulary)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 200)
+
+                    if appState.activeTab == .reader,
+                       let fileName = appState.selectedDocument?.fileName {
+                        Divider().frame(height: 14)
+
+                        Text(fileName)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .fixedSize()
+
+                        if appState.totalPages > 0 {
+                            Text("\(appState.currentPageIndex + 1) / \(appState.totalPages)")
+                                .font(.callout.monospacedDigit())
+                                .foregroundStyle(.tertiary)
+                                .animation(.none, value: appState.currentPageIndex)
+                        }
+                    }
                 }
-                .pickerStyle(.segmented)
-                .frame(width: 200)
             }
 
             // Right: Open file + Settings

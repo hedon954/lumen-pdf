@@ -23,18 +23,20 @@ impl LlmTranslator {
 
     fn build_prompt(&self, word: &str, sentence: &str) -> String {
         format!(
-            r#"You are a professional language tutor. Translate the word "{word}" in this context.
+            r#"You are a professional language tutor. The user selected the word "{word}" while reading a PDF.
 
 Context sentence: "{sentence}"
 
+IMPORTANT: The selected text may contain OCR errors, line-break hyphens (e.g. "investi-\ngating"), or extra whitespace due to PDF extraction. In the "word" field, output the correctly spelled, properly joined word.
+
 Respond with ONLY valid JSON in this exact format:
 {{
-  "word": "{word}",
+  "word": "correctly spelled word (fix any hyphenation, OCR errors, or typos from PDF extraction)",
   "phonetic": "IPA phonetic transcription",
-  "part_of_speech": "noun/verb/adjective/etc",
+  "part_of_speech": "noun/verb/adjective/adverb/etc",
   "context_translation": "Translation of the word in this specific context to {lang}",
   "context_explanation": "Why does it mean this here? Explain the nuance in {lang}",
-  "general_definition": "General English definition",
+  "general_definition": "General English definition of the word",
   "context_sentence_translation": "Full translation of the ENTIRE context sentence above to {lang} (not just the word)"
 }}"#,
             word = word,
