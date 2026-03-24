@@ -52,4 +52,8 @@ pub struct TranslationResult {
     #[serde(default)]
     pub context_sentence_translation: String,
     pub source: String,
+    /// When non-empty: LLM step failed but fallback (or cache) still produced a result.
+    /// Empty when LLM succeeded or when the result came from cache without a prior LLM error in this request.
+    #[serde(default)]
+    pub llm_error_message: String,
 }

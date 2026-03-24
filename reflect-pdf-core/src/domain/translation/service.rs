@@ -38,18 +38,22 @@ impl TranslationDomainService {
         }
 
         // Level 2: LLM
-        match self.llm.translate(&request.word, &request.sentence).await {
+        let llm_failure_note: Option<String> = match self.llm.translate(&request.word, &request.sentence).await {
             Ok(mut result) => {
                 result.source = TranslationSource::Llm.to_string();
+                result.llm_error_message = String::new();
                 let _ = self.cache.set(&word_lower, &hash, &result);
                 return Ok(result);
             }
-            Err(_) => {}
-        }
+            Err(e) => Some(e.user_hint_zh()),
+        };
 
         // Level 3: fallback (MyMemory), not cached
         let mut result = self.fallback.translate(&request.word, &request.sentence).await?;
         result.source = TranslationSource::Fallback.to_string();
+        if let Some(msg) = llm_failure_note {
+            result.llm_error_message = msg;
+        }
         Ok(result)
     }
 }
@@ -176,6 +180,11 @@ mod tests {
         }).await.unwrap();
 
         assert_eq!(result.source, "fallback");
+        assert!(
+            result.llm_error_message.contains("LLM"),
+            "expected LLM failure note when falling back, got {:?}",
+            result.llm_error_message
+        );
 
         // Fallback result must not be cached
         let hash = TranslationDomainService::sentence_hash("the quick brown fox");

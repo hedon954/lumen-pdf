@@ -58,8 +58,13 @@ struct TranslationBubble: View {
                         .foregroundStyle(.secondary)
                 }
                 if let src = request.result?.source, src == "fallback" {
-                    Label("基础翻译", systemImage: "info.circle")
-                        .font(.caption2).foregroundStyle(.orange)
+                    Label(
+                        (request.result?.llmErrorMessage.isEmpty == false)
+                            ? "基础翻译（LLM 未成功，见下方说明）"
+                            : "基础翻译",
+                        systemImage: "info.circle"
+                    )
+                    .font(.caption2).foregroundStyle(.orange)
                 }
             }
 
@@ -145,11 +150,55 @@ struct TranslationBubble: View {
             }
             .frame(maxHeight: 260)
 
+            if !result.llmErrorMessage.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("LLM 调用未成功", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption.bold())
+                        .foregroundStyle(.orange)
+                    Text(result.llmErrorMessage)
+                        .font(.caption)
+                        .foregroundStyle(.primary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                .padding(.horizontal, 14)
+                .padding(.top, 8)
+            }
+
             Divider()
             footer(result: result)
         } else {
-            Text("翻译失败，请重试")
-                .font(.callout).foregroundStyle(.secondary).padding(14)
+            VStack(alignment: .leading, spacing: 0) {
+                Text("翻译未完成")
+                    .font(.headline)
+                    .padding(.horizontal, 14)
+                    .padding(.top, 14)
+                Spacer(minLength: 24)
+                Divider()
+                Group {
+                    if let detail = request.translationError, !detail.isEmpty {
+                        Text(detail)
+                            .font(.caption)
+                            .foregroundStyle(.primary)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(12)
+                            .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                    } else {
+                        Text("请检查网络与 LLM 设置后重试。")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 4)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.bottom, 14)
+            }
+            .frame(maxWidth: .infinity, minHeight: 120, alignment: .leading)
         }
     }
 

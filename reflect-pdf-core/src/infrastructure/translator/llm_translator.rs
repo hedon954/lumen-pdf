@@ -139,6 +139,7 @@ impl Translator for LlmTranslator {
             general_definition: parsed.general_definition.unwrap_or_default(),
             context_sentence_translation: parsed.context_sentence_translation.unwrap_or_default(),
             source: "llm".to_string(),
+            llm_error_message: String::new(),
         })
     }
 }

@@ -1,5 +1,6 @@
 import SwiftUI
 import PDFKit
+import AppKit
 
 // MARK: - Selection info for the action menu
 
@@ -107,6 +108,13 @@ struct PDFReaderView: View {
             .keyboardShortcut("s", modifiers: .command)
             .frame(width: 0, height: 0)
             .opacity(0)
+            // Forward Cmd+Z to the responder chain (PDFView undoManager) for annotation undo.
+            Button("") {
+                NSApp.sendAction(Selector(("undo:")), to: nil, from: nil)
+            }
+            .keyboardShortcut("z", modifiers: .command)
+            .frame(width: 0, height: 0)
+            .opacity(0)
         }
         .id(document.id)
     }
@@ -201,7 +209,7 @@ struct PDFReaderView: View {
         translationRequest = TranslationBubbleRequest(
             word: word, sentence: sentence,
             bounds: bounds, boundsStr: boundsStr,
-            page: page, result: nil,
+            page: page, result: nil, translationError: nil,
             existingEntryId: existingEntry?.id
         )
         isTranslating = true
@@ -210,11 +218,19 @@ struct PDFReaderView: View {
             do {
                 let result = try await BridgeService.shared.translate(word: word, sentence: sentence)
                 await MainActor.run {
-                    translationRequest?.result = result
+                    guard var req = translationRequest else { return }
+                    req.result = result
+                    req.translationError = nil
+                    translationRequest = req
                     isTranslating = false
                 }
             } catch {
-                await MainActor.run { isTranslating = false }
+                await MainActor.run {
+                    guard var req = translationRequest else { return }
+                    req.translationError = TranslationErrorFormatter.userMessage(from: error)
+                    translationRequest = req
+                    isTranslating = false
+                }
             }
         }
     }
@@ -449,6 +465,22 @@ struct PDFKitView: NSViewRepresentable {
 
         // MARK: Free annotations (highlight / underline) with toggle + merge
 
+        /// Snapshot for undo/redo of free-form highlight/underline (not vocabulary-linked).
+        /// Subtype is derived from `tag` (`__fu` = underline, `__fh` = highlight).
+        private struct FreeAnnotationSnapshot {
+            let bounds: CGRect
+            let color: NSColor
+            let tag: String
+            init(ann: PDFAnnotation) {
+                bounds = ann.bounds
+                color = (ann.color as NSColor?) ?? .yellow
+                tag = ann.userName ?? ""
+            }
+            var subtype: PDFAnnotationSubtype {
+                tag == "__fu" ? .underline : .highlight
+            }
+        }
+
         @objc func addFreeAnnotation(_ notification: Notification) {
             guard let typeStr   = notification.userInfo?["annotationType"] as? String,
                   let pageIndex = notification.userInfo?["pageIndex"]      as? Int,
@@ -463,37 +495,109 @@ struct PDFKitView: NSViewRepresentable {
             guard !lineRects.isEmpty else { return }
 
             let annType: PDFAnnotationSubtype = typeStr == "underline" ? .underline : .highlight
-            // Underline: red (like macOS Preview). Highlight: yellow.
             let color: NSColor = typeStr == "underline"
                 ? NSColor.systemRed.withAlphaComponent(0.7)
                 : NSColor.systemYellow.withAlphaComponent(0.5)
             let tag = typeStr == "underline" ? "__fu" : "__fh"
+            let undoLabel = typeStr == "underline" ? "划线" : "高亮"
 
-            // Compute the overall bounding box of the new selection (for overlap detection).
             let selectionUnion = lineRects.dropFirst().reduce(lineRects[0]) { $0.union($1) }
 
-            // Find all existing free annotations of the same type that overlap the new selection.
             let existing = page.annotations.filter {
                 $0.userName == tag && $0.bounds.intersects(selectionUnion)
             }
 
+            var added: [PDFAnnotation] = []
+            var removedSnapshots: [FreeAnnotationSnapshot] = []
+
             if existing.isEmpty {
-                // No overlap — add one annotation per line.
                 for rect in lineRects {
-                    Self.makeAnnotation(bounds: rect, type: annType, color: color, tag: tag, page: page)
+                    added.append(Self.makeAnnotation(bounds: rect, type: annType, color: color, tag: tag, page: page))
                 }
             } else {
                 let existingUnion = existing.dropFirst().reduce(existing[0].bounds) { $0.union($1.bounds) }
                 let isFullyCovered = lineRects.allSatisfy { existingUnion.contains($0) }
+                removedSnapshots = existing.map { FreeAnnotationSnapshot(ann: $0) }
                 existing.forEach { page.removeAnnotation($0) }
                 if !isFullyCovered {
-                    // Partial overlap — add the new selection as per-line annotations.
                     for rect in lineRects {
-                        Self.makeAnnotation(bounds: rect, type: annType, color: color, tag: tag, page: page)
+                        added.append(Self.makeAnnotation(bounds: rect, type: annType, color: color, tag: tag, page: page))
                     }
                 }
-                // If fully covered, we've already removed → toggle OFF complete.
             }
+
+            if !added.isEmpty || !removedSnapshots.isEmpty {
+                registerUndoAnnotationMutation(
+                    page: page,
+                    added: added,
+                    removedSnapshots: removedSnapshots,
+                    label: undoLabel
+                )
+            }
+        }
+
+        private func registerUndoAnnotationMutation(
+            page: PDFPage,
+            added: [PDFAnnotation],
+            removedSnapshots: [FreeAnnotationSnapshot],
+            label: String
+        ) {
+            guard let undo = pdfView?.undoManager else { return }
+            let addedSnaps = added.map { FreeAnnotationSnapshot(ann: $0) }
+
+            undo.registerUndo(withTarget: self) { [weak self] _ in
+                guard let self else { return }
+                for ann in added {
+                    page.removeAnnotation(ann)
+                }
+                var restored: [PDFAnnotation] = []
+                for snap in removedSnapshots {
+                    restored.append(Self.makeAnnotation(from: snap, page: page))
+                }
+                self.registerRedoAnnotationMutation(
+                    page: page,
+                    restoredRemoved: restored,
+                    readdSnapshots: addedSnaps,
+                    label: label
+                )
+            }
+            if !undo.isUndoing {
+                undo.setActionName(label)
+            }
+        }
+
+        private func registerRedoAnnotationMutation(
+            page: PDFPage,
+            restoredRemoved: [PDFAnnotation],
+            readdSnapshots: [FreeAnnotationSnapshot],
+            label: String
+        ) {
+            guard let undo = pdfView?.undoManager else { return }
+            let snapshotsOfRestored = restoredRemoved.map { FreeAnnotationSnapshot(ann: $0) }
+
+            undo.registerUndo(withTarget: self) { [weak self] _ in
+                guard let self else { return }
+                for ann in restoredRemoved {
+                    page.removeAnnotation(ann)
+                }
+                var readded: [PDFAnnotation] = []
+                for snap in readdSnapshots {
+                    readded.append(Self.makeAnnotation(from: snap, page: page))
+                }
+                self.registerUndoAnnotationMutation(
+                    page: page,
+                    added: readded,
+                    removedSnapshots: snapshotsOfRestored,
+                    label: label
+                )
+            }
+            if !undo.isUndoing {
+                undo.setActionName(label)
+            }
+        }
+
+        private static func makeAnnotation(from snap: FreeAnnotationSnapshot, page: PDFPage) -> PDFAnnotation {
+            makeAnnotation(bounds: snap.bounds, type: snap.subtype, color: snap.color, tag: snap.tag, page: page)
         }
 
         // MARK: Apply saved highlights on document load
@@ -778,12 +882,14 @@ struct PDFKitView: NSViewRepresentable {
             }
         }
 
+        @discardableResult
         private static func makeAnnotation(bounds: CGRect, type: PDFAnnotationSubtype,
-                                           color: NSColor, tag: String, page: PDFPage) {
+                                           color: NSColor, tag: String, page: PDFPage) -> PDFAnnotation {
             let ann = PDFAnnotation(bounds: bounds, forType: type, withProperties: nil)
             ann.color = color
             ann.userName = tag
             page.addAnnotation(ann)
+            return ann
         }
     }
 }
@@ -808,6 +914,8 @@ struct TranslationBubbleRequest: Identifiable, Equatable {
     let boundsStr: String
     let page: Int
     var result: TranslationResult?
+    /// Set when `translate` throws; shown at the bottom of the bubble.
+    var translationError: String?
     let existingEntryId: String?
     static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
 }
