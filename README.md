@@ -72,7 +72,7 @@ make dmg
 
 打开 DMG → 将 `ReflectPDF.app` 拖入 `Applications` 文件夹即可。
 
-> **首次打开提示"无法验证开发者"**：在 Finder 中右键 `ReflectPDF.app` → 选择「打开」，点击「打开」确认即可绕过 Gatekeeper（仅需一次）。
+> **首次打开提示"无法验证开发者"**：这是 macOS Gatekeeper 的正常提示，不是病毒警告。在 Finder 中**右键点击** `ReflectPDF.app` → 选择「打开」→ 弹窗中再点击「打开」即可。此后双击直接运行，无需重复此步骤。
 
 #### 使用 Developer ID 正式签名（可分发给他人）
 
