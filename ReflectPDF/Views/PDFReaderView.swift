@@ -200,6 +200,7 @@ struct PDFReaderView: View {
 
     private func requestTranslation(word: String, sentence: String,
                                      bounds: CGRect, boundsStr: String, page: Int) {
+        BridgeService.shared.initializeIfNeeded()
         let hash = session.sentenceHash(sentence)
         let existingEntry = try? BridgeService.shared.getVocabularyByWordAndHash(
             word: word, sentenceHash: hash
@@ -227,7 +228,11 @@ struct PDFReaderView: View {
             } catch {
                 await MainActor.run {
                     guard var req = translationRequest else { return }
-                    req.translationError = TranslationErrorFormatter.userMessage(from: error)
+                    var detail = TranslationErrorFormatter.userMessage(from: error)
+                    if detail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        detail = "翻译失败：\(String(describing: error))"
+                    }
+                    req.translationError = detail
                     translationRequest = req
                     isTranslating = false
                 }
@@ -917,5 +922,18 @@ struct TranslationBubbleRequest: Identifiable, Equatable {
     /// Set when `translate` throws; shown at the bottom of the bubble.
     var translationError: String?
     let existingEntryId: String?
-    static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
+    /// Must compare all fields that affect the bubble UI. Comparing only `id` made SwiftUI
+    /// treat success/error updates as «unchanged» and skip redrawing — users saw「翻译未完成」
+    /// with an empty detail area even when `translationError` was set.
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.id == rhs.id
+            && lhs.word == rhs.word
+            && lhs.sentence == rhs.sentence
+            && lhs.bounds == rhs.bounds
+            && lhs.boundsStr == rhs.boundsStr
+            && lhs.page == rhs.page
+            && lhs.result == rhs.result
+            && lhs.translationError == rhs.translationError
+            && lhs.existingEntryId == rhs.existingEntryId
+    }
 }
