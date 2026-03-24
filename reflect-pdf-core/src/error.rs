@@ -38,3 +38,19 @@ impl From<serde_json::Error> for ReflectError {
         Self::SerializationError { message: e.to_string() }
     }
 }
+
+impl ReflectError {
+    /// Short Chinese hint for UI when an operation fails (e.g. LLM before fallback).
+    pub fn user_hint_zh(&self) -> String {
+        match self {
+            ReflectError::ConfigNotInitialized => {
+                "LLM 未就绪：请先在「设置」中填写 API Base URL、API Key 与模型并保存。".to_string()
+            }
+            ReflectError::DatabaseError { message } => format!("数据库错误：{}", message),
+            ReflectError::LlmApiError { message } => format!("LLM 接口失败：{}", message),
+            ReflectError::FallbackApiError { message } => format!("兜底翻译接口失败：{}", message),
+            ReflectError::SerializationError { message } => format!("译文解析失败：{}", message),
+            ReflectError::NotFound { message } => format!("未找到：{}", message),
+        }
+    }
+}
