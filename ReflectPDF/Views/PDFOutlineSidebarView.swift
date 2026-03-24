@@ -30,16 +30,43 @@ struct PDFOutlineSidebarView: View {
             if let root = document.outlineRoot, root.numberOfChildren > 0 {
                 ScrollViewReader { scrollProxy in
                     ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 0) {
+                        // Must be VStack (not LazyVStack): LazyVStack doesn't render
+                        // off-screen items, so scrollProxy.scrollTo fails for items
+                        // that haven't been laid out yet.
+                        VStack(alignment: .leading, spacing: 0) {
                             OutlineChildren(item: root, doc: document,
                                             activePageIndex: activePageIndex, depth: 0)
                         }
                         .padding(.vertical, 4)
                     }
+                    .onAppear {
+                        // Delay long enough for the PDFView to finish restoring its
+                        // page position (go(to:) is async) before we scroll the TOC.
+                        let idx = activePageIndex
+                        guard idx >= 0 else { return }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                scrollProxy.scrollTo(idx, anchor: .center)
+                            }
+                        }
+                    }
                     .onChange(of: activePageIndex) { newIndex in
                         guard newIndex >= 0 else { return }
                         withAnimation(.easeInOut(duration: 0.3)) {
                             scrollProxy.scrollTo(newIndex, anchor: .center)
+                        }
+                    }
+                    // After window un-minimize, PDFView restores page then fires
+                    // pageChanged → currentPageIndex updates → activePageIndex may
+                    // not change (same chapter) → onChange won't fire, so we
+                    // explicitly re-scroll here.
+                    .onReceive(NotificationCenter.default.publisher(for: .windowDidDeminiaturize)) { _ in
+                        let idx = activePageIndex
+                        guard idx >= 0 else { return }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                scrollProxy.scrollTo(idx, anchor: .center)
+                            }
                         }
                     }
                 }

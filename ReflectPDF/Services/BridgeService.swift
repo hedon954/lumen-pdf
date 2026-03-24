@@ -4,6 +4,7 @@ import Foundation
 // BridgeService methods have the same names → would shadow them inside the class.
 // By capturing them here at file scope, we can call them unambiguously.
 private let _initialize: (String, AppConfig) throws -> Void              = initialize(dbPath:config:)
+private let _updateLlmConfig: (AppConfig) throws -> Void                 = updateLlmConfig(config:)
 private let _saveVocabulary: (SaveVocabularyRequest) throws -> VocabularyEntry = saveVocabulary(req:)
 private let _getVocabularyEntry: (String) throws -> VocabularyEntry?     = getVocabularyEntry(id:)
 private let _getVocabByHash: (String, String) throws -> VocabularyEntry? = getVocabularyByWordAndHash(word:sentenceHash:)
@@ -43,9 +44,14 @@ final class BridgeService {
         isInitialized = true
     }
 
+    /// Hot-swap LLM config — takes effect for the very next translation call.
     func updateConfig(baseURL: String, apiKey: String, model: String, targetLanguage: String) {
-        isInitialized = false
-        initializeIfNeeded()
+        try? _updateLlmConfig(AppConfig(
+            llmBaseUrl: baseURL,
+            llmApiKey: apiKey,
+            llmModel: model,
+            targetLanguage: targetLanguage
+        ))
     }
 
     // MARK: - Translation

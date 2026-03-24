@@ -50,15 +50,14 @@ struct SettingsView: View {
 
     private func saveSettings() {
         KeychainService.save(key: "llm_api_key", value: apiKey)
+        // Hot-swap config in the running Rust backend — takes effect immediately.
         BridgeService.shared.updateConfig(
             baseURL: baseURL,
             apiKey: apiKey,
             model: model,
             targetLanguage: targetLanguage
         )
-        withAnimation {
-            showSavedBadge = true
-        }
+        withAnimation { showSavedBadge = true }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
             withAnimation { showSavedBadge = false }
         }
