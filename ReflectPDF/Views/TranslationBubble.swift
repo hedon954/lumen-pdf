@@ -148,7 +148,7 @@ struct TranslationBubble: View {
                 }
                 .padding(14)
             }
-            .frame(maxHeight: 260)
+            .frame(maxHeight: 520)
 
             if !result.llmErrorMessage.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {

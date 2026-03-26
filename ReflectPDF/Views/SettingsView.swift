@@ -2,8 +2,8 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
-    @AppStorage("llm_base_url") private var baseURL = "https://api.openai.com/v1"
-    @AppStorage("llm_model") private var model = "gpt-4o-mini"
+    @AppStorage("llm_base_url") private var baseURL = ""
+    @AppStorage("llm_model") private var model = ""
     @AppStorage("target_language") private var targetLanguage = "简体中文"
     @State private var apiKey = ""
     @State private var showSavedBadge = false
@@ -11,14 +11,14 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("LLM 配置") {
-                TextField("API Base URL", text: $baseURL)
+                TextField("例：https://api.openai.com/v1", text: $baseURL)
                     .textFieldStyle(.roundedBorder)
 
                 SecureField("API Key", text: $apiKey)
                     .textFieldStyle(.roundedBorder)
                     .onAppear { apiKey = KeychainService.load(key: "llm_api_key") ?? "" }
 
-                TextField("模型", text: $model)
+                TextField("例：gpt-4o-mini", text: $model)
                     .textFieldStyle(.roundedBorder)
             }
 
