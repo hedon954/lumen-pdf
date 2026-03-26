@@ -5,6 +5,8 @@ import AppKit
 struct ContentView: View {
     @EnvironmentObject private var appState: AppState
     @State private var showLibrary = false
+    @State private var showSetupSheet = false
+    @AppStorage("llm_base_url") private var baseURL = ""
 
     var body: some View {
         NavigationSplitView(columnVisibility: .constant(.all)) {
@@ -115,6 +117,16 @@ struct ContentView: View {
                     }
                 }
             }
+        }
+        .onAppear {
+            let storedKey = KeychainService.load(key: "llm_api_key") ?? ""
+            if baseURL.isEmpty || storedKey.isEmpty {
+                showSetupSheet = true
+            }
+        }
+        .sheet(isPresented: $showSetupSheet) {
+            SettingsView()
+                .environmentObject(appState)
         }
     }
 }
