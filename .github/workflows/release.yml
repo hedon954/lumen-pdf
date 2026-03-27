@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - "v*" # 触发：git tag v1.0.0 && git push --tags
+      - "v*"
 
 env:
   CARGO_TERM_COLOR: always
@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   build:
-    name: Build Universal Binary
+    name: Build and Release DMG
     runs-on: macos-latest
 
     steps:
@@ -35,64 +35,15 @@ jobs:
       - name: Install xcodegen
         run: brew install xcodegen
 
-      # ── 编译双架构 ──────────────────────────────────────────────────────────
-      - name: Build aarch64 (Apple Silicon)
-        working-directory: lumen-pdf-core
-        run: cargo build --release --target aarch64-apple-darwin
-
-      - name: Build x86_64 (Intel)
-        working-directory: lumen-pdf-core
-        run: cargo build --release --target x86_64-apple-darwin
-
-      # ── 合并 Universal Binary ───────────────────────────────────────────────
-      - name: Merge into Universal Binary
-        run: |
-          mkdir -p LumenPDF/Generated
-          lipo -create \
-            lumen-pdf-core/target/aarch64-apple-darwin/release/liblumen_pdf_core.dylib \
-            lumen-pdf-core/target/x86_64-apple-darwin/release/liblumen_pdf_core.dylib \
-            -output LumenPDF/Generated/liblumen_pdf_core.dylib
-          lipo -info LumenPDF/Generated/liblumen_pdf_core.dylib
-
-      # ── 生成 Swift 绑定 ─────────────────────────────────────────────────────
-      - name: Generate UniFFI Swift bindings
-        working-directory: lumen-pdf-core
-        run: |
-          cargo run --bin uniffi-bindgen generate \
-            --library target/aarch64-apple-darwin/release/liblumen_pdf_core.dylib \
-            --language swift \
-            --out-dir ../LumenPDF/Generated
-
       # ── 生成 Xcode 项目 ─────────────────────────────────────────────────────
       - name: Generate Xcode project
         run: cd LumenPDF && xcodegen generate
 
-      # ── 构建 macOS App ──────────────────────────────────────────────────────
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app
-
-      - name: Archive App
+      # ── 使用 package-dmg.sh 打包 ─────────────────────────────────────────────
+      - name: Build DMG
         run: |
-          xcodebuild archive \
-            -project LumenPDF/LumenPDF.xcodeproj \
-            -scheme LumenPDF \
-            -destination 'platform=macOS' \
-            -archivePath build/LumenPDF.xcarchive \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
-
-      - name: Export App
-        run: |
-          xcodebuild -exportArchive \
-            -archivePath build/LumenPDF.xcarchive \
-            -exportPath build/export \
-            -exportOptionsPlist scripts/ExportOptions.plist
-
-      - name: Zip App bundle
-        run: |
-          cd build/export
-          zip -r ../../LumenPDF-${{ github.ref_name }}.zip LumenPDF.app
+          VERSION=${GITHUB_REF_NAME#v}
+          VERSION=$VERSION ./scripts/package-dmg.sh
 
       # ── 生成 Changelog ──────────────────────────────────────────────────────
       - name: Generate changelog with git-cliff
@@ -108,18 +59,26 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            LumenPDF-${{ github.ref_name }}.zip
-            LumenPDF/Generated/liblumen_pdf_core.dylib
+          files: build/LumenPDF-${{ github.ref_name }}.dmg
           body: ${{ steps.git-cliff.outputs.content }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # ── 更新 CHANGELOG.md 并推送（放在 release 之后）───────────────────────
+      # ── 更新 CHANGELOG.md 并推送 ─────────────────────────────────────────────
       - name: Update CHANGELOG.md
         run: |
-          git fetch origin main:main
+          if [ -z "${{ steps.git-cliff.outputs.content }}" ]; then
+            echo "No changelog content generated, skipping"
+            exit 0
+          fi
+
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git fetch origin main
+
+          # 创建临时分支来更新 CHANGELOG
           git checkout main
+
           if [ -f "CHANGELOG.md" ]; then
             head -n 1 CHANGELOG.md > TEMP_CHANGELOG.md
             echo "" >> TEMP_CHANGELOG.md
@@ -130,9 +89,7 @@ jobs:
             mv NEW_CHANGELOG.md CHANGELOG.md
           fi
           rm -f NEW_CHANGELOG.md
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+
           git add CHANGELOG.md
           git commit -m "chore(release): update CHANGELOG.md for ${{ github.ref_name }}"
           git push origin main
-        if: steps.git-cliff.outputs.content != ''
