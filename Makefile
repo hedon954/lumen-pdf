@@ -3,8 +3,10 @@
 ## 首次使用：安装工具 + 生成 Xcode 项目
 setup:
 	@command -v xcodegen >/dev/null 2>&1 || brew install xcodegen
+	@command -v pre-commit >/dev/null 2>&1 || brew install pre-commit
 	@$(MAKE) gen-project
 	@$(MAKE) build-rust
+	pre-commit install
 	@echo "✓ 准备就绪，可在 Xcode 打开 LumenPDF/LumenPDF.xcodeproj"
 
 ## 仅构建 Rust（日常开发中 Rust 有改动时使用）
