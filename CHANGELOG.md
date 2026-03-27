@@ -1,4 +1,74 @@
 # Changelog
 
+---
+## [1.0.0] - 2026-03-27
+
+LumenPDF v1.0.0 - Initial Release
+
+为深度阅读者设计的 macOS 智能 PDF 工具。
+
+核心功能：
+- PDF 阅读：PDFKit 渲染，连续滚动，跨重启/最小化恢复精确阅读位置
+- PDF 目录：左侧栏大纲展示，自动高亮当前章节
+- 选词操作菜单：划选后弹出翻译/高亮/划线操作
+- 语境感知翻译：三级降级策略（缓存 → LLM → MyMemory）
+- 原生 PDF 标注：高亮（黄）/划线（红），支持跨行标注和撤销
+- 单词本：多语境聚合展示，点击跳转原文
+- 本地发音：AVSpeechSynthesizer 零延迟离线发音
+- 数据本地化：SQLite 存储，API Key 存 Keychain
+
+技术栈：SwiftUI + PDFKit + Rust (DDD) + UniFFI
+
+### ⚙️ Miscellaneous Chores
+
+- update Makefile to include pre-commit installation - ([96acc02](https://github.com/hedon954/lumen-pdf/commit/96acc0256b9e8e7f7dce6997852ee9f0e29613e1)) - hedon954
+- enhance release workflow with changelog generation and update - ([561d240](https://github.com/hedon954/lumen-pdf/commit/561d240fc211c17dba23e8a8ca476b21088942eb)) - hedon954
+- update GitHub Actions workflow for release process - ([31db528](https://github.com/hedon954/lumen-pdf/commit/31db528faec7595848b8aa825bdcea6341dfc8c2)) - hedon954
+- upgrade actions/checkout in CI workflow - ([93f1ed3](https://github.com/hedon954/lumen-pdf/commit/93f1ed3f1200c7c7f5d5729a3a3bba79854bc883)) - hedon954
+- update release workflow to organize generated binaries - ([26a9fd8](https://github.com/hedon954/lumen-pdf/commit/26a9fd8f1607afeda1a5427f577e1b2b38120ce9)) - hedon954
+
+### ⛰️ Features
+
+- implement MVP — Rust DDD backend + SwiftUI frontend - ([a1572ed](https://github.com/hedon954/lumen-pdf/commit/a1572ed0c2cb77c112693ea3837051c7dbe7db92)) - hedon954
+- add custom spinner to TranslationBubble for loading state - ([61316a5](https://github.com/hedon954/lumen-pdf/commit/61316a54e682b74352e8062c3a5c48c64f824770)) - hedon954
+- enhance PDF handling and vocabulary features in AppState - ([2a2ae00](https://github.com/hedon954/lumen-pdf/commit/2a2ae0037b0df6b0ec16a7cb6894b0ee8a93ecaa)) - hedon954
+- enhance vocabulary management and PDF navigation features - ([392fd6c](https://github.com/hedon954/lumen-pdf/commit/392fd6c86b6c35b3f6f12a0b1731426641049f95)) - hedon954
+- enhance PDF interaction and selection features - ([49ba19c](https://github.com/hedon954/lumen-pdf/commit/49ba19c9610ddee95ff85e52c0f5a4c26cb8d646)) - hedon954
+- enhance PDF selection and vocabulary features - ([8ba8c94](https://github.com/hedon954/lumen-pdf/commit/8ba8c94215de20311d1e74125f93bc0a44379ef9)) - hedon954
+- improve sentence extraction in PDFReaderView - ([775e09a](https://github.com/hedon954/lumen-pdf/commit/775e09ac9851738ee27ab192d4cabd5c0825ca2b)) - hedon954
+- add context sentence translation and improve vocabulary features - ([7c49bd4](https://github.com/hedon954/lumen-pdf/commit/7c49bd42ad4681d393e2933a0e62da3ab8777f95)) - hedon954
+- add DMG packaging support and enhance README documentation - ([e952b4d](https://github.com/hedon954/lumen-pdf/commit/e952b4d1c56a9f25adecece63d1778c3e75d90d3)) - hedon954
+- precise multi-line annotation, reading position persistence, and LLM hot-reload - ([fa33734](https://github.com/hedon954/lumen-pdf/commit/fa337345a8233131358a2ca22b936ee2045f78de)) - hedon954
+- show translation failure reason and support Cmd+Z undo for annotations - ([85df77e](https://github.com/hedon954/lumen-pdf/commit/85df77e0750e8056826a2c2409cf8a536671d383)) - hedon954
+- add translation failure reason display and Cmd+Z undo for annotations - ([d3acbcb](https://github.com/hedon954/lumen-pdf/commit/d3acbcb4ad0a5263ea4e2e43974435ad23869e59)) - hedon954
+- adaptive bubble height and auto LLM setup prompt on first launch - ([62f4d68](https://github.com/hedon954/lumen-pdf/commit/62f4d6887779c81912e61e6970736185065b9b9f)) - hedon954
+- add app icon assets - ([dc5659c](https://github.com/hedon954/lumen-pdf/commit/dc5659cc96a237f46629d023686ce1809adb570f)) - hedon954
+
+### 🐛 Bug Fixes
+
+- **(ci)** use mac-application export method for unsigned build - ([e1daa80](https://github.com/hedon954/lumen-pdf/commit/e1daa80b6e6abdaf66590d65dfd101c5e4324360)) - hedon954
+- **(ci)** add contents write permission for release - ([d09d512](https://github.com/hedon954/lumen-pdf/commit/d09d5123ef78b8b2b2119bf5a06e33ab401d5aed)) - hedon954
+- **(ci)** use package-dmg.sh for release artifacts - ([20dae61](https://github.com/hedon954/lumen-pdf/commit/20dae619a48025445dfcd232fe17bd5f292a4cda)) - hedon954
+- **(ci)** improve changelog update step with debug output - ([620c546](https://github.com/hedon954/lumen-pdf/commit/620c546797e4f00176502ef43e6abd54ea7e0528)) - hedon954
+- **(ci)** remove grep filter for full xcodebuild output and use make dmg - ([26b4a19](https://github.com/hedon954/lumen-pdf/commit/26b4a19254655b044c6b9d9f206c491949793c43)) - hedon954
+- **(ci)** regenerate xcode project after generating swift bindings - ([3a3b444](https://github.com/hedon954/lumen-pdf/commit/3a3b444235b71732d0ffc9a57b962f4d6f828ec5)) - hedon954
+- **(ci)** add SWIFT_INCLUDE_PATHS and remove BUILD_LIBRARY_FOR_DISTRIBUTION - ([9b5d5f6](https://github.com/hedon954/lumen-pdf/commit/9b5d5f6b1fbef1279d995635b58fa1ac4e58bd3d)) - hedon954
+- **(ci)** correct DMG file path pattern and add changelog debug - ([8907ea9](https://github.com/hedon954/lumen-pdf/commit/8907ea981dcc25796db31765133db4f0aaced65c)) - hedon954
+- embed Rust dylib in app bundle to fix DYLD crash on other machines - ([6f76676](https://github.com/hedon954/lumen-pdf/commit/6f76676b11034e62bb46b30f831f555e458245cc)) - hedon954
+- translation bubble not updating on error + retry Rust init - ([d80b95a](https://github.com/hedon954/lumen-pdf/commit/d80b95a3d0f7c52fdee9f8db63f3bcc8a7095b71)) - hedon954
+
+### 📚 Documentation
+
+- update README.md with project description, core features, technical architecture, documentation links, development environment setup, and version roadmap for ReflectPDF. - ([cf3269e](https://github.com/hedon954/lumen-pdf/commit/cf3269ec4804302e44a4ff917bade14273d1e9b5)) - hedon954
+
+### 🚜 Refactor
+
+- enhance BridgeService with file-scope function references for UniFFI calls - ([a5d9cf1](https://github.com/hedon954/lumen-pdf/commit/a5d9cf18c4b79029ad1d7ea2611a7721c275f10b)) - hedon954
+- streamline TranslationBubble layout and enhance content handling - ([14d2443](https://github.com/hedon954/lumen-pdf/commit/14d24431d0f0d363e47b5eae386ace7217101d93)) - hedon954
+- rename project from ReflectPDF to LumenPDF - ([cc50470](https://github.com/hedon954/lumen-pdf/commit/cc504708de30a2dce664cfd7bb399a411265854f)) - hedon954
+- reorganize imports and format function signatures for consistency - ([33bcb5f](https://github.com/hedon954/lumen-pdf/commit/33bcb5f8b75438549de6561ad2340e533dab6dd1)) - hedon954
+
+<!-- generated by git-cliff -->
+
 All notable changes to this project will be documented in this file.
 
