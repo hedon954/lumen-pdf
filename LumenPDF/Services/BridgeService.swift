@@ -17,6 +17,12 @@ private let _upsertPdf: (UpsertPdfRequest) throws -> PdfDocument         = upser
 private let _savePosition: (String, UInt32, Double) throws -> Void       = saveReadingPosition(filePath:page:scrollOffset:)
 private let _listPdfDocuments: () throws -> [PdfDocument]                = listPdfDocuments
 private let _deletePdfDocument: (String) throws -> Void                  = deletePdfDocument(filePath:)
+private let _saveNote: (SaveNoteRequest) throws -> NoteEntry             = saveNote(req:)
+private let _listNotes: () throws -> [NoteEntry]                         = listNotes
+private let _listNotesByPdf: (String) throws -> [NoteEntry]              = listNotesByPdf(pdfPath:)
+private let _deleteNote: (String) throws -> Void                         = deleteNote(id:)
+private let _updateNote: (UpdateNoteRequest) throws -> NoteEntry         = updateNote(req:)
+private let _exportNotesMarkdown: (String?) throws -> String             = exportNotesMarkdown(pdfPath:)
 
 /// Wraps all UniFFI-generated top-level calls and manages app initialization.
 final class BridgeService {
@@ -62,6 +68,12 @@ final class BridgeService {
     func translate(word: String, sentence: String) async throws -> TranslationResult {
         // translate(request:) has different param label — no shadowing conflict
         try await LumenPDF.translate(request: TranslationRequest(word: word, sentence: sentence))
+    }
+
+    /// Translate a full sentence without word-level analysis.
+    /// Use this when the user selects a phrase/sentence instead of a single word.
+    func translateSentence(sentence: String) async throws -> TranslationResult {
+        try await LumenPDF.translateSentence(sentence: sentence)
     }
 
     // MARK: - Vocabulary
@@ -140,5 +152,43 @@ final class BridgeService {
 
     func deletePdfDocument(filePath: String) throws {
         try _deletePdfDocument(filePath)
+    }
+
+    // MARK: - Notes
+
+    @discardableResult
+    func saveNote(
+        pdfPath: String, pdfName: String, pageIndex: UInt32,
+        content: String, note: String, boundsStr: String
+    ) throws -> NoteEntry {
+        try _saveNote(SaveNoteRequest(
+            pdfPath: pdfPath,
+            pdfName: pdfName,
+            pageIndex: pageIndex,
+            content: content,
+            note: note,
+            boundsStr: boundsStr
+        ))
+    }
+
+    func listNotes() throws -> [NoteEntry] {
+        try _listNotes()
+    }
+
+    func listNotesByPdf(pdfPath: String) throws -> [NoteEntry] {
+        try _listNotesByPdf(pdfPath)
+    }
+
+    func deleteNote(id: String) throws {
+        try _deleteNote(id)
+    }
+
+    @discardableResult
+    func updateNote(id: String, note: String) throws -> NoteEntry {
+        try _updateNote(UpdateNoteRequest(id: id, note: note))
+    }
+
+    func exportNotesMarkdown(pdfPath: String? = nil) -> String {
+        (try? _exportNotesMarkdown(pdfPath)) ?? "# 笔记导出\n\n暂无笔记。"
     }
 }

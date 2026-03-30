@@ -56,4 +56,12 @@ pub struct TranslationResult {
     /// Empty when LLM succeeded or when the result came from cache without a prior LLM error in this request.
     #[serde(default)]
     pub llm_error_message: String,
+    /// When non-empty: Fallback step also failed. Contains the fallback error message.
+    /// Empty when fallback succeeded or wasn't needed.
+    #[serde(default)]
+    pub fallback_error_message: String,
+    /// When true: both LLM and Fallback failed, result contains only error info.
+    /// The UI should display both errors and indicate complete failure.
+    #[serde(default)]
+    pub is_complete_failure: bool,
 }

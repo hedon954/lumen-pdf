@@ -1,4 +1,5 @@
 pub mod migration;
+pub mod note_repo;
 pub mod pdf_document_repo;
 pub mod translation_cache_repo;
 pub mod vocabulary_repo;

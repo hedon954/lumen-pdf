@@ -48,6 +48,17 @@ pub fn run(conn: &Connection) -> Result<(), LumenError> {
             opened_at          INTEGER NOT NULL,
             added_at           INTEGER NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS notes (
+            id            TEXT PRIMARY KEY,
+            pdf_path      TEXT NOT NULL,
+            pdf_name      TEXT NOT NULL,
+            page_index    INTEGER NOT NULL,
+            content       TEXT NOT NULL,
+            note          TEXT NOT NULL DEFAULT '',
+            bounds_str    TEXT NOT NULL DEFAULT '',
+            created_at    INTEGER NOT NULL
+        );
     ",
     )?;
 

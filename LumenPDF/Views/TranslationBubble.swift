@@ -108,32 +108,22 @@ struct TranslationBubble: View {
             }
             .padding(14)
         } else if let result = request.result {
-            ViewThatFits(in: .vertical) {
-                contentBody(result: result)
-                ScrollView { contentBody(result: result) }
-                    .frame(maxHeight: 520)
-            }
-
-            if !result.llmErrorMessage.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    Label("LLM 调用未成功", systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption.bold())
-                        .foregroundStyle(.orange)
-                    Text(result.llmErrorMessage)
-                        .font(.caption)
-                        .foregroundStyle(.primary)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+            // Check if this is a complete failure (both LLM and Fallback failed)
+            if result.isCompleteFailure {
+                completeFailureView(result: result)
+            } else {
+                ViewThatFits(in: .vertical) {
+                    contentBody(result: result)
+                    ScrollView { contentBody(result: result) }
+                        .frame(maxHeight: 520)
                 }
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
-                .padding(.horizontal, 14)
-                .padding(.top, 8)
-            }
 
-            Divider()
-            footer(result: result)
+                // Error section (LLM error, and/or Fallback error)
+                errorSection(result: result)
+
+                Divider()
+                footer(result: result)
+            }
         } else {
             VStack(alignment: .leading, spacing: 0) {
                 Text("翻译未完成")
@@ -166,49 +156,173 @@ struct TranslationBubble: View {
         }
     }
 
+    // MARK: - Complete failure view
+
+    @ViewBuilder
+    private func completeFailureView(result: TranslationResult) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("翻译失败")
+                .font(.headline)
+                .foregroundStyle(.red)
+
+            Text("所有翻译途径均失败，请检查网络连接和 LLM 设置")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+
+            Divider()
+
+            // LLM error
+            if !result.llmErrorMessage.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("LLM 调用失败", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption.bold())
+                        .foregroundStyle(.orange)
+                    Text(result.llmErrorMessage)
+                        .font(.caption)
+                        .foregroundStyle(.primary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(12)
+                .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+            }
+
+            // Fallback error
+            if !result.fallbackErrorMessage.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("兜底翻译失败", systemImage: "xmark.octagon.fill")
+                        .font(.caption.bold())
+                        .foregroundStyle(.red)
+                    Text(result.fallbackErrorMessage)
+                        .font(.caption)
+                        .foregroundStyle(.primary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(12)
+                .background(Color.red.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+            }
+        }
+        .padding(14)
+    }
+
+    // MARK: - Error section
+
+    @ViewBuilder
+    private func errorSection(result: TranslationResult) -> some View {
+        // LLM error (shown even when fallback succeeded)
+        if !result.llmErrorMessage.isEmpty || !result.fallbackErrorMessage.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                if !result.llmErrorMessage.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label("LLM 调用未成功", systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption.bold())
+                            .foregroundStyle(.orange)
+                        Text(result.llmErrorMessage)
+                            .font(.caption)
+                            .foregroundStyle(.primary)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                }
+
+                if !result.fallbackErrorMessage.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label("兜底翻译部分失败", systemImage: "info.circle")
+                            .font(.caption.bold())
+                            .foregroundStyle(.orange)
+                        Text(result.fallbackErrorMessage)
+                            .font(.caption)
+                            .foregroundStyle(.primary)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 8)
+        }
+    }
+
     // MARK: - Content body helper
 
     @ViewBuilder
     private func contentBody(result: TranslationResult) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if !result.contextTranslation.isEmpty {
-                BubbleSection("语境翻译") {
-                    Text(result.contextTranslation).font(.body)
-                }
-            }
-            if !result.contextExplanation.isEmpty {
-                BubbleSection("语境解释") {
-                    Text(result.contextExplanation)
-                        .font(.callout).foregroundStyle(.secondary)
-                }
-            }
-            if !result.generalDefinition.isEmpty {
-                BubbleSection("通用释义") {
-                    Text(result.generalDefinition)
-                        .font(.callout).foregroundStyle(.secondary)
-                }
-            }
-            BubbleSection("原文语境") {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text(ContextSentenceFormatting.displayParagraph(request.sentence))
-                        .font(.callout)
+        // Check if this is sentence-only mode (word is the sentence, no word-level analysis)
+        let isSentenceOnly = request.isSentenceMode
+            && result.contextTranslation.isEmpty
+            && result.generalDefinition.isEmpty
+            && result.phonetic.isEmpty
+
+        if isSentenceOnly {
+            // Sentence translation mode: show original and translation only
+            VStack(alignment: .leading, spacing: 12) {
+                BubbleSection("原文") {
+                    Text(ContextSentenceFormatting.displayParagraph(request.word))
+                        .font(.body)
                         .foregroundStyle(.primary)
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
-                    if !result.contextSentenceTranslation.isEmpty {
+                }
+                if !result.contextSentenceTranslation.isEmpty {
+                    BubbleSection("译文") {
                         Text(result.contextSentenceTranslation)
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
+                            .font(.body)
+                            .foregroundStyle(.primary)
                             .multilineTextAlignment(.leading)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.quinary, in: RoundedRectangle(cornerRadius: 8))
             }
+            .padding(14)
+        } else {
+            // Word translation mode: show all fields
+            VStack(alignment: .leading, spacing: 12) {
+                if !result.contextTranslation.isEmpty {
+                    BubbleSection("语境翻译") {
+                        Text(result.contextTranslation).font(.body)
+                    }
+                }
+                if !result.contextExplanation.isEmpty {
+                    BubbleSection("语境解释") {
+                        Text(result.contextExplanation)
+                            .font(.callout).foregroundStyle(.secondary)
+                    }
+                }
+                if !result.generalDefinition.isEmpty {
+                    BubbleSection("通用释义") {
+                        Text(result.generalDefinition)
+                            .font(.callout).foregroundStyle(.secondary)
+                    }
+                }
+                BubbleSection("原文语境") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(ContextSentenceFormatting.displayParagraph(request.sentence))
+                            .font(.callout)
+                            .foregroundStyle(.primary)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if !result.contextSentenceTranslation.isEmpty {
+                            Text(result.contextSentenceTranslation)
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.quinary, in: RoundedRectangle(cornerRadius: 8))
+                }
+            }
+            .padding(14)
         }
-        .padding(14)
     }
 
     // MARK: - Footer
