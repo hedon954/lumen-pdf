@@ -57,15 +57,30 @@ impl TranslationDomainService {
             };
 
         // Level 3: fallback (MyMemory), not cached
-        let mut result = self
+        match self
             .fallback
             .translate(&request.word, &request.sentence)
-            .await?;
-        result.source = TranslationSource::Fallback.to_string();
-        if let Some(msg) = llm_failure_note {
-            result.llm_error_message = msg;
+            .await
+        {
+            Ok(mut result) => {
+                result.source = TranslationSource::Fallback.to_string();
+                result.llm_error_message = llm_failure_note.unwrap_or_default();
+                result.fallback_error_message = String::new();
+                result.is_complete_failure = false;
+                Ok(result)
+            }
+            Err(fallback_err) => {
+                // Both LLM and Fallback failed - return error info instead of throwing
+                Ok(TranslationResult {
+                    word: request.word.clone(),
+                    source: "failed".to_string(),
+                    llm_error_message: llm_failure_note.unwrap_or_default(),
+                    fallback_error_message: fallback_err.user_hint_zh(),
+                    is_complete_failure: true,
+                    ..Default::default()
+                })
+            }
         }
-        Ok(result)
     }
 }
 
@@ -148,6 +163,21 @@ mod tests {
                 word: word.to_string(),
                 general_definition: "fallback result".to_string(),
                 ..Default::default()
+            })
+        }
+    }
+
+    struct FailingFallback;
+
+    #[async_trait::async_trait]
+    impl Translator for FailingFallback {
+        async fn translate(
+            &self,
+            _word: &str,
+            _sentence: &str,
+        ) -> Result<TranslationResult, LumenError> {
+            Err(LumenError::FallbackApiError {
+                message: "network error".to_string(),
             })
         }
     }
@@ -238,5 +268,28 @@ mod tests {
         let hash = TranslationDomainService::sentence_hash("the quick brown fox");
         let cached = cache.get("run", &hash).unwrap();
         assert!(cached.is_none());
+    }
+
+    #[tokio::test]
+    async fn both_llm_and_fallback_fail_returns_error_info() {
+        let cache = FakeCache::new();
+        let svc = TranslationDomainService::new(
+            cache,
+            Arc::new(FailingLlm),      // LLM fails
+            Arc::new(FailingFallback), // Fallback also fails
+        );
+
+        let result = svc
+            .translate(TranslationRequest {
+                word: "test".to_string(),
+                sentence: "test sentence".to_string(),
+            })
+            .await
+            .unwrap();
+
+        assert!(result.is_complete_failure);
+        assert!(!result.llm_error_message.is_empty());
+        assert!(!result.fallback_error_message.is_empty());
+        assert_eq!(result.source, "failed");
     }
 }

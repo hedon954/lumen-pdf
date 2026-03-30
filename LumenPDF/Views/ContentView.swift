@@ -6,11 +6,12 @@ struct ContentView: View {
     @EnvironmentObject private var appState: AppState
     @State private var showLibrary = false
     @State private var showSetupSheet = false
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @AppStorage("llm_base_url") private var baseURL = ""
     @AppStorage("llm_model") private var model = ""
 
     var body: some View {
-        NavigationSplitView(columnVisibility: .constant(.all)) {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             // Left sidebar: PDF outline TOC (only when a document is open)
             Group {
                 if let kitDoc = appState.kitDocument {
@@ -46,6 +47,10 @@ struct ContentView: View {
                     VocabularyListView()
                 }
 
+                if appState.activeTab == .notes {
+                    NoteListView()
+                }
+
                 if let msg = appState.toastMessage {
                     ToastView(message: msg)
                         .padding(.bottom, 24)
@@ -74,12 +79,13 @@ struct ContentView: View {
                     Picker("", selection: $appState.activeTab) {
                         Text("PDF 阅读").tag(MainTab.reader)
                         Text("单词本").tag(MainTab.vocabulary)
+                        Text("笔记").tag(MainTab.notes)
                     }
                     .pickerStyle(.segmented)
-                    .frame(width: 200)
+                    .frame(width: 280)
 
-                    if appState.activeTab == .reader,
-                       let fileName = appState.selectedDocument?.fileName {
+                    // O8: Always show filename when a document is selected (not just in reader mode)
+                    if let fileName = appState.selectedDocument?.fileName {
                         Divider().frame(height: 14)
 
                         Text(fileName)
@@ -88,7 +94,8 @@ struct ContentView: View {
                             .lineLimit(1)
                             .fixedSize()
 
-                        if appState.totalPages > 0 {
+                        // Page indicator only in reader mode
+                        if appState.activeTab == .reader && appState.totalPages > 0 {
                             Text("\(appState.currentPageIndex + 1) / \(appState.totalPages)")
                                 .font(.callout.monospacedDigit())
                                 .foregroundStyle(.tertiary)

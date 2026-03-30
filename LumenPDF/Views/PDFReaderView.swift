@@ -129,23 +129,23 @@ struct PDFReaderView: View {
                                    page: sel.page)
                 pendingSelection = nil
             }
-            Divider().frame(height: 22)
+            Divider().frame(height: 26)
             actionBarBtn(icon: "highlighter", label: "高亮") {
                 postFreeAnnotation(type: "highlight", boundsStr: sel.boundsStr, page: sel.page)
                 pendingSelection = nil
             }
-            Divider().frame(height: 22)
-            actionBarBtn(icon: "underline", label: "划线") {
-                postFreeAnnotation(type: "underline", boundsStr: sel.boundsStr, page: sel.page)
+            Divider().frame(height: 26)
+            actionBarBtn(icon: "note.text", label: "划线") {
+                saveUnderlineNote(word: sel.word, boundsStr: sel.boundsStr, page: sel.page)
                 pendingSelection = nil
             }
-            Divider().frame(height: 22)
+            Divider().frame(height: 26)
             actionBarBtn(icon: "xmark", label: "") {
                 pendingSelection = nil
             }
         }
-        .padding(.horizontal, 4)
-        .padding(.vertical, 4)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 6)
         .background(.regularMaterial, in: Capsule())
         .overlay(Capsule().strokeBorder(.separator, lineWidth: 0.5))
         .shadow(color: .black.opacity(0.18), radius: 10, x: 0, y: 3)
@@ -155,14 +155,14 @@ struct PDFReaderView: View {
 
     private func actionBarBtn(icon: String, label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 4) {
-                Image(systemName: icon).font(.system(size: 12, weight: .medium))
+            HStack(spacing: 5) {
+                Image(systemName: icon).font(.system(size: 14, weight: .medium))
                 if !label.isEmpty {
-                    Text(label).font(.system(size: 12))
+                    Text(label).font(.system(size: 13))
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
         }
         .buttonStyle(.plain)
         .contentShape(Rectangle())
@@ -179,6 +179,39 @@ struct PDFReaderView: View {
                 "filePath": document.filePath
             ]
         )
+    }
+
+    /// 划线并自动保存为笔记
+    private func saveUnderlineNote(word: String, boundsStr: String, page: Int) {
+        BridgeService.shared.initializeIfNeeded()
+
+        // 先保存笔记
+        guard let noteEntry = try? BridgeService.shared.saveNote(
+            pdfPath: document.filePath,
+            pdfName: document.fileName,
+            pageIndex: UInt32(page),
+            content: word,
+            note: "",
+            boundsStr: boundsStr
+        ) else {
+            appState.showToast("保存笔记失败")
+            return
+        }
+
+        // 再添加划线，使用笔记 ID 作为 userName
+        NotificationCenter.default.post(
+            name: .addUnderlineNote,
+            object: nil,
+            userInfo: [
+                "noteId": noteEntry.id,
+                "pageIndex": page,
+                "boundsStr": boundsStr,
+                "filePath": document.filePath
+            ]
+        )
+
+        appState.refreshNotes()
+        appState.showToast("已添加笔记")
     }
 
     // MARK: - Document loaded
@@ -201,23 +234,44 @@ struct PDFReaderView: View {
     private func requestTranslation(word: String, sentence: String,
                                      bounds: CGRect, boundsStr: String, page: Int) {
         BridgeService.shared.initializeIfNeeded()
-        let hash = session.sentenceHash(sentence)
-        let existingEntry = try? BridgeService.shared.getVocabularyByWordAndHash(
-            word: word, sentenceHash: hash
-        )
-        if let e = existingEntry { BridgeService.shared.incrementQueryCount(id: e.id) }
+
+        // Determine if this is sentence mode (multi-word selection)
+        let isSentenceMode = word.split(separator: " ").count > 3 || word.count > 25
 
         translationRequest = TranslationBubbleRequest(
             word: word, sentence: sentence,
             bounds: bounds, boundsStr: boundsStr,
             page: page, result: nil, translationError: nil,
-            existingEntryId: existingEntry?.id
+            existingEntryId: nil,
+            isSentenceMode: isSentenceMode
         )
         isTranslating = true
 
         Task {
             do {
-                let result = try await BridgeService.shared.translate(word: word, sentence: sentence)
+                let result: TranslationResult
+                if isSentenceMode {
+                    // Sentence mode: translate the selection directly
+                    result = try await BridgeService.shared.translateSentence(sentence: word)
+                } else {
+                    // Word mode: check for existing entry first
+                    let hash = session.sentenceHash(sentence)
+                    let existingEntry = try? BridgeService.shared.getVocabularyByWordAndHash(
+                        word: word, sentenceHash: hash
+                    )
+                    if let e = existingEntry { BridgeService.shared.incrementQueryCount(id: e.id) }
+
+                    // Update the request with existing entry ID
+                    await MainActor.run {
+                        if var req = translationRequest {
+                            req.existingEntryId = existingEntry?.id
+                            translationRequest = req
+                        }
+                    }
+
+                    result = try await BridgeService.shared.translate(word: word, sentence: sentence)
+                }
+
                 await MainActor.run {
                     guard var req = translationRequest else { return }
                     req.result = result
@@ -305,6 +359,10 @@ struct PDFKitView: NSViewRepresentable {
                        name: .removeHighlight, object: nil)
         nc.addObserver(context.coordinator, selector: #selector(Coordinator.addFreeAnnotation(_:)),
                        name: .addFreeAnnotation, object: nil)
+        nc.addObserver(context.coordinator, selector: #selector(Coordinator.addUnderlineNote(_:)),
+                       name: .addUnderlineNote, object: nil)
+        nc.addObserver(context.coordinator, selector: #selector(Coordinator.removeUnderlineNote(_:)),
+                       name: .removeUnderlineNote, object: nil)
         nc.addObserver(context.coordinator, selector: #selector(Coordinator.savePositionNow(_:)),
                        name: .saveReadingPositionNow, object: nil)
         // App-level: save on quit
@@ -388,6 +446,7 @@ struct PDFKitView: NSViewRepresentable {
         weak var pdfView: PDFView?
         private var selectionDebounce: Timer?
         private var scrollDebounce: Timer?
+        private var annotationSaveDebounce: Timer?
         var isJumping = false
         /// The file path of the currently loaded document.
         /// Stored explicitly so we never rely on `documentURL?.path`,
@@ -405,6 +464,19 @@ struct PDFKitView: NSViewRepresentable {
             self.parent = parent
             self.lastKnownPageIndex = parent.savedPage
             self.lastScrollOffset = parent.savedScrollOffset
+        }
+
+        /// Trigger auto-save of annotations to PDF file (debounced)
+        func triggerAnnotationSave() {
+            annotationSaveDebounce?.invalidate()
+            annotationSaveDebounce = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
+                guard let self, let pdfView = self.pdfView, let doc = pdfView.document else { return }
+                Task {
+                    await AnnotationPersistenceService.shared.saveAnnotations(
+                        for: doc, filePath: self.currentFilePath
+                    )
+                }
+            }
         }
 
         func schedulePendingRestoreTimeout() {
@@ -516,8 +588,9 @@ struct PDFKitView: NSViewRepresentable {
             var removedSnapshots: [FreeAnnotationSnapshot] = []
 
             if existing.isEmpty {
+                let contents = typeStr == "underline" ? "free:underline" : "free:highlight"
                 for rect in lineRects {
-                    added.append(Self.makeAnnotation(bounds: rect, type: annType, color: color, tag: tag, page: page))
+                    added.append(Self.makeAnnotation(bounds: rect, type: annType, color: color, tag: tag, page: page, contents: contents))
                 }
             } else {
                 let existingUnion = existing.dropFirst().reduce(existing[0].bounds) { $0.union($1.bounds) }
@@ -525,8 +598,9 @@ struct PDFKitView: NSViewRepresentable {
                 removedSnapshots = existing.map { FreeAnnotationSnapshot(ann: $0) }
                 existing.forEach { page.removeAnnotation($0) }
                 if !isFullyCovered {
+                    let contents = typeStr == "underline" ? "free:underline" : "free:highlight"
                     for rect in lineRects {
-                        added.append(Self.makeAnnotation(bounds: rect, type: annType, color: color, tag: tag, page: page))
+                        added.append(Self.makeAnnotation(bounds: rect, type: annType, color: color, tag: tag, page: page, contents: contents))
                     }
                 }
             }
@@ -538,6 +612,7 @@ struct PDFKitView: NSViewRepresentable {
                     removedSnapshots: removedSnapshots,
                     label: undoLabel
                 )
+                triggerAnnotationSave()
             }
         }
 
@@ -602,7 +677,52 @@ struct PDFKitView: NSViewRepresentable {
         }
 
         private static func makeAnnotation(from snap: FreeAnnotationSnapshot, page: PDFPage) -> PDFAnnotation {
-            makeAnnotation(bounds: snap.bounds, type: snap.subtype, color: snap.color, tag: snap.tag, page: page)
+            let contents = snap.tag == "__fu" ? "free:underline" : "free:highlight"
+            return makeAnnotation(bounds: snap.bounds, type: snap.subtype, color: snap.color, tag: snap.tag, page: page, contents: contents)
+        }
+
+        // MARK: Underline note (划线 + 笔记)
+
+        /// 添加划线笔记（划线 + 自动保存到笔记）
+        @objc func addUnderlineNote(_ notification: Notification) {
+            guard let noteId     = notification.userInfo?["noteId"]     as? String,
+                  let pageIndex  = notification.userInfo?["pageIndex"]  as? Int,
+                  let boundsStr  = notification.userInfo?["boundsStr"]  as? String,
+                  let filePath   = notification.userInfo?["filePath"]   as? String,
+                  filePath == currentFilePath,
+                  let pdfView,
+                  let page       = pdfView.document?.page(at: pageIndex)
+            else { return }
+
+            let lineRects = Self.parseAnnotationRects(boundsStr)
+            guard !lineRects.isEmpty else { return }
+
+            // 使用笔记 ID 作为 userName，方便后续删除
+            for rect in lineRects {
+                let ann = PDFAnnotation(bounds: rect, forType: .underline, withProperties: nil)
+                ann.color = NSColor.systemRed.withAlphaComponent(0.7)
+                ann.userName = noteId
+                ann.contents = "note:\(noteId)"
+                page.addAnnotation(ann)
+            }
+            triggerAnnotationSave()
+        }
+
+        /// 删除划线笔记时移除对应的划线标注
+        @objc func removeUnderlineNote(_ notification: Notification) {
+            guard let noteId     = notification.userInfo?["noteId"]     as? String,
+                  let pageIndex  = notification.userInfo?["pageIndex"]  as? Int,
+                  let filePath   = notification.userInfo?["filePath"]   as? String,
+                  filePath == currentFilePath,
+                  let pdfView,
+                  let page       = pdfView.document?.page(at: pageIndex)
+            else { return }
+
+            // 移除所有使用该笔记 ID 的划线标注
+            page.annotations
+                .filter { $0.userName == noteId }
+                .forEach { page.removeAnnotation($0) }
+            triggerAnnotationSave()
         }
 
         // MARK: Apply saved highlights on document load
@@ -625,8 +745,10 @@ struct PDFKitView: NSViewRepresentable {
                 let ann = PDFAnnotation(bounds: rect, forType: .highlight, withProperties: nil)
                 ann.color = NSColor.systemYellow.withAlphaComponent(0.5)
                 ann.userName = entryId
+                ann.contents = "vocab:\(entryId)" // Persist to PDF metadata
                 page.addAnnotation(ann)
             }
+            triggerAnnotationSave()
         }
 
         // MARK: Page jump
@@ -889,10 +1011,14 @@ struct PDFKitView: NSViewRepresentable {
 
         @discardableResult
         private static func makeAnnotation(bounds: CGRect, type: PDFAnnotationSubtype,
-                                           color: NSColor, tag: String, page: PDFPage) -> PDFAnnotation {
+                                           color: NSColor, tag: String, page: PDFPage,
+                                           contents: String? = nil) -> PDFAnnotation {
             let ann = PDFAnnotation(bounds: bounds, forType: type, withProperties: nil)
             ann.color = color
             ann.userName = tag
+            if let contents = contents {
+                ann.contents = contents
+            }
             page.addAnnotation(ann)
             return ann
         }
@@ -905,6 +1031,8 @@ extension Notification.Name {
     static let addHighlight           = Notification.Name("addHighlight")
     static let removeHighlight        = Notification.Name("removeHighlight")
     static let addFreeAnnotation      = Notification.Name("addFreeAnnotation")
+    static let addUnderlineNote       = Notification.Name("addUnderlineNote")
+    static let removeUnderlineNote    = Notification.Name("removeUnderlineNote")
     static let saveReadingPositionNow = Notification.Name("saveReadingPositionNow")
     static let windowDidDeminiaturize = Notification.Name("windowDidDeminiaturize")
 }
@@ -921,7 +1049,9 @@ struct TranslationBubbleRequest: Identifiable, Equatable {
     var result: TranslationResult?
     /// Set when `translate` throws; shown at the bottom of the bubble.
     var translationError: String?
-    let existingEntryId: String?
+    var existingEntryId: String?
+    /// When true, the selection is a multi-word phrase/sentence, not a single word.
+    let isSentenceMode: Bool
     /// Must compare all fields that affect the bubble UI. Comparing only `id` made SwiftUI
     /// treat success/error updates as «unchanged» and skip redrawing — users saw「翻译未完成」
     /// with an empty detail area even when `translationError` was set.
@@ -935,5 +1065,6 @@ struct TranslationBubbleRequest: Identifiable, Equatable {
             && lhs.result == rhs.result
             && lhs.translationError == rhs.translationError
             && lhs.existingEntryId == rhs.existingEntryId
+            && lhs.isSentenceMode == rhs.isSentenceMode
     }
 }

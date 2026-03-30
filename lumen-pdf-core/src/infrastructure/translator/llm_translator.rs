@@ -47,6 +47,95 @@ Respond with ONLY valid JSON in this exact format:
             lang = self.config.target_language,
         )
     }
+
+    /// Build a prompt for sentence-only translation (no word-level analysis)
+    fn build_sentence_prompt(&self, sentence: &str) -> String {
+        format!(
+            r#"You are a professional translator. Translate the following English text to {lang}.
+
+Text: "{sentence}"
+
+Rules:
+1. Provide a natural, fluent translation
+2. Preserve the meaning and tone of the original
+3. If the text contains OCR errors or broken words, fix them in your translation
+
+Respond with ONLY valid JSON in this exact format:
+{{
+  "translation": "your translation here"
+}}"#,
+            sentence = sentence,
+            lang = self.config.target_language,
+        )
+    }
+
+    /// Translate a full sentence without word-level analysis
+    pub async fn translate_sentence(&self, sentence: &str) -> Result<String, LumenError> {
+        let url = format!(
+            "{}/chat/completions",
+            self.config.base_url.trim_end_matches('/')
+        );
+        let body = ChatRequest {
+            model: self.config.model.clone(),
+            messages: vec![
+                Message {
+                    role: "system".into(),
+                    content:
+                        "You are a professional translator. Always respond with valid JSON only."
+                            .into(),
+                },
+                Message {
+                    role: "user".into(),
+                    content: self.build_sentence_prompt(sentence),
+                },
+            ],
+            response_format: ResponseFormat {
+                kind: "json_object".into(),
+            },
+        };
+
+        let resp = self
+            .client
+            .post(&url)
+            .bearer_auth(&self.config.api_key)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| LumenError::LlmApiError {
+                message: e.to_string(),
+            })?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(LumenError::LlmApiError {
+                message: format!("HTTP {status}: {text}"),
+            });
+        }
+
+        let chat: ChatResponse = resp.json().await.map_err(|e| LumenError::LlmApiError {
+            message: e.to_string(),
+        })?;
+
+        let content = chat
+            .choices
+            .into_iter()
+            .next()
+            .map(|c| c.message.content)
+            .unwrap_or_default();
+
+        // Parse the simple JSON response
+        #[derive(Deserialize)]
+        struct SentenceTranslationJson {
+            translation: Option<String>,
+        }
+        let parsed: SentenceTranslationJson =
+            serde_json::from_str(&content).map_err(|e| LumenError::SerializationError {
+                message: e.to_string(),
+            })?;
+
+        Ok(parsed.translation.unwrap_or_default())
+    }
 }
 
 #[derive(Serialize)]
@@ -155,6 +244,8 @@ impl Translator for LlmTranslator {
             context_sentence_translation: parsed.context_sentence_translation.unwrap_or_default(),
             source: "llm".to_string(),
             llm_error_message: String::new(),
+            fallback_error_message: String::new(),
+            is_complete_failure: false,
         })
     }
 }

@@ -3,7 +3,7 @@ import AppKit
 import PDFKit
 import Combine
 
-enum MainTab { case reader, vocabulary }
+enum MainTab { case reader, vocabulary, notes }
 
 @MainActor
 final class AppState: ObservableObject {
@@ -29,6 +29,7 @@ final class AppState: ObservableObject {
         }
     }
     @Published var vocabulary: [VocabularyEntry] = []
+    @Published var notes: [NoteEntry] = []
     @Published var activeTab: MainTab = .reader
     @Published var toastMessage: String?
 
@@ -57,6 +58,10 @@ final class AppState: ObservableObject {
 
     func refreshVocabulary() {
         vocabulary = (try? bridge.listVocabulary()) ?? []
+    }
+
+    func refreshNotes() {
+        notes = (try? bridge.listNotes()) ?? []
     }
 
     func openFilePicker() {

@@ -17,12 +17,14 @@
 		648EECC19E4D6B643AE2502D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 86397D3859663CD7D5B07982 /* Assets.xcassets */; };
 		751E131F4EA169979C86BE05 /* VocabularyListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D66F2D5BF54DF0277E8B8F5 /* VocabularyListView.swift */; };
 		782238EECEFDCFCC4C6F4807 /* BridgeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D971163E74432C8E4D8E88B6 /* BridgeService.swift */; };
+		7CD0D064B6A78DE229C10ADF /* NoteListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 289641D4E088EC11218E96E7 /* NoteListView.swift */; };
 		7F3CC90F36A5EE8DA40DDAE6 /* LibrarySidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBADA67AFE4CCA308FE5ECE3 /* LibrarySidebarView.swift */; };
 		8246E924EA83D6F6405B17CF /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD4E62576C65814E3950EBA5 /* KeychainService.swift */; };
 		848778EA79429D8021B4DD18 /* ReadingSessionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 809C1E40B8B6298D0717419D /* ReadingSessionService.swift */; };
 		9257B0414A31CB31C2441A29 /* liblumen_pdf_core.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = FDAFB107C96F1EAEFC542766 /* liblumen_pdf_core.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		AF82E5794BAC9B20BC7C6746 /* TranslationErrorFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64617D1512820E56274C1747 /* TranslationErrorFormatter.swift */; };
 		B308BE40E9C7A5E667FB725E /* TranslationBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = C67FF397B0476E532E9D1AFE /* TranslationBubble.swift */; };
+		C30E64BC2A1D11DB6F4E8D3F /* AnnotationPersistenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D3B4F729F31701EFC6C20E3 /* AnnotationPersistenceService.swift */; };
 		DA410654D0FCF8C48775E83D /* LumenPDFApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66589F46D22ED6A1DCCCB8A8 /* LumenPDFApp.swift */; };
 		DD2BBDABC05C216597F66BE9 /* PDFReaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32758932B2FC895E4526CA2E /* PDFReaderView.swift */; };
 		E23D236734A52E85A8BA40C8 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92D0F2DE24CFD041786B3ED5 /* ContentView.swift */; };
@@ -46,6 +48,8 @@
 /* Begin PBXFileReference section */
 		0CAE0AF4D6907DA0DFD2F1BE /* LumenPDF.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LumenPDF.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		0D66F2D5BF54DF0277E8B8F5 /* VocabularyListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabularyListView.swift; sourceTree = "<group>"; };
+		289641D4E088EC11218E96E7 /* NoteListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteListView.swift; sourceTree = "<group>"; };
+		2D3B4F729F31701EFC6C20E3 /* AnnotationPersistenceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnotationPersistenceService.swift; sourceTree = "<group>"; };
 		32758932B2FC895E4526CA2E /* PDFReaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFReaderView.swift; sourceTree = "<group>"; };
 		4C7DB11713DA8AACF51DC35F /* ContextSentenceFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextSentenceFormatting.swift; sourceTree = "<group>"; };
 		64617D1512820E56274C1747 /* TranslationErrorFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationErrorFormatter.swift; sourceTree = "<group>"; };
@@ -86,6 +90,7 @@
 				92D0F2DE24CFD041786B3ED5 /* ContentView.swift */,
 				4C7DB11713DA8AACF51DC35F /* ContextSentenceFormatting.swift */,
 				CBADA67AFE4CCA308FE5ECE3 /* LibrarySidebarView.swift */,
+				289641D4E088EC11218E96E7 /* NoteListView.swift */,
 				9B661E810829DCB71DA2BB60 /* PDFOutlineSidebarView.swift */,
 				32758932B2FC895E4526CA2E /* PDFReaderView.swift */,
 				AAADF103642AE411F00A83B2 /* SettingsView.swift */,
@@ -98,6 +103,7 @@
 		28B6CB79ED534223E8AC25BB /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				2D3B4F729F31701EFC6C20E3 /* AnnotationPersistenceService.swift */,
 				DCF17425FFE3A224B125B14E /* AudioService.swift */,
 				D971163E74432C8E4D8E88B6 /* BridgeService.swift */,
 				FD4E62576C65814E3950EBA5 /* KeychainService.swift */,
@@ -230,6 +236,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C30E64BC2A1D11DB6F4E8D3F /* AnnotationPersistenceService.swift in Sources */,
 				F2CDC7FD8BBAD40DD2870EBF /* AppState.swift in Sources */,
 				482C829E5FEBA2F21ABA0AE9 /* AudioService.swift in Sources */,
 				782238EECEFDCFCC4C6F4807 /* BridgeService.swift in Sources */,
@@ -238,6 +245,7 @@
 				8246E924EA83D6F6405B17CF /* KeychainService.swift in Sources */,
 				7F3CC90F36A5EE8DA40DDAE6 /* LibrarySidebarView.swift in Sources */,
 				DA410654D0FCF8C48775E83D /* LumenPDFApp.swift in Sources */,
+				7CD0D064B6A78DE229C10ADF /* NoteListView.swift in Sources */,
 				1011ADF9B649FC6D3C1EBDA3 /* PDFOutlineSidebarView.swift in Sources */,
 				DD2BBDABC05C216597F66BE9 /* PDFReaderView.swift in Sources */,
 				848778EA79429D8021B4DD18 /* ReadingSessionService.swift in Sources */,

@@ -1,6 +1,8 @@
+use crate::application::note::use_case::NoteUseCase;
 use crate::application::pdf_document::use_case::PdfDocumentUseCase;
 use crate::application::translation::use_case::TranslationUseCase;
 use crate::application::vocabulary::use_case::VocabularyUseCase;
+use crate::domain::note::entity::{NoteEntry, SaveNoteRequest, UpdateNoteRequest};
 use crate::domain::pdf_document::entity::{PdfDocument, UpsertPdfRequest};
 use crate::domain::translation::entity::{TranslationRequest, TranslationResult};
 use crate::domain::vocabulary::entity::{
@@ -9,8 +11,8 @@ use crate::domain::vocabulary::entity::{
 use crate::error::LumenError;
 use crate::infrastructure::db::{self, DbPool};
 use crate::infrastructure::db::{
-    pdf_document_repo::SqlitePdfDocumentRepo, translation_cache_repo::SqliteTranslationCacheRepo,
-    vocabulary_repo::SqliteVocabularyRepo,
+    note_repo::SqliteNoteRepo, pdf_document_repo::SqlitePdfDocumentRepo,
+    translation_cache_repo::SqliteTranslationCacheRepo, vocabulary_repo::SqliteVocabularyRepo,
 };
 use crate::infrastructure::translator::{
     fallback_translator::FallbackTranslator,
@@ -109,6 +111,31 @@ pub async fn translate(request: TranslationRequest) -> Result<TranslationResult,
         .await
 }
 
+/// Translate a full sentence without word-level analysis.
+/// Use this when the user selects a phrase/sentence instead of a single word.
+#[uniffi::export(async_runtime = "tokio")]
+pub async fn translate_sentence(sentence: String) -> Result<TranslationResult, LumenError> {
+    let config = llm_config()?;
+    let llm = LlmTranslator::new(config.clone());
+
+    // Use LLM to translate the sentence directly
+    let translation = llm.translate_sentence(&sentence).await?;
+
+    Ok(TranslationResult {
+        word: sentence.clone(),
+        phonetic: String::new(),
+        part_of_speech: String::new(),
+        context_translation: String::new(),
+        context_explanation: String::new(),
+        general_definition: String::new(),
+        context_sentence_translation: translation,
+        source: "llm".to_string(),
+        llm_error_message: String::new(),
+        fallback_error_message: String::new(),
+        is_complete_failure: false,
+    })
+}
+
 // ── Vocabulary API ───────────────────────────────────────────────────────────
 
 #[uniffi::export]
@@ -183,4 +210,37 @@ pub fn list_pdf_documents() -> Result<Vec<PdfDocument>, LumenError> {
 pub fn delete_pdf_document(file_path: String) -> Result<(), LumenError> {
     PdfDocumentUseCase::new(Arc::new(SqlitePdfDocumentRepo::new(pool()?.clone())))
         .delete(&file_path)
+}
+
+// ── Note API ───────────────────────────────────────────────────────────────
+
+#[uniffi::export]
+pub fn save_note(req: SaveNoteRequest) -> Result<NoteEntry, LumenError> {
+    NoteUseCase::new(Arc::new(SqliteNoteRepo::new(pool()?.clone()))).save(req)
+}
+
+#[uniffi::export]
+pub fn list_notes() -> Result<Vec<NoteEntry>, LumenError> {
+    NoteUseCase::new(Arc::new(SqliteNoteRepo::new(pool()?.clone()))).list()
+}
+
+#[uniffi::export]
+pub fn list_notes_by_pdf(pdf_path: String) -> Result<Vec<NoteEntry>, LumenError> {
+    NoteUseCase::new(Arc::new(SqliteNoteRepo::new(pool()?.clone()))).list_by_pdf(&pdf_path)
+}
+
+#[uniffi::export]
+pub fn delete_note(id: String) -> Result<(), LumenError> {
+    NoteUseCase::new(Arc::new(SqliteNoteRepo::new(pool()?.clone()))).delete(&id)
+}
+
+#[uniffi::export]
+pub fn update_note(req: UpdateNoteRequest) -> Result<NoteEntry, LumenError> {
+    NoteUseCase::new(Arc::new(SqliteNoteRepo::new(pool()?.clone()))).update(req)
+}
+
+#[uniffi::export]
+pub fn export_notes_markdown(pdf_path: Option<String>) -> Result<String, LumenError> {
+    NoteUseCase::new(Arc::new(SqliteNoteRepo::new(pool()?.clone())))
+        .export_markdown(pdf_path.as_deref())
 }
