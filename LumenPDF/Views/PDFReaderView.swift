@@ -78,8 +78,25 @@ struct PDFReaderView: View {
                 TranslationBubble(
                     request: req,
                     isLoading: isTranslating,
-                    onSave: { result in saveToDiary(result: result, request: req) },
+                    onSave: { result in
+                        if req.isSentenceMode {
+                            saveSentenceToNote(result: result, request: req)
+                        } else {
+                            saveToDiary(result: result, request: req)
+                        }
+                    },
                     onDelete: { deletedId in
+                        // Remove underline annotation if it was saved as a note
+                        NotificationCenter.default.post(
+                            name: .removeUnderlineNote,
+                            object: nil,
+                            userInfo: [
+                                "noteId": deletedId,
+                                "pageIndex": req.page,
+                                "filePath": document.filePath
+                            ]
+                        )
+                        // Also try to remove highlight (in case it was saved as vocabulary)
                         NotificationCenter.default.post(
                             name: .removeHighlight,
                             object: nil,
@@ -90,6 +107,7 @@ struct PDFReaderView: View {
                             ]
                         )
                         appState.refreshVocabulary()
+                        appState.refreshNotes()
                     },
                     onDismiss: { translationRequest = nil }
                 )
@@ -321,6 +339,46 @@ struct PDFReaderView: View {
         appState.refreshVocabulary()
         appState.showToast("已保存「\(entry.word)」")
         return entry.id
+    }
+
+    // MARK: - Save sentence translation to notes
+
+    @discardableResult
+    private func saveSentenceToNote(result: TranslationResult, request: TranslationBubbleRequest) -> String? {
+        BridgeService.shared.initializeIfNeeded()
+
+        // Get translation text (prefer contextSentenceTranslation, fallback to contextTranslation)
+        let translation = result.contextSentenceTranslation.isEmpty
+            ? result.contextTranslation
+            : result.contextSentenceTranslation
+
+        guard let noteEntry = try? BridgeService.shared.saveNote(
+            pdfPath: document.filePath,
+            pdfName: document.fileName,
+            pageIndex: UInt32(request.page),
+            content: request.word,
+            note: translation,
+            boundsStr: request.boundsStr
+        ) else {
+            appState.showToast("保存笔记失败")
+            return nil
+        }
+
+        // Add underline annotation linked to the note
+        NotificationCenter.default.post(
+            name: .addUnderlineNote,
+            object: nil,
+            userInfo: [
+                "noteId": noteEntry.id,
+                "pageIndex": request.page,
+                "boundsStr": request.boundsStr,
+                "filePath": document.filePath
+            ]
+        )
+
+        appState.refreshNotes()
+        appState.showToast("已保存到笔记")
+        return noteEntry.id
     }
 }
 
@@ -573,7 +631,7 @@ struct PDFKitView: NSViewRepresentable {
 
             let annType: PDFAnnotationSubtype = typeStr == "underline" ? .underline : .highlight
             let color: NSColor = typeStr == "underline"
-                ? NSColor.systemRed.withAlphaComponent(0.7)
+                ? NSColor(red: 1.0, green: 0.23, blue: 0.19, alpha: 0.85)
                 : NSColor.systemYellow.withAlphaComponent(0.5)
             let tag = typeStr == "underline" ? "__fu" : "__fh"
             let undoLabel = typeStr == "underline" ? "划线" : "高亮"

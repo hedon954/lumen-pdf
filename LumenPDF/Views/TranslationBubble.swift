@@ -10,6 +10,8 @@ struct TranslationBubble: View {
 
     @StateObject private var audio = AudioService()
     @State private var savedEntryId: String?
+    /// Tracks whether the saved entry is a note (sentence mode) or vocabulary entry
+    @State private var savedToNote: Bool = false
 
     // Drag offset — updated directly from AppKit mouse events (no SwiftUI gesture layer)
     @State private var offset: CGSize = .zero
@@ -333,10 +335,14 @@ struct TranslationBubble: View {
             Spacer()
             if let entryId = savedEntryId {
                 HStack(spacing: 12) {
-                    Label("已保存", systemImage: "checkmark.circle.fill")
+                    Label(savedToNote ? "已保存到笔记" : "已保存", systemImage: "checkmark.circle.fill")
                         .font(.callout).foregroundStyle(.green)
                     Button(role: .destructive) {
-                        try? BridgeService.shared.deleteVocabulary(id: entryId)
+                        if savedToNote {
+                            try? BridgeService.shared.deleteNote(id: entryId)
+                        } else {
+                            try? BridgeService.shared.deleteVocabulary(id: entryId)
+                        }
                         savedEntryId = nil
                         onDelete(entryId)
                     } label: {
@@ -347,8 +353,13 @@ struct TranslationBubble: View {
             } else {
                 Button {
                     savedEntryId = onSave(result)
+                    savedToNote = request.isSentenceMode
                 } label: {
-                    Label("保存到单词本", systemImage: "bookmark")
+                    if request.isSentenceMode {
+                        Label("保存到笔记", systemImage: "note.text")
+                    } else {
+                        Label("保存到单词本", systemImage: "bookmark")
+                    }
                 }
                 .buttonStyle(.borderedProminent)
             }
