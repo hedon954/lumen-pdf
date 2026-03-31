@@ -199,11 +199,34 @@ struct PDFReaderView: View {
         )
     }
 
-    /// 划线并自动保存为笔记
+    /// 划线并自动保存为笔记（支持 toggle：重复点击则删除）
     private func saveUnderlineNote(word: String, boundsStr: String, page: Int) {
         BridgeService.shared.initializeIfNeeded()
 
-        // 先保存笔记
+        // 先检查是否已存在相同选区的笔记（toggle 逻辑）
+        if let existingNotes = try? BridgeService.shared.listNotesByPdf(pdfPath: document.filePath) {
+            let matchingNote = existingNotes.first { note in
+                note.pageIndex == UInt32(page) && note.boundsStr == boundsStr
+            }
+            if let match = matchingNote {
+                // 已存在 → 删除笔记和划线
+                try? BridgeService.shared.deleteNote(id: match.id)
+                NotificationCenter.default.post(
+                    name: .removeUnderlineNote,
+                    object: nil,
+                    userInfo: [
+                        "noteId": match.id,
+                        "pageIndex": page,
+                        "filePath": document.filePath
+                    ]
+                )
+                appState.refreshNotes()
+                appState.showToast("已移除笔记")
+                return
+            }
+        }
+
+        // 不存在 → 保存新笔记
         guard let noteEntry = try? BridgeService.shared.saveNote(
             pdfPath: document.filePath,
             pdfName: document.fileName,
@@ -758,7 +781,7 @@ struct PDFKitView: NSViewRepresentable {
             // 使用笔记 ID 作为 userName，方便后续删除
             for rect in lineRects {
                 let ann = PDFAnnotation(bounds: rect, forType: .underline, withProperties: nil)
-                ann.color = NSColor.systemRed.withAlphaComponent(0.7)
+                ann.color = NSColor(red: 1.0, green: 0.23, blue: 0.19, alpha: 0.85)
                 ann.userName = noteId
                 ann.contents = "note:\(noteId)"
                 page.addAnnotation(ann)
