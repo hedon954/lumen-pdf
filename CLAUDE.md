@@ -109,6 +109,53 @@ SQLite cache → LLM (OpenAI-compatible) → MyMemory API
 
 Cache writes only on LLM success; fallback results are not cached.
 
+## Database Schema Changes
+
+All database schema changes must follow these rules:
+
+1. **Forward Compatibility**: New columns must have default values or allow NULL
+2. **Use `sqlx` migrations**: Use `sqlx migrate add <name>` to create migration scripts
+3. **Migration location**: `lumen-pdf-core/migrations/`
+4. **Breaking changes**: If you must drop columns or change types, provide data migration logic to prevent data loss
+5. **Testing**: Verify migration scripts in a test environment before deployment
+
+### Migration Commands
+
+```bash
+# Create a new migration
+cd lumen-pdf-core && sqlx migrate add <migration_name>
+
+# Run migrations
+cd lumen-pdf-core && sqlx migrate run
+
+# Revert migration
+cd lumen-pdf-core && sqlx migrate revert
+```
+
+### Migration Script Example
+
+```sql
+-- Adding a new column (forward compatible)
+ALTER TABLE notes ADD COLUMN translation TEXT DEFAULT '';
+
+-- Data migration for breaking changes
+CREATE TABLE notes_new (
+    id TEXT PRIMARY KEY,
+    pdf_path TEXT NOT NULL,
+    pdf_name TEXT NOT NULL,
+    page_index INTEGER NOT NULL,
+    content TEXT NOT NULL,
+    note TEXT NOT NULL,
+    translation TEXT DEFAULT '',
+    bounds_str TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+);
+
+INSERT INTO notes_new SELECT id, pdf_path, pdf_name, page_index, content, note, '', bounds_str, created_at FROM notes;
+DROP TABLE notes;
+ALTER TABLE notes_new RENAME TO notes;
+```
+
 ## Key Files
 
 - PRD: `docs/prd/prd-2026-03-22.md`
