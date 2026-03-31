@@ -135,6 +135,9 @@ struct PDFReaderView: View {
             .opacity(0)
         }
         .id(document.id)
+        .onReceive(NotificationCenter.default.publisher(for: .refreshNotesList)) { _ in
+            appState.refreshNotes()
+        }
     }
 
     // MARK: - Selection Action Bar
@@ -199,34 +202,71 @@ struct PDFReaderView: View {
         )
     }
 
-    /// 划线并自动保存为笔记（支持 toggle：重复点击则删除）
+    /// 划线并自动保存为笔记（支持 toggle 和合并重叠笔记）
     private func saveUnderlineNote(word: String, boundsStr: String, page: Int) {
         BridgeService.shared.initializeIfNeeded()
 
-        // 先检查是否已存在相同选区的笔记（toggle 逻辑）
-        if let existingNotes = try? BridgeService.shared.listNotesByPdf(pdfPath: document.filePath) {
-            let matchingNote = existingNotes.first { note in
-                note.pageIndex == UInt32(page) && note.boundsStr == boundsStr
-            }
-            if let match = matchingNote {
-                // 已存在 → 删除笔记和划线
-                try? BridgeService.shared.deleteNote(id: match.id)
-                NotificationCenter.default.post(
-                    name: .removeUnderlineNote,
-                    object: nil,
-                    userInfo: [
-                        "noteId": match.id,
-                        "pageIndex": page,
-                        "filePath": document.filePath
-                    ]
-                )
-                appState.refreshNotes()
-                appState.showToast("已移除笔记")
-                return
+        // 解析新选区的 rects
+        let newRects = Self.parseAnnotationRectsStatic(boundsStr)
+        let newUnion = newRects.dropFirst().reduce(newRects.first ?? .zero) { $0.union($1) }
+
+        // 获取当前 PDF 的所有笔记
+        guard let existingNotes = try? BridgeService.shared.listNotesByPdf(pdfPath: document.filePath) else {
+            appState.showToast("保存笔记失败")
+            return
+        }
+
+        // 检查是否已存在完全相同的笔记（toggle 逻辑）
+        let exactMatch = existingNotes.first { note in
+            note.pageIndex == UInt32(page) && note.boundsStr == boundsStr
+        }
+        if let match = exactMatch {
+            // 已存在相同选区 → 删除笔记和划线
+            try? BridgeService.shared.deleteNote(id: match.id)
+            NotificationCenter.default.post(
+                name: .removeUnderlineNote,
+                object: nil,
+                userInfo: [
+                    "noteId": match.id,
+                    "pageIndex": page,
+                    "filePath": document.filePath
+                ]
+            )
+            appState.refreshNotes()
+            appState.showToast("已移除笔记")
+            return
+        }
+
+        // 检查是否有重叠的笔记（合并逻辑）
+        let samePageNotes = existingNotes.filter { $0.pageIndex == UInt32(page) }
+        var overlappingNotes: [NoteEntry] = []
+        for note in samePageNotes {
+            let noteRects = Self.parseAnnotationRectsStatic(note.boundsStr)
+            let noteUnion = noteRects.dropFirst().reduce(noteRects.first ?? .zero) { $0.union($1) }
+            if newUnion.intersects(noteUnion) || newUnion.contains(noteUnion) || noteUnion.contains(newUnion) {
+                overlappingNotes.append(note)
             }
         }
 
-        // 不存在 → 保存新笔记
+        // 保存被删除笔记的信息（用于撤销恢复）
+        let deletedNotesInfo = overlappingNotes.map { note in
+            NoteUndoInfo(
+                id: note.id,
+                pdfPath: note.pdfPath,
+                pdfName: note.pdfName,
+                pageIndex: note.pageIndex,
+                content: note.content,
+                note: note.note,
+                boundsStr: note.boundsStr
+            )
+        }
+
+        // 删除重叠的旧笔记
+        for note in overlappingNotes {
+            try? BridgeService.shared.deleteNote(id: note.id)
+        }
+
+        // 创建新笔记
         guard let noteEntry = try? BridgeService.shared.saveNote(
             pdfPath: document.filePath,
             pdfName: document.fileName,
@@ -235,11 +275,22 @@ struct PDFReaderView: View {
             note: "",
             boundsStr: boundsStr
         ) else {
+            // 恢复被删除的笔记
+            for info in deletedNotesInfo {
+                _ = try? BridgeService.shared.saveNote(
+                    pdfPath: info.pdfPath,
+                    pdfName: info.pdfName,
+                    pageIndex: info.pageIndex,
+                    content: info.content,
+                    note: info.note,
+                    boundsStr: info.boundsStr
+                )
+            }
             appState.showToast("保存笔记失败")
             return
         }
 
-        // 再添加划线，使用笔记 ID 作为 userName
+        // 发送通知添加划线，包含需要删除的旧划线 ID 和撤销信息
         NotificationCenter.default.post(
             name: .addUnderlineNote,
             object: nil,
@@ -247,12 +298,31 @@ struct PDFReaderView: View {
                 "noteId": noteEntry.id,
                 "pageIndex": page,
                 "boundsStr": boundsStr,
-                "filePath": document.filePath
+                "filePath": document.filePath,
+                "deletedNoteIds": overlappingNotes.map { $0.id },
+                "deletedNotesInfo": deletedNotesInfo,
+                "newNoteInfo": NoteUndoInfo(
+                    id: noteEntry.id,
+                    pdfPath: document.filePath,
+                    pdfName: document.fileName,
+                    pageIndex: UInt32(page),
+                    content: word,
+                    note: "",
+                    boundsStr: boundsStr
+                )
             ]
         )
 
         appState.refreshNotes()
-        appState.showToast("已添加笔记")
+        appState.showToast(overlappingNotes.isEmpty ? "已添加笔记" : "已合并 \(overlappingNotes.count + 1) 个笔记")
+    }
+
+    /// 静态方法解析 boundsStr，供多处使用
+    private static func parseAnnotationRectsStatic(_ boundsStr: String) -> [CGRect] {
+        boundsStr.components(separatedBy: "|").compactMap { part -> CGRect? in
+            let r = NSRectFromString(part)
+            return r.isEmpty ? nil : r
+        }
     }
 
     // MARK: - Document loaded
@@ -639,6 +709,13 @@ struct PDFKitView: NSViewRepresentable {
             }
         }
 
+        /// Snapshot for undo/redo of note-linked underline annotations.
+        private struct NoteAnnotationSnapshot {
+            let noteId: String
+            let bounds: CGRect
+            let color: NSColor
+        }
+
         @objc func addFreeAnnotation(_ notification: Notification) {
             guard let typeStr   = notification.userInfo?["annotationType"] as? String,
                   let pageIndex = notification.userInfo?["pageIndex"]      as? Int,
@@ -764,7 +841,7 @@ struct PDFKitView: NSViewRepresentable {
 
         // MARK: Underline note (划线 + 笔记)
 
-        /// 添加划线笔记（划线 + 自动保存到笔记）
+        /// 添加划线笔记（划线 + 自动保存到笔记，支持合并和撤销）
         @objc func addUnderlineNote(_ notification: Notification) {
             guard let noteId     = notification.userInfo?["noteId"]     as? String,
                   let pageIndex  = notification.userInfo?["pageIndex"]  as? Int,
@@ -778,15 +855,129 @@ struct PDFKitView: NSViewRepresentable {
             let lineRects = Self.parseAnnotationRects(boundsStr)
             guard !lineRects.isEmpty else { return }
 
-            // 使用笔记 ID 作为 userName，方便后续删除
+            // 获取需要删除的旧划线标注的 noteId 列表
+            let deletedNoteIds = notification.userInfo?["deletedNoteIds"] as? [String] ?? []
+            let deletedNotesInfo = notification.userInfo?["deletedNotesInfo"] as? [NoteUndoInfo] ?? []
+            let newNoteInfo = notification.userInfo?["newNoteInfo"] as? NoteUndoInfo
+
+            // 移除旧划线标注（合并场景）
+            var removedSnapshots: [NoteAnnotationSnapshot] = []
+            for oldNoteId in deletedNoteIds {
+                let oldAnns = page.annotations.filter { $0.userName == oldNoteId }
+                for ann in oldAnns {
+                    removedSnapshots.append(NoteAnnotationSnapshot(
+                        noteId: oldNoteId,
+                        bounds: ann.bounds,
+                        color: ann.color ?? NSColor.systemRed
+                    ))
+                    page.removeAnnotation(ann)
+                }
+            }
+
+            // 添加新划线标注
+            var addedAnnotations: [PDFAnnotation] = []
             for rect in lineRects {
                 let ann = PDFAnnotation(bounds: rect, forType: .underline, withProperties: nil)
                 ann.color = NSColor(red: 0.8, green: 0, blue: 0, alpha: 1.0)
                 ann.userName = noteId
                 ann.contents = "note:\(noteId)"
                 page.addAnnotation(ann)
+                addedAnnotations.append(ann)
             }
+
             triggerAnnotationSave()
+
+            // 注册撤销操作
+            if let undo = pdfView.undoManager, let newInfo = newNoteInfo {
+                let capturedRemovedSnapshots = removedSnapshots
+                let capturedDeletedNotesInfo = deletedNotesInfo
+                undo.registerUndo(withTarget: self) { coordinator in
+                    coordinator.undoUnderlineNote(
+                        page: page,
+                        addedAnnotations: addedAnnotations,
+                        removedSnapshots: capturedRemovedSnapshots,
+                        newNoteInfo: newInfo,
+                        deletedNotesInfo: capturedDeletedNotesInfo,
+                        filePath: filePath
+                    )
+                }
+                undo.setActionName("划线笔记")
+            }
+        }
+
+        /// 撤销划线笔记操作
+        private func undoUnderlineNote(
+            page: PDFPage,
+            addedAnnotations: [PDFAnnotation],
+            removedSnapshots: [NoteAnnotationSnapshot],
+            newNoteInfo: NoteUndoInfo,
+            deletedNotesInfo: [NoteUndoInfo],
+            filePath: String
+        ) {
+            guard let undo = pdfView?.undoManager else { return }
+
+            // 移除新添加的划线标注
+            for ann in addedAnnotations {
+                page.removeAnnotation(ann)
+            }
+
+            // 恢复旧的划线标注
+            var restoredAnnotations: [PDFAnnotation] = []
+            for snap in removedSnapshots {
+                let ann = PDFAnnotation(bounds: snap.bounds, forType: .underline, withProperties: nil)
+                ann.color = snap.color
+                ann.userName = snap.noteId
+                ann.contents = "note:\(snap.noteId)"
+                page.addAnnotation(ann)
+                restoredAnnotations.append(ann)
+            }
+
+            triggerAnnotationSave()
+
+            // 通知 Swift 层恢复/删除笔记
+            // 删除新笔记
+            try? BridgeService.shared.deleteNote(id: newNoteInfo.id)
+            // 恢复旧笔记
+            for info in deletedNotesInfo {
+                _ = try? BridgeService.shared.saveNote(
+                    pdfPath: info.pdfPath,
+                    pdfName: info.pdfName,
+                    pageIndex: info.pageIndex,
+                    content: info.content,
+                    note: info.note,
+                    boundsStr: info.boundsStr
+                )
+            }
+            // 刷新笔记列表
+            NotificationCenter.default.post(name: .refreshNotesList, object: nil)
+
+            // 注册重做操作
+            let capturedDeletedNotesInfo = deletedNotesInfo
+            undo.registerUndo(withTarget: self) { coordinator in
+                // 重做：重新删除旧笔记，创建新笔记
+                for info in capturedDeletedNotesInfo {
+                    try? BridgeService.shared.deleteNote(id: info.id)
+                }
+                _ = try? BridgeService.shared.saveNote(
+                    pdfPath: newNoteInfo.pdfPath,
+                    pdfName: newNoteInfo.pdfName,
+                    pageIndex: newNoteInfo.pageIndex,
+                    content: newNoteInfo.content,
+                    note: newNoteInfo.note,
+                    boundsStr: newNoteInfo.boundsStr
+                )
+                // 重新添加/移除标注
+                for ann in restoredAnnotations {
+                    page.removeAnnotation(ann)
+                }
+                for ann in addedAnnotations {
+                    page.addAnnotation(ann)
+                }
+                coordinator.triggerAnnotationSave()
+                // 刷新笔记列表
+                NotificationCenter.default.post(name: .refreshNotesList, object: nil)
+            }
+            undo.setActionName("划线笔记")
         }
 
         /// 删除划线笔记时移除对应的划线标注
@@ -1116,6 +1307,7 @@ extension Notification.Name {
     static let removeUnderlineNote    = Notification.Name("removeUnderlineNote")
     static let saveReadingPositionNow = Notification.Name("saveReadingPositionNow")
     static let windowDidDeminiaturize = Notification.Name("windowDidDeminiaturize")
+    static let refreshNotesList       = Notification.Name("refreshNotesList")
 }
 
 // MARK: - Supporting types
@@ -1148,4 +1340,15 @@ struct TranslationBubbleRequest: Identifiable, Equatable {
             && lhs.existingEntryId == rhs.existingEntryId
             && lhs.isSentenceMode == rhs.isSentenceMode
     }
+}
+
+/// 用于撤销操作时存储笔记信息
+struct NoteUndoInfo {
+    let id: String
+    let pdfPath: String
+    let pdfName: String
+    let pageIndex: UInt32
+    let content: String
+    let note: String
+    let boundsStr: String
 }
