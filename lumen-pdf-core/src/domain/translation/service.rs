@@ -1,6 +1,6 @@
 use super::{
     entity::{TranslationRequest, TranslationResult, TranslationSource},
-    repository::{StreamProgress, TranslationCacheRepository, Translator},
+    repository::{PhoneticProvider, StreamProgress, TranslationCacheRepository, Translator},
 };
 use crate::error::LumenError;
 use sha2::{Digest, Sha256};
@@ -10,6 +10,22 @@ pub struct TranslationDomainService {
     cache: Arc<dyn TranslationCacheRepository>,
     llm: Arc<dyn Translator>,
     fallback: Arc<dyn Translator>,
+    /// Optional authoritative source of (American) IPA for single words. When
+    /// present, it overrides the LLM-produced `phonetic`, which is frequently
+    /// inaccurate. Best-effort: a `None` result leaves the existing phonetic
+    /// untouched.
+    phonetic: Option<Arc<dyn PhoneticProvider>>,
+}
+
+/// A selection is eligible for dictionary-based phonetic enrichment only when
+/// it is a single English word. The dictionary API takes one word at a time and
+/// returns nothing useful for phrases / sentences, so we skip those entirely.
+fn is_single_word(text: &str) -> bool {
+    let trimmed = text.trim();
+    !trimmed.is_empty()
+        && trimmed
+            .chars()
+            .all(|c| c.is_alphabetic() || c == '-' || c == '\'')
 }
 
 impl TranslationDomainService {
@@ -22,13 +38,36 @@ impl TranslationDomainService {
             cache,
             llm,
             fallback,
+            phonetic: None,
         }
+    }
+
+    /// Attach a phonetic provider used to override the LLM's IPA for single
+    /// words. Chainable so `interfaces` can inject it during construction.
+    pub fn with_phonetic(mut self, provider: Arc<dyn PhoneticProvider>) -> Self {
+        self.phonetic = Some(provider);
+        self
     }
 
     pub fn sentence_hash(sentence: &str) -> String {
         let mut hasher = Sha256::new();
         hasher.update(sentence.to_lowercase().as_bytes());
         hex::encode(hasher.finalize())
+    }
+
+    /// Best-effort lookup of an authoritative phonetic for `word`. Returns
+    /// `None` when no provider is configured, the selection isn't a single
+    /// word, or the provider yields nothing usable.
+    async fn fetch_phonetic_override(&self, word: &str) -> Option<String> {
+        let provider = self.phonetic.as_ref()?;
+        if !is_single_word(word) {
+            return None;
+        }
+        provider
+            .fetch_phonetic(word.trim())
+            .await
+            .map(|p| p.trim().to_string())
+            .filter(|p| !p.is_empty())
     }
 
     pub async fn translate(
@@ -41,20 +80,34 @@ impl TranslationDomainService {
         // Level 1: local cache
         if let Some(mut cached) = self.cache.get(&word_lower, &hash)? {
             cached.source = TranslationSource::Cache.to_string();
+            // Backfill an authoritative phonetic for older cache entries that
+            // were stored before a provider was available (empty phonetic).
+            if cached.phonetic.trim().is_empty() {
+                if let Some(p) = self.fetch_phonetic_override(&request.word).await {
+                    cached.phonetic = p;
+                }
+            }
             return Ok(cached);
         }
 
-        // Level 2: LLM
-        let llm_failure_note: Option<String> =
-            match self.llm.translate(&request.word, &request.sentence).await {
-                Ok(mut result) => {
-                    result.source = TranslationSource::Llm.to_string();
-                    result.llm_error_message = String::new();
-                    let _ = self.cache.set(&word_lower, &hash, &result);
-                    return Ok(result);
+        // Level 2: LLM. Fetch the authoritative phonetic concurrently so it
+        // adds no latency on top of the (slower) LLM round-trip.
+        let (llm_res, phonetic) = tokio::join!(
+            self.llm.translate(&request.word, &request.sentence),
+            self.fetch_phonetic_override(&request.word),
+        );
+        let llm_failure_note: Option<String> = match llm_res {
+            Ok(mut result) => {
+                result.source = TranslationSource::Llm.to_string();
+                result.llm_error_message = String::new();
+                if let Some(p) = &phonetic {
+                    result.phonetic = p.clone();
                 }
-                Err(e) => Some(e.user_hint_zh()),
-            };
+                let _ = self.cache.set(&word_lower, &hash, &result);
+                return Ok(result);
+            }
+            Err(e) => Some(e.user_hint_zh()),
+        };
 
         // Level 3: fallback (MyMemory), not cached
         match self
@@ -67,6 +120,9 @@ impl TranslationDomainService {
                 result.llm_error_message = llm_failure_note.unwrap_or_default();
                 result.fallback_error_message = String::new();
                 result.is_complete_failure = false;
+                if let Some(p) = &phonetic {
+                    result.phonetic = p.clone();
+                }
                 Ok(result)
             }
             Err(fallback_err) => {
@@ -111,12 +167,19 @@ impl TranslationDomainService {
         // Level 1: local cache
         if let Some(mut cached) = self.cache.get(&word_lower, &hash)? {
             cached.source = TranslationSource::Cache.to_string();
+            if cached.phonetic.trim().is_empty() {
+                if let Some(p) = self.fetch_phonetic_override(&request.word).await {
+                    cached.phonetic = p;
+                }
+            }
             emit(cached.clone());
             return Ok(cached);
         }
 
         // Level 2: LLM (streaming). The forwarder stamps the canonical source
-        // on each partial result before passing it through.
+        // on each partial result before passing it through. The authoritative
+        // phonetic is fetched concurrently and applied to the final result so
+        // it adds no latency on top of the LLM stream.
         let forwarder: StreamProgress = {
             let shared = shared.clone();
             Box::new(move |mut partial: TranslationResult| {
@@ -126,14 +189,18 @@ impl TranslationDomainService {
                 }
             })
         };
-        let llm_failure_note: Option<String> = match self
-            .llm
-            .translate_streaming(&request.word, &request.sentence, forwarder)
-            .await
-        {
+        let (llm_res, phonetic) = tokio::join!(
+            self.llm
+                .translate_streaming(&request.word, &request.sentence, forwarder),
+            self.fetch_phonetic_override(&request.word),
+        );
+        let llm_failure_note: Option<String> = match llm_res {
             Ok(mut result) => {
                 result.source = TranslationSource::Llm.to_string();
                 result.llm_error_message = String::new();
+                if let Some(p) = &phonetic {
+                    result.phonetic = p.clone();
+                }
                 let _ = self.cache.set(&word_lower, &hash, &result);
                 emit(result.clone());
                 return Ok(result);
@@ -152,6 +219,9 @@ impl TranslationDomainService {
                 result.llm_error_message = llm_failure_note.unwrap_or_default();
                 result.fallback_error_message = String::new();
                 result.is_complete_failure = false;
+                if let Some(p) = &phonetic {
+                    result.phonetic = p.clone();
+                }
                 emit(result.clone());
                 Ok(result)
             }
@@ -200,6 +270,30 @@ mod tests {
                 .unwrap()
                 .insert(format!("{word}:{hash}"), r.clone());
             Ok(())
+        }
+    }
+
+    /// Phonetic provider that returns a fixed IPA and records every word it
+    /// was queried with (so tests can assert it was / wasn't called).
+    struct FakePhonetic {
+        value: Option<String>,
+        queried: Mutex<Vec<String>>,
+    }
+
+    impl FakePhonetic {
+        fn new(value: Option<&str>) -> Arc<Self> {
+            Arc::new(Self {
+                value: value.map(|s| s.to_string()),
+                queried: Mutex::new(Vec::new()),
+            })
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl PhoneticProvider for FakePhonetic {
+        async fn fetch_phonetic(&self, word: &str) -> Option<String> {
+            self.queried.lock().unwrap().push(word.to_string());
+            self.value.clone()
         }
     }
 
@@ -538,5 +632,151 @@ mod tests {
         assert!(!result.llm_error_message.is_empty());
         assert!(!result.fallback_error_message.is_empty());
         assert_eq!(result.source, "failed");
+    }
+
+    /// LLM with a (possibly wrong) phonetic that the provider should override.
+    struct PhoneticLlm {
+        phonetic: &'static str,
+    }
+
+    #[async_trait::async_trait]
+    impl Translator for PhoneticLlm {
+        async fn translate(
+            &self,
+            word: &str,
+            _sentence: &str,
+        ) -> Result<TranslationResult, LumenError> {
+            Ok(TranslationResult {
+                word: word.to_string(),
+                phonetic: self.phonetic.to_string(),
+                ..Default::default()
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn phonetic_provider_overrides_llm_for_single_word() {
+        let cache = FakeCache::new();
+        let phonetic = FakePhonetic::new(Some("həˈloʊ"));
+        let svc = TranslationDomainService::new(
+            cache.clone(),
+            Arc::new(PhoneticLlm { phonetic: "wrong" }),
+            Arc::new(FailingLlm),
+        )
+        .with_phonetic(phonetic.clone());
+
+        let result = svc
+            .translate(TranslationRequest {
+                word: "hello".to_string(),
+                sentence: "hello world".to_string(),
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(result.source, "llm");
+        assert_eq!(result.phonetic, "həˈloʊ");
+        assert_eq!(phonetic.queried.lock().unwrap().as_slice(), &["hello"]);
+
+        // The corrected phonetic is what gets cached.
+        let hash = TranslationDomainService::sentence_hash("hello world");
+        let cached = cache.get("hello", &hash).unwrap().unwrap();
+        assert_eq!(cached.phonetic, "həˈloʊ");
+    }
+
+    #[tokio::test]
+    async fn phonetic_provider_skips_multi_word_selection() {
+        let cache = FakeCache::new();
+        let phonetic = FakePhonetic::new(Some("should-not-be-used"));
+        let svc = TranslationDomainService::new(
+            cache,
+            Arc::new(PhoneticLlm {
+                phonetic: "llm-phonetic",
+            }),
+            Arc::new(FailingLlm),
+        )
+        .with_phonetic(phonetic.clone());
+
+        let result = svc
+            .translate(TranslationRequest {
+                word: "give up".to_string(),
+                sentence: "give up now".to_string(),
+            })
+            .await
+            .unwrap();
+
+        // Multi-word selection: provider must not be queried and the LLM's own
+        // phonetic is preserved.
+        assert!(phonetic.queried.lock().unwrap().is_empty());
+        assert_eq!(result.phonetic, "llm-phonetic");
+    }
+
+    #[tokio::test]
+    async fn phonetic_provider_keeps_llm_value_when_lookup_misses() {
+        let cache = FakeCache::new();
+        let phonetic = FakePhonetic::new(None);
+        let svc = TranslationDomainService::new(
+            cache,
+            Arc::new(PhoneticLlm {
+                phonetic: "llm-phonetic",
+            }),
+            Arc::new(FailingLlm),
+        )
+        .with_phonetic(phonetic.clone());
+
+        let result = svc
+            .translate(TranslationRequest {
+                word: "obscureword".to_string(),
+                sentence: "an obscureword here".to_string(),
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(phonetic.queried.lock().unwrap().len(), 1);
+        assert_eq!(result.phonetic, "llm-phonetic");
+    }
+
+    #[tokio::test]
+    async fn phonetic_backfills_empty_cache_hit() {
+        let cache = FakeCache::new();
+        let hash = TranslationDomainService::sentence_hash("hello world");
+        cache
+            .set(
+                "hello",
+                &hash,
+                &TranslationResult {
+                    word: "hello".to_string(),
+                    phonetic: String::new(),
+                    general_definition: "cached".to_string(),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        let phonetic = FakePhonetic::new(Some("həˈloʊ"));
+        let svc = TranslationDomainService::new(cache, Arc::new(FailingLlm), Arc::new(FailingLlm))
+            .with_phonetic(phonetic.clone());
+
+        let result = svc
+            .translate(TranslationRequest {
+                word: "hello".to_string(),
+                sentence: "hello world".to_string(),
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(result.source, "cache");
+        assert_eq!(result.phonetic, "həˈloʊ");
+    }
+
+    #[test]
+    fn is_single_word_recognises_words_and_phrases() {
+        assert!(is_single_word("hello"));
+        assert!(is_single_word("  hello  "));
+        assert!(is_single_word("well-being"));
+        assert!(is_single_word("don't"));
+        assert!(!is_single_word("give up"));
+        assert!(!is_single_word("a sentence here"));
+        assert!(!is_single_word(""));
+        assert!(!is_single_word("word1"));
     }
 }

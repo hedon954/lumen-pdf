@@ -18,6 +18,23 @@ pub trait TranslationCacheRepository: Send + Sync {
 /// to a UI update) so they don't stall the streaming consumer loop.
 pub type StreamProgress = Box<dyn FnMut(TranslationResult) + Send>;
 
+/// Provides an authoritative phonetic transcription for a single English word.
+///
+/// LLM-produced IPA is frequently inaccurate, so the domain service uses a
+/// dedicated dictionary provider to enrich / override the `phonetic` field for
+/// word-mode translations. Implementations should target **American** IPA when
+/// the upstream source distinguishes accents.
+///
+/// This is best-effort: any network / parse failure (or a missing entry) must
+/// map to `None` so it can never break the translation flow. The caller only
+/// overrides the phonetic when a non-empty value comes back.
+#[async_trait::async_trait]
+pub trait PhoneticProvider: Send + Sync {
+    /// Fetch the American IPA phonetic for `word`. Returns `None` when the
+    /// word is unknown or the lookup fails for any reason.
+    async fn fetch_phonetic(&self, word: &str) -> Option<String>;
+}
+
 #[async_trait::async_trait]
 pub trait Translator: Send + Sync {
     async fn translate(&self, word: &str, sentence: &str) -> Result<TranslationResult, LumenError>;
