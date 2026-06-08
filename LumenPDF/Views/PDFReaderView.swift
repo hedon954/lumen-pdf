@@ -704,8 +704,9 @@ struct PDFKitView: NSViewRepresentable {
                   let pdfView,
                   let page      = pdfView.document?.page(at: pageIndex)
             else { return }
+            let marker = "vocab:\(entryId)"
             page.annotations
-                .filter { $0.userName == entryId }
+                .filter { $0.userName == entryId || $0.contents == marker }
                 .forEach { page.removeAnnotation($0) }
         }
 
@@ -714,16 +715,21 @@ struct PDFKitView: NSViewRepresentable {
         /// Snapshot for undo/redo of free-form highlight/underline (not vocabulary-linked).
         /// Subtype is derived from `tag` (`__fu` = underline, `__fh` = highlight).
         private struct FreeAnnotationSnapshot {
-            let bounds: CGRect
+            let lineRects: [CGRect]
             let color: NSColor
             let tag: String
+            let contents: String?
             init(ann: PDFAnnotation) {
-                bounds = ann.bounds
-                color = (ann.color as NSColor?) ?? .yellow
+                lineRects = PDFHighlightAnnotationFactory.lineRects(from: ann)
+                color = (ann.color as NSColor?) ?? PDFHighlightAnnotationFactory.nativeHighlightColor
                 tag = ann.userName ?? ""
+                contents = ann.contents
             }
             var subtype: PDFAnnotationSubtype {
                 tag == "__fu" ? .underline : .highlight
+            }
+            var bounds: CGRect {
+                lineRects.dropFirst().reduce(lineRects.first ?? .zero) { $0.union($1) }
             }
         }
 
@@ -750,9 +756,10 @@ struct PDFKitView: NSViewRepresentable {
             let annType: PDFAnnotationSubtype = typeStr == "underline" ? .underline : .highlight
             let color: NSColor = typeStr == "underline"
                 ? NSColor(red: 0.8, green: 0, blue: 0, alpha: 1.0)
-                : NSColor.systemYellow.withAlphaComponent(0.5)
+                : PDFHighlightAnnotationFactory.nativeHighlightColor
             let tag = typeStr == "underline" ? "__fu" : "__fh"
             let undoLabel = typeStr == "underline" ? "划线" : "高亮"
+            let contents = typeStr == "underline" ? "free:underline" : "free:highlight"
 
             let selectionUnion = lineRects.dropFirst().reduce(lineRects[0]) { $0.union($1) }
 
@@ -764,20 +771,28 @@ struct PDFKitView: NSViewRepresentable {
             var removedSnapshots: [FreeAnnotationSnapshot] = []
 
             if existing.isEmpty {
-                let contents = typeStr == "underline" ? "free:underline" : "free:highlight"
-                for rect in lineRects {
-                    added.append(Self.makeAnnotation(bounds: rect, type: annType, color: color, tag: tag, page: page, contents: contents))
-                }
+                added.append(contentsOf: Self.makeMarkupAnnotations(
+                    lineRects: lineRects,
+                    type: annType,
+                    color: color,
+                    tag: tag,
+                    page: page,
+                    contents: contents
+                ))
             } else {
                 let existingUnion = existing.dropFirst().reduce(existing[0].bounds) { $0.union($1.bounds) }
                 let isFullyCovered = lineRects.allSatisfy { existingUnion.contains($0) }
                 removedSnapshots = existing.map { FreeAnnotationSnapshot(ann: $0) }
                 existing.forEach { page.removeAnnotation($0) }
                 if !isFullyCovered {
-                    let contents = typeStr == "underline" ? "free:underline" : "free:highlight"
-                    for rect in lineRects {
-                        added.append(Self.makeAnnotation(bounds: rect, type: annType, color: color, tag: tag, page: page, contents: contents))
-                    }
+                    added.append(contentsOf: Self.makeMarkupAnnotations(
+                        lineRects: lineRects,
+                        type: annType,
+                        color: color,
+                        tag: tag,
+                        page: page,
+                        contents: contents
+                    ))
                 }
             }
 
@@ -853,8 +868,19 @@ struct PDFKitView: NSViewRepresentable {
         }
 
         private static func makeAnnotation(from snap: FreeAnnotationSnapshot, page: PDFPage) -> PDFAnnotation {
-            let contents = snap.tag == "__fu" ? "free:underline" : "free:highlight"
-            return makeAnnotation(bounds: snap.bounds, type: snap.subtype, color: snap.color, tag: snap.tag, page: page, contents: contents)
+            let contents = snap.contents ?? (snap.tag == "__fu" ? "free:underline" : "free:highlight")
+            if let restored = makeMarkupAnnotations(
+                lineRects: snap.lineRects,
+                type: snap.subtype,
+                color: snap.color,
+                tag: snap.tag,
+                page: page,
+                contents: contents
+            ).first {
+                return restored
+            }
+            let bounds = snap.bounds
+            return makeAnnotation(bounds: bounds, type: snap.subtype, color: snap.color, tag: snap.tag, page: page, contents: contents)
         }
 
         // MARK: Underline note (划线 + 笔记)
@@ -1018,27 +1044,52 @@ struct PDFKitView: NSViewRepresentable {
         // MARK: Apply saved highlights on document load
 
         func applyHighlights(to doc: PDFDocument, filePath: String) {
+            let undoWasEnabled = pdfView?.undoManager?.isUndoRegistrationEnabled ?? true
+            pdfView?.undoManager?.disableUndoRegistration()
+            defer {
+                if undoWasEnabled {
+                    pdfView?.undoManager?.enableUndoRegistration()
+                }
+            }
+
             let entries = (try? BridgeService.shared.listVocabulary()) ?? []
             for entry in entries where entry.pdfPath == filePath {
                 guard let page = doc.page(at: Int(entry.pageIndex)) else { continue }
-                addVocabAnnotation(entryId: entry.id, boundsStr: entry.selectionBounds, to: page)
+                addVocabAnnotation(
+                    entryId: entry.id,
+                    boundsStr: entry.selectionBounds,
+                    to: page,
+                    isRestore: true
+                )
+            }
+            AnnotationPersistenceService.shared.loadAnnotations(from: doc, filePath: filePath)
+        }
+
+        private func pageHasVocabHighlight(entryId: String, on page: PDFPage) -> Bool {
+            let marker = "vocab:\(entryId)"
+            return page.annotations.contains { annotation in
+                annotation.type == PDFAnnotationSubtype.highlight.rawValue
+                    && (annotation.userName == entryId || annotation.contents == marker)
             }
         }
 
-        private func addVocabAnnotation(entryId: String, boundsStr: String, to page: PDFPage) {
-            // Avoid duplicates
-            guard !page.annotations.contains(where: { $0.userName == entryId }) else { return }
+        private func addVocabAnnotation(
+            entryId: String,
+            boundsStr: String,
+            to page: PDFPage,
+            isRestore: Bool = false
+        ) {
+            guard !pageHasVocabHighlight(entryId: entryId, on: page) else { return }
             let lineRects = Self.parseAnnotationRects(boundsStr)
-            guard !lineRects.isEmpty else { return }
-            for rect in lineRects {
-                guard rect != .zero else { continue }
-                let ann = PDFAnnotation(bounds: rect, forType: .highlight, withProperties: nil)
-                ann.color = NSColor.systemYellow.withAlphaComponent(0.5)
-                ann.userName = entryId
-                ann.contents = "vocab:\(entryId)" // Persist to PDF metadata
-                page.addAnnotation(ann)
+            guard let annotation = PDFHighlightAnnotationFactory.makeHighlight(
+                lineRects: lineRects,
+                userName: entryId,
+                contents: "vocab:\(entryId)"
+            ) else { return }
+            page.addAnnotation(annotation)
+            if !isRestore {
+                triggerAnnotationSave()
             }
-            triggerAnnotationSave()
         }
 
         // MARK: Page jump
@@ -1296,6 +1347,42 @@ struct PDFKitView: NSViewRepresentable {
             boundsStr.components(separatedBy: "|").compactMap { part -> CGRect? in
                 let r = NSRectFromString(part)
                 return r.isEmpty ? nil : r
+            }
+        }
+
+        @discardableResult
+        private static func makeMarkupAnnotations(
+            lineRects: [CGRect],
+            type: PDFAnnotationSubtype,
+            color: NSColor,
+            tag: String,
+            page: PDFPage,
+            contents: String
+        ) -> [PDFAnnotation] {
+            switch type {
+            case .highlight:
+                guard let annotation = PDFHighlightAnnotationFactory.makeHighlight(
+                    lineRects: lineRects,
+                    color: color,
+                    userName: tag,
+                    contents: contents
+                ) else { return [] }
+                page.addAnnotation(annotation)
+                return [annotation]
+            case .underline:
+                return lineRects.compactMap { rect -> PDFAnnotation? in
+                    guard !rect.isEmpty, rect != .zero else { return nil }
+                    return makeAnnotation(
+                        bounds: rect,
+                        type: .underline,
+                        color: color,
+                        tag: tag,
+                        page: page,
+                        contents: contents
+                    )
+                }
+            default:
+                return []
             }
         }
 
