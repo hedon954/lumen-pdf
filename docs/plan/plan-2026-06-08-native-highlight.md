@@ -2,7 +2,7 @@
 
 **日期**: 2026-06-08  
 **版本目标**: v1.0.7  
-**状态**: 已完成
+**状态**: v1.0.7 修订中（二次修复）
 
 ## 问题
 
@@ -69,6 +69,22 @@
    - [ ] 保存单词到单词本后高亮样式一致
    - [ ] 保存 → 关闭重开 → 取消高亮一次即可移除
    - [ ] Cmd+Z 撤销/重做仍正常
+
+## v1.0.7 二次修复（2026-06-08 晚）
+
+v1.0.7 首次实现未解决用户反馈的三点问题，根因：
+
+1. **样式仍块状**：仅用 `boundsStr` 矩形合成 QuadPoints，未走 `PDFSelection` / `page.selection(for:)` 真实字形范围；颜色/QuadPoints 未按 PDF 规范写入 page-space `/QuadPoints`。
+2. **无法取消**：Toggle 只匹配 `userName == __fh`，PDF 写回后 `userName` 丢失；未做 `contents` 与精确 rect 匹配。
+3. **自由高亮重启消失**：2s 防抖保存 + 退出未 flush + 可能 URL 不一致导致 `write` 失败。
+
+### 二次修复要点
+
+- `PDFHighlightAnnotationFactory` 重写：优先 `PDFSelection` → `selectionsByLine()` → page-space `PDFAnnotationKey.quadPoints`
+- `Coordinator` 缓存 `lastMarkupSelection`，高亮按钮点击后仍可用 live selection
+- Toggle：先精确匹配 line rects，再 fallback 相交判断；匹配 `contents == free:highlight`
+- 持久化：`triggerAnnotationSave(immediate:)` + `flushAnnotationsToDisk()` + `appWillTerminate` 同步 write
+- 记录 `documentSaveURL` 与加载时 URL 一致
 
 ## 不在本次范围
 

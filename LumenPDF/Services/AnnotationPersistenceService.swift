@@ -11,9 +11,17 @@ class AnnotationPersistenceService {
     @discardableResult
     func saveAnnotations(for document: PDFDocument, filePath: String) async -> Bool {
         guard let url = resolveAccessibleURL(filePath: filePath) else { return false }
-
-        // Write the document with annotations to the file
         return document.write(to: url)
+    }
+
+    /// Synchronous save used on quit / immediate persistence.
+    @discardableResult
+    func saveAnnotationsSync(for document: PDFDocument, to url: URL) -> Bool {
+        document.write(to: url)
+    }
+
+    func resolveAccessibleURL(filePath: String) -> URL? {
+        resolveAccessibleURLPrivate(filePath: filePath)
     }
 
     /// 从 PDF 文件恢复标注关联（加载时调用）
@@ -39,7 +47,7 @@ class AnnotationPersistenceService {
         // free:highlight / free:underline → 自由标注，已在 PDF 中
     }
 
-    private func resolveAccessibleURL(filePath: String) -> URL? {
+    private func resolveAccessibleURLPrivate(filePath: String) -> URL? {
         let url = URL(fileURLWithPath: filePath)
         // 尝试直接访问
         if PDFDocument(url: url) != nil { return url }
