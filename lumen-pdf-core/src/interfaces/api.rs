@@ -15,6 +15,7 @@ use crate::infrastructure::db::{
     translation_cache_repo::SqliteTranslationCacheRepo, vocabulary_repo::SqliteVocabularyRepo,
 };
 use crate::infrastructure::translator::{
+    dictionary_phonetic::DictionaryApiPhoneticProvider,
     fallback_translator::FallbackTranslator,
     llm_translator::{LlmConfig, LlmTranslator},
 };
@@ -105,8 +106,9 @@ pub async fn translate(request: TranslationRequest) -> Result<TranslationResult,
     let cache = Arc::new(SqliteTranslationCacheRepo::new(pool.clone()));
     let llm = Arc::new(LlmTranslator::new(config.clone()));
     let fallback = Arc::new(FallbackTranslator::new(config.target_language.clone()));
+    let phonetic = Arc::new(DictionaryApiPhoneticProvider::new());
 
-    TranslationUseCase::new(cache, llm, fallback)
+    TranslationUseCase::with_phonetic(cache, llm, fallback, phonetic)
         .translate(request)
         .await
 }
@@ -135,13 +137,14 @@ pub async fn translate_streaming(
     let cache = Arc::new(SqliteTranslationCacheRepo::new(pool.clone()));
     let llm = Arc::new(LlmTranslator::new(config.clone()));
     let fallback = Arc::new(FallbackTranslator::new(config.target_language.clone()));
+    let phonetic = Arc::new(DictionaryApiPhoneticProvider::new());
 
     let on_progress: crate::domain::translation::repository::StreamProgress = {
         let cb = callback.clone();
         Box::new(move |partial| cb.on_progress(partial))
     };
 
-    TranslationUseCase::new(cache, llm, fallback)
+    TranslationUseCase::with_phonetic(cache, llm, fallback, phonetic)
         .translate_streaming(request, on_progress)
         .await
 }

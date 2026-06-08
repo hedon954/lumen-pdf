@@ -1,3 +1,4 @@
+pub mod dictionary_phonetic;
 pub mod fallback_translator;
 pub mod http_client;
 pub mod llm_translator;

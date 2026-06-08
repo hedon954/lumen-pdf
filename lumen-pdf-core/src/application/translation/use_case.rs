@@ -1,6 +1,6 @@
 use crate::domain::translation::{
     entity::{TranslationRequest, TranslationResult},
-    repository::{StreamProgress, TranslationCacheRepository, Translator},
+    repository::{PhoneticProvider, StreamProgress, TranslationCacheRepository, Translator},
     service::TranslationDomainService,
 };
 use crate::error::LumenError;
@@ -18,6 +18,19 @@ impl TranslationUseCase {
     ) -> Self {
         Self {
             service: TranslationDomainService::new(cache, llm, fallback),
+        }
+    }
+
+    /// Same as `new`, but also wires an authoritative phonetic provider used to
+    /// override the LLM's IPA for single-word lookups.
+    pub fn with_phonetic(
+        cache: Arc<dyn TranslationCacheRepository>,
+        llm: Arc<dyn Translator>,
+        fallback: Arc<dyn Translator>,
+        phonetic: Arc<dyn PhoneticProvider>,
+    ) -> Self {
+        Self {
+            service: TranslationDomainService::new(cache, llm, fallback).with_phonetic(phonetic),
         }
     }
 
