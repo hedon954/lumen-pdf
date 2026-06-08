@@ -27,7 +27,18 @@ struct TranslationBubble: View {
                     .contentShape(Rectangle())
                     .onTapGesture { onDismiss() }
             )
-            .onAppear { savedEntryId = request.existingEntryId }
+            .onAppear { syncSavedState() }
+            // The bubble is reused in place when the user selects a different word without first
+            // dismissing it. `onAppear` won't fire again, so re-sync on request identity changes —
+            // otherwise it would keep showing the previous word's saved/unsaved state.
+            .onChange(of: request.id) { _ in syncSavedState() }
+    }
+
+    /// Seed the local saved state from the request. `existingEntryId` is only ever a vocabulary
+    /// entry (resolved by word + context before the bubble is shown), so it is never a note.
+    private func syncSavedState() {
+        savedEntryId = request.existingEntryId
+        savedToNote = false
     }
 
     // MARK: - Card

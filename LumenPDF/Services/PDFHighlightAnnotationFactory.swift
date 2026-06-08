@@ -3,10 +3,25 @@ import PDFKit
 
 /// Builds PDFKit highlight annotations that match macOS Preview markup style.
 enum PDFHighlightAnnotationFactory {
-    /// Default yellow used by Preview / PDFKit native highlights.
-    static let nativeHighlightColor = NSColor(srgbRed: 1, green: 0.97, blue: 0, alpha: 1)
+    /// Matches macOS Preview's highlighter, which uses the system "yellow" (a saturated goldenrod)
+    /// at full strength. PDFKit renders the Highlight markup subtype with a multiply-style blend, so
+    /// the underlying text stays readable even though the color is opaque.
+    static let nativeHighlightColor = NSColor.systemYellow
 
-    /// Create one native-style highlight annotation covering all line rects.
+    // MARK: - Creation
+
+    /// Preferred path: build from a live or reconstructed PDFSelection.
+    static func makeHighlight(
+        from selection: PDFSelection,
+        on page: PDFPage,
+        color: NSColor = nativeHighlightColor,
+        userName: String?,
+        contents: String?
+    ) -> PDFAnnotation? {
+        makeHighlight(lineRects: lineRects(from: selection, on: page), color: color, userName: userName, contents: contents)
+    }
+
+    /// Fallback when only serialized bounds are available (vocabulary restore, stale menu action).
     static func makeHighlight(
         lineRects: [CGRect],
         color: NSColor = nativeHighlightColor,
@@ -17,61 +32,122 @@ enum PDFHighlightAnnotationFactory {
         guard !rects.isEmpty else { return nil }
 
         let union = rects.dropFirst().reduce(rects[0]) { $0.union($1) }
+
         let annotation = PDFAnnotation(bounds: union, forType: .highlight, withProperties: nil)
         annotation.color = color
         annotation.markupType = .highlight
-        annotation.quadrilateralPoints = quadrilateralPoints(for: rects, relativeTo: union)
+        // QuadPoints must be expressed relative to the annotation bounds origin. PDFKit then paints a
+        // tight per-line highlight (matching macOS Preview) instead of filling the whole bounds rect.
+        annotation.quadrilateralPoints = quadrilateralPoints(for: rects, relativeTo: union.origin)
         if let userName { annotation.userName = userName }
         if let contents { annotation.contents = contents }
         return annotation
     }
 
-    /// Reconstruct per-line rects from a highlight annotation (for toggle / undo).
-    static func lineRects(from annotation: PDFAnnotation) -> [CGRect] {
-        guard let quads = annotation.quadrilateralPoints, !quads.isEmpty else {
-            let bounds = annotation.bounds
-            return bounds.isEmpty ? [] : [bounds]
+    // MARK: - Selection helpers
+
+    static func lineRects(from selection: PDFSelection, on page: PDFPage) -> [CGRect] {
+        let lineSelections = selection.selectionsByLine()
+        let lines = lineSelections.isEmpty ? [selection] : lineSelections
+        return lines.compactMap { line in
+            let rect = line.bounds(for: page)
+            return rect.isEmpty ? nil : rect
         }
-
-        let origin = annotation.bounds.origin
-        var rects: [CGRect] = []
-        let points = quads.map(\.pointValue)
-
-        for index in stride(from: 0, to: points.count, by: 4) {
-            guard index + 3 < points.count else { break }
-            let xs = [
-                points[index].x + origin.x,
-                points[index + 1].x + origin.x,
-                points[index + 2].x + origin.x,
-                points[index + 3].x + origin.x,
-            ]
-            let ys = [
-                points[index].y + origin.y,
-                points[index + 1].y + origin.y,
-                points[index + 2].y + origin.y,
-                points[index + 3].y + origin.y,
-            ]
-            let rect = CGRect(
-                x: xs.min() ?? 0,
-                y: ys.min() ?? 0,
-                width: (xs.max() ?? 0) - (xs.min() ?? 0),
-                height: (ys.max() ?? 0) - (ys.min() ?? 0)
-            )
-            if !rect.isEmpty { rects.append(rect) }
-        }
-
-        return rects.isEmpty ? [annotation.bounds] : rects
     }
 
-    static func quadrilateralPoints(for lineRects: [CGRect], relativeTo union: CGRect) -> [NSValue] {
+    /// Reconstruct a PDFSelection from per-line rects (tight to glyphs, not axis-aligned guesswork).
+    static func selection(from lineRects: [CGRect], on page: PDFPage) -> PDFSelection? {
+        let pieces = lineRects.compactMap { rect -> PDFSelection? in
+            guard !rect.isEmpty, rect != .zero else { return nil }
+            return page.selection(for: rect)
+        }
+        guard !pieces.isEmpty else { return nil }
+        if pieces.count == 1 { return pieces[0] }
+        guard let document = page.document else { return pieces[0] }
+        let combined = PDFSelection(document: document)
+        combined.add(pieces)
+        return combined
+    }
+
+    // MARK: - Matching / introspection
+
+    static func lineRects(from annotation: PDFAnnotation) -> [CGRect] {
+        if let quads = annotation.quadrilateralPoints, !quads.isEmpty {
+            let origin = annotation.bounds.origin
+            var rects: [CGRect] = []
+            let points = quads.map(\.pointValue)
+
+            for index in stride(from: 0, to: points.count, by: 4) {
+                guard index + 3 < points.count else { break }
+                let xs = [
+                    points[index].x + origin.x,
+                    points[index + 1].x + origin.x,
+                    points[index + 2].x + origin.x,
+                    points[index + 3].x + origin.x,
+                ]
+                let ys = [
+                    points[index].y + origin.y,
+                    points[index + 1].y + origin.y,
+                    points[index + 2].y + origin.y,
+                    points[index + 3].y + origin.y,
+                ]
+                let rect = CGRect(
+                    x: xs.min() ?? 0,
+                    y: ys.min() ?? 0,
+                    width: (xs.max() ?? 0) - (xs.min() ?? 0),
+                    height: (ys.max() ?? 0) - (ys.min() ?? 0)
+                )
+                if !rect.isEmpty { rects.append(rect) }
+            }
+            if !rects.isEmpty { return rects }
+        }
+
+        if let quadValues = annotation.value(forAnnotationKey: PDFAnnotationKey.quadPoints) as? [CGFloat],
+           !quadValues.isEmpty {
+            var rects: [CGRect] = []
+            for index in stride(from: 0, to: quadValues.count, by: 8) {
+                guard index + 7 < quadValues.count else { break }
+                let xs = [quadValues[index], quadValues[index + 2], quadValues[index + 4], quadValues[index + 6]]
+                let ys = [quadValues[index + 1], quadValues[index + 3], quadValues[index + 5], quadValues[index + 7]]
+                let rect = CGRect(
+                    x: xs.min() ?? 0,
+                    y: ys.min() ?? 0,
+                    width: (xs.max() ?? 0) - (xs.min() ?? 0),
+                    height: (ys.max() ?? 0) - (ys.min() ?? 0)
+                )
+                if !rect.isEmpty { rects.append(rect) }
+            }
+            if !rects.isEmpty { return rects }
+        }
+
+        let bounds = annotation.bounds
+        return bounds.isEmpty ? [] : [bounds]
+    }
+
+    /// `PDFAnnotation.type` reports a subtype name *without* the leading "/" that
+    /// `PDFAnnotationSubtype.rawValue` includes (e.g. "Highlight" vs "/Highlight"). Comparing them
+    /// directly silently matches nothing, so always go through this slash-insensitive check.
+    static func matchesSubtype(_ annotation: PDFAnnotation, _ subtype: PDFAnnotationSubtype) -> Bool {
+        func stripSlash(_ value: String) -> String { value.hasPrefix("/") ? String(value.dropFirst()) : value }
+        return stripSlash(annotation.type ?? "") == stripSlash(subtype.rawValue)
+    }
+
+    static func isHighlightAnnotation(_ annotation: PDFAnnotation) -> Bool {
+        matchesSubtype(annotation, .highlight) || annotation.markupType == .highlight
+    }
+
+    // MARK: - Quad geometry
+
+    /// QuadPoints in annotation space (relative to bounds origin), four corners per line:
+    /// top-left, top-right, bottom-left, bottom-right. Mirrors how `lineRects(from:)` reads them back.
+    private static func quadrilateralPoints(for lineRects: [CGRect], relativeTo origin: CGPoint) -> [NSValue] {
         lineRects.flatMap { rect -> [NSValue] in
-            let rel = rect.offsetBy(dx: -union.origin.x, dy: -union.origin.y)
-            // Z-pattern: upper-left, upper-right, lower-left, lower-right (page space).
-            let upperLeft = NSValue(point: CGPoint(x: rel.minX, y: rel.maxY))
-            let upperRight = NSValue(point: CGPoint(x: rel.maxX, y: rel.maxY))
-            let lowerLeft = NSValue(point: CGPoint(x: rel.minX, y: rel.minY))
-            let lowerRight = NSValue(point: CGPoint(x: rel.maxX, y: rel.minY))
-            return [upperLeft, upperRight, lowerLeft, lowerRight]
+            [
+                NSValue(point: CGPoint(x: rect.minX - origin.x, y: rect.maxY - origin.y)),
+                NSValue(point: CGPoint(x: rect.maxX - origin.x, y: rect.maxY - origin.y)),
+                NSValue(point: CGPoint(x: rect.minX - origin.x, y: rect.minY - origin.y)),
+                NSValue(point: CGPoint(x: rect.maxX - origin.x, y: rect.minY - origin.y)),
+            ]
         }
     }
 }
