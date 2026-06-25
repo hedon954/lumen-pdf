@@ -228,11 +228,12 @@ final class BridgeService {
         pdfPath: String, pdfName: String, pageIndex: UInt32,
         content: String, note: String, boundsStr: String
     ) throws -> NoteEntry {
-        try _saveNote(SaveNoteRequest(
+        let normalizedContent = ContextSentenceFormatting.displayParagraph(content)
+        return try _saveNote(SaveNoteRequest(
             pdfPath: pdfPath,
             pdfName: pdfName,
             pageIndex: pageIndex,
-            content: content,
+            content: normalizedContent,
             note: note,
             boundsStr: boundsStr
         ))

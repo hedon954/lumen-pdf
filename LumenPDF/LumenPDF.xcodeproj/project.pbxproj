@@ -26,6 +26,7 @@
 		B308BE40E9C7A5E667FB725E /* TranslationBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = C67FF397B0476E532E9D1AFE /* TranslationBubble.swift */; };
 		BB1E55DF99A85DA5569B31DC /* PDFHighlightAnnotationFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F133B2E2B5413CFCFCF1B03 /* PDFHighlightAnnotationFactory.swift */; };
 		C30E64BC2A1D11DB6F4E8D3F /* AnnotationPersistenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D3B4F729F31701EFC6C20E3 /* AnnotationPersistenceService.swift */; };
+		D98F3AECEB9D559FD0A30516 /* Textual in Frameworks */ = {isa = PBXBuildFile; productRef = 1BB2DE7F7767B742AFCEC2A3 /* Textual */; };
 		DA410654D0FCF8C48775E83D /* LumenPDFApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66589F46D22ED6A1DCCCB8A8 /* LumenPDFApp.swift */; };
 		DD2BBDABC05C216597F66BE9 /* PDFReaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32758932B2FC895E4526CA2E /* PDFReaderView.swift */; };
 		E23D236734A52E85A8BA40C8 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92D0F2DE24CFD041786B3ED5 /* ContentView.swift */; };
@@ -80,6 +81,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				290C3D3454A7E5CE2ECF8899 /* liblumen_pdf_core.dylib in Frameworks */,
+				D98F3AECEB9D559FD0A30516 /* Textual in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -183,6 +185,7 @@
 			);
 			name = LumenPDF;
 			packageProductDependencies = (
+				1BB2DE7F7767B742AFCEC2A3 /* Textual */,
 			);
 			productName = LumenPDF;
 			productReference = 0CAE0AF4D6907DA0DFD2F1BE /* LumenPDF.app */;
@@ -212,6 +215,9 @@
 			);
 			mainGroup = 7CCAAFFDAF7FE8C6AD7753DF;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				1504C9B000D013B7A52C381D /* XCRemoteSwiftPackageReference "textual" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = C3B3EE02DBFA572BDBFDF888 /* Products */;
 			projectDirPath = "";
@@ -317,7 +323,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -398,7 +404,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -453,6 +459,25 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		1504C9B000D013B7A52C381D /* XCRemoteSwiftPackageReference "textual" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/gonzalezreal/textual";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.5.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		1BB2DE7F7767B742AFCEC2A3 /* Textual */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1504C9B000D013B7A52C381D /* XCRemoteSwiftPackageReference "textual" */;
+			productName = Textual;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = F0D41ACE2985FEF2C0F639CD /* Project object */;
 }

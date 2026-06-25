@@ -1,4 +1,4 @@
-.PHONY: setup build-rust gen-project test dmg clean
+.PHONY: setup build-rust gen-project test dmg upgrade clean
 
 ## 首次使用：安装工具 + 生成 Xcode 项目
 setup:
@@ -26,6 +26,10 @@ test:
 ## 使用 Developer ID 签名：TEAM_ID=XXXXXXXXXX make dmg
 dmg:
 	./scripts/package-dmg.sh
+
+## 打包并更新本机 /Applications/LumenPDF.app（运行中会先终止）
+upgrade: dmg
+	./scripts/upgrade-local.sh
 
 ## 清除构建产物
 clean:

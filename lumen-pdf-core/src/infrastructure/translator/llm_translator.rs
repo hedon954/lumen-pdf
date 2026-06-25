@@ -34,7 +34,8 @@ pub const DEFAULT_WORD_SYSTEM_PROMPT: &str =
 pub const DEFAULT_SENTENCE_SYSTEM_PROMPT: &str =
     "You are a professional translator. Always respond with valid JSON only.";
 pub const DEFAULT_EXPLANATION_SYSTEM_PROMPT: &str =
-    "You are a professional reading tutor. Return clear Markdown/plain text only; never return JSON for explanations.";
+    "You are a professional reading tutor. Return explanation text only; never return JSON for explanations.";
+const DEFAULT_MAX_TOKENS: u32 = 4096;
 
 pub const DEFAULT_WORD_PROMPT_TEMPLATE: &str = r#"You are a professional language tutor. The user selected the word "{word}" while reading a PDF.
 
@@ -63,12 +64,10 @@ Rules:
 2. Explain what the selected text means in this context; do not merely translate it.
 3. Explain why the author says this here and how it connects to the surrounding argument.
 4. Mention key terms and implied relationships; fix obvious OCR line-break or hyphenation errors silently.
-5. Format the answer like a high-quality reading note in {lang}: start with a short bold thesis paragraph, then use clear Markdown section headings such as `## 一、...`, numbered lists, bullet lists, and short paragraphs. Do not use Markdown tables; use bullet lists instead because the explanation is shown in a compact reader bubble.
-6. Preserve real line breaks: every heading, paragraph, numbered item, and bullet item must be on its own line, with a blank line between blocks. Never collapse the explanation into one giant paragraph.
-7. Do not artificially shorten the answer. Use enough detail to make the idea understandable, while avoiding irrelevant digressions.
-8. Prefer a clear layered explanation: intuition first, then first-principles mechanics, then implications, then a concise takeaway useful for notes.
+5. Preserve real line breaks between distinct ideas and blocks.
+6. Prefer a layered explanation: intuition, first-principles mechanics, implications, and reading-note value.
 
-Return ONLY the Markdown explanation text. Do not wrap it in JSON, code fences, or quotes."#;
+Return ONLY the explanation text. Do not wrap it in JSON, code fences, or quotes."#;
 
 pub const DEFAULT_SENTENCE_PROMPT_TEMPLATE: &str = r#"You are a professional translator and language tutor. Translate the following English text to {lang} and, if it is a long or complex sentence, also break it down so the reader can understand each fragment.
 
@@ -341,6 +340,7 @@ impl LlmTranslator {
                 },
             ],
             response_format: None,
+            max_tokens: Some(DEFAULT_MAX_TOKENS),
         }
     }
 
@@ -361,6 +361,7 @@ impl LlmTranslator {
             response_format: Some(ResponseFormat {
                 kind: "json_object".into(),
             }),
+            max_tokens: Some(DEFAULT_MAX_TOKENS),
         }
     }
 
@@ -472,6 +473,8 @@ struct ChatRequest {
     messages: Vec<Message>,
     #[serde(skip_serializing_if = "Option::is_none")]
     response_format: Option<ResponseFormat>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_tokens: Option<u32>,
     #[serde(skip_serializing_if = "is_false")]
     stream: bool,
 }
@@ -585,6 +588,7 @@ impl Translator for LlmTranslator {
             response_format: Some(ResponseFormat {
                 kind: "json_object".into(),
             }),
+            max_tokens: Some(DEFAULT_MAX_TOKENS),
         };
 
         let resp = shared_client()
@@ -660,6 +664,7 @@ impl Translator for LlmTranslator {
             response_format: Some(ResponseFormat {
                 kind: "json_object".into(),
             }),
+            max_tokens: Some(DEFAULT_MAX_TOKENS),
         };
 
         let mut last_keys: Vec<String> = Vec::new();

@@ -13,7 +13,7 @@ struct NoteListView: View {
         guard !searchText.isEmpty else { return appState.notes }
         let q = searchText.lowercased()
         return appState.notes.filter {
-            $0.content.lowercased().contains(q)
+            ContextSentenceFormatting.displayParagraph($0.content).lowercased().contains(q)
             || $0.note.lowercased().contains(q)
             || $0.pdfName.lowercased().contains(q)
         }
@@ -125,19 +125,21 @@ struct NoteCardView: View {
     let onDelete: (NoteEntry) -> Void
     let onJump: (NoteEntry) -> Void
 
+    private var displayContent: String {
+        ContextSentenceFormatting.displayParagraph(note.content)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             // Content (highlighted text)
-            Text(note.content)
+            Text(displayContent)
                 .font(.body)
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
 
             // User note
             if !note.note.isEmpty {
-                Text(note.note)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                MarkdownText(markdown: note.note)
                     .padding(10)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
@@ -189,6 +191,10 @@ struct NoteEditSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var noteText: String
 
+    private var displayContent: String {
+        ContextSentenceFormatting.displayParagraph(note.content)
+    }
+
     init(note: NoteEntry, onSave: @escaping () -> Void) {
         self.note = note
         self.onSave = onSave
@@ -204,7 +210,7 @@ struct NoteEditSheet: View {
             Text("划线内容：")
                 .font(.caption.bold())
                 .foregroundStyle(.secondary)
-            Text(note.content)
+            Text(displayContent)
                 .font(.callout)
                 .padding(10)
                 .frame(maxWidth: .infinity, alignment: .leading)

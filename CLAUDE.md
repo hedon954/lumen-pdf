@@ -32,6 +32,15 @@ make gen-project
 make dmg
 ```
 
+## Release Process Notes
+
+- Do not manually edit `CHANGELOG.md` for releases. It is generated automatically from commits/tags by the release workflow.
+- Version bumps live in `LumenPDF/Info.plist`:
+  - `CFBundleShortVersionString` is the public version, for example `1.0.9`.
+  - `CFBundleVersion` is the internal build number, for example `9`.
+- User-facing release labels, tags, DMG filenames, and docs should normally use only the short version (`1.0.9`). Include the build number only when debugging or explicitly discussing build metadata.
+- When asked to commit, push, and tag a release, commit the code/docs/version changes, push the branch, create an annotated `vX.Y.Z` tag, and push the tag; leave `CHANGELOG.md` unchanged.
+
 ## Pre-commit Checks
 
 Before every git commit, these checks run automatically via `.pre-commit-config.yaml`:
