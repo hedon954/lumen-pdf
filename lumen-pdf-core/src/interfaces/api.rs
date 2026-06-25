@@ -180,6 +180,28 @@ pub async fn translate_sentence_streaming(
         .await
 }
 
+/// Streaming explanation for selected text. The LLM receives the selection and
+/// its surrounding context, then streams an explanation into
+/// `context_explanation` so the Swift UI can display it immediately and save
+/// it as a note.
+#[uniffi::export(async_runtime = "tokio")]
+pub async fn explain_selection_streaming(
+    selection: String,
+    context: String,
+    callback: Arc<dyn TranslationStreamCallback>,
+) -> Result<TranslationResult, LumenError> {
+    let config = llm_config()?;
+    let llm = LlmTranslator::new(config.clone());
+
+    let on_progress: crate::domain::translation::repository::StreamProgress = {
+        let cb = callback.clone();
+        Box::new(move |partial| cb.on_progress(partial))
+    };
+
+    llm.explain_selection_streaming(&selection, &context, on_progress)
+        .await
+}
+
 // ── Vocabulary API ───────────────────────────────────────────────────────────
 
 #[uniffi::export]

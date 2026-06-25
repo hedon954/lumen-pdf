@@ -79,7 +79,7 @@ struct PDFReaderView: View {
                     request: req,
                     isLoading: isTranslating,
                     onSave: { result in
-                        if req.isSentenceMode {
+                        if req.isExplanationMode || req.isSentenceMode {
                             saveSentenceToNote(result: result, request: req)
                         } else {
                             saveToDiary(result: result, request: req)
@@ -146,6 +146,13 @@ struct PDFReaderView: View {
         HStack(spacing: 0) {
             actionBarBtn(icon: "character.bubble", label: "翻译") {
                 requestTranslation(word: sel.word, sentence: sel.sentence,
+                                   bounds: sel.bounds, boundsStr: sel.boundsStr,
+                                   page: sel.page)
+                pendingSelection = nil
+            }
+            Divider().frame(height: 26)
+            actionBarBtn(icon: "text.bubble", label: "解释") {
+                requestExplanation(selection: sel.word, context: sel.sentence,
                                    bounds: sel.bounds, boundsStr: sel.boundsStr,
                                    page: sel.page)
                 pendingSelection = nil
@@ -367,7 +374,8 @@ struct PDFReaderView: View {
             bounds: bounds, boundsStr: boundsStr,
             page: page, result: nil, translationError: nil,
             existingEntryId: existingEntryId,
-            isSentenceMode: isSentenceMode
+            isSentenceMode: isSentenceMode,
+            isExplanationMode: false
         )
         isTranslating = true
 
@@ -423,6 +431,62 @@ struct PDFReaderView: View {
         }
     }
 
+
+    // MARK: - Explanation
+
+    private func requestExplanation(selection: String, context: String,
+                                    bounds: CGRect, boundsStr: String, page: Int) {
+        BridgeService.shared.initializeIfNeeded()
+
+        translationRequest = TranslationBubbleRequest(
+            word: selection, sentence: context,
+            bounds: bounds, boundsStr: boundsStr,
+            page: page, result: nil, translationError: nil,
+            existingEntryId: nil,
+            isSentenceMode: true,
+            isExplanationMode: true
+        )
+        isTranslating = true
+
+        let requestId = translationRequest?.id
+
+        Task {
+            @MainActor func applyPartial(_ partial: TranslationResult) {
+                guard var req = translationRequest, req.id == requestId else { return }
+                req.result = partial
+                req.translationError = nil
+                translationRequest = req
+            }
+
+            do {
+                let result = try await BridgeService.shared.explainSelectionStreaming(
+                    selection: selection,
+                    context: context,
+                    onPartial: { partial in applyPartial(partial) }
+                )
+
+                await MainActor.run {
+                    guard var req = translationRequest, req.id == requestId else { return }
+                    req.result = result
+                    req.translationError = nil
+                    translationRequest = req
+                    isTranslating = false
+                }
+            } catch {
+                await MainActor.run {
+                    guard var req = translationRequest, req.id == requestId else { return }
+                    var detail = TranslationErrorFormatter.userMessage(from: error)
+                    if detail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        detail = "解释失败：\(String(describing: error))"
+                    }
+                    req.translationError = detail
+                    translationRequest = req
+                    isTranslating = false
+                }
+            }
+        }
+    }
+
     // MARK: - Save to vocabulary
 
     @discardableResult
@@ -458,17 +522,22 @@ struct PDFReaderView: View {
     private func saveSentenceToNote(result: TranslationResult, request: TranslationBubbleRequest) -> String? {
         BridgeService.shared.initializeIfNeeded()
 
-        // Get translation text (prefer contextSentenceTranslation, fallback to contextTranslation)
-        let translation = result.contextSentenceTranslation.isEmpty
-            ? result.contextTranslation
-            : result.contextSentenceTranslation
+        let noteText: String
+        if request.isExplanationMode {
+            noteText = result.contextExplanation
+        } else {
+            // Get translation text (prefer contextSentenceTranslation, fallback to contextTranslation)
+            noteText = result.contextSentenceTranslation.isEmpty
+                ? result.contextTranslation
+                : result.contextSentenceTranslation
+        }
 
         guard let noteEntry = try? BridgeService.shared.saveNote(
             pdfPath: document.filePath,
             pdfName: document.fileName,
             pageIndex: UInt32(request.page),
             content: request.word,
-            note: translation,
+            note: noteText,
             boundsStr: request.boundsStr
         ) else {
             appState.showToast("保存笔记失败")
@@ -488,7 +557,7 @@ struct PDFReaderView: View {
         )
 
         appState.refreshNotes()
-        appState.showToast("已保存到笔记")
+        appState.showToast(request.isExplanationMode ? "解释已保存到笔记" : "已保存到笔记")
         return noteEntry.id
     }
 }
@@ -1670,6 +1739,8 @@ struct TranslationBubbleRequest: Identifiable, Equatable {
     var existingEntryId: String?
     /// When true, the selection is a multi-word phrase/sentence, not a single word.
     let isSentenceMode: Bool
+    /// When true, the bubble shows an AI reading explanation instead of a translation.
+    let isExplanationMode: Bool
     /// Must compare all fields that affect the bubble UI. Comparing only `id` made SwiftUI
     /// treat success/error updates as «unchanged» and skip redrawing — users saw「翻译未完成」
     /// with an empty detail area even when `translationError` was set.
@@ -1684,6 +1755,7 @@ struct TranslationBubbleRequest: Identifiable, Equatable {
             && lhs.translationError == rhs.translationError
             && lhs.existingEntryId == rhs.existingEntryId
             && lhs.isSentenceMode == rhs.isSentenceMode
+            && lhs.isExplanationMode == rhs.isExplanationMode
     }
 }
 

@@ -52,6 +52,29 @@ Respond with ONLY valid JSON in this exact format:
         )
     }
 
+    fn build_explanation_prompt(&self, selection: &str, context: &str) -> String {
+        format!(
+            r#"You are a professional reading tutor. Explain the selected English text in {lang} for a PDF reader.
+
+Selected text: "{selection}"
+Context around the selection: "{context}"
+
+Rules:
+1. Explain what the selected text means in this context; do not merely translate it.
+2. Mention key terms, implied relationships, and why the author is saying this.
+3. Fix obvious OCR line-break or hyphenation errors silently.
+4. Keep the explanation concise but useful for note taking.
+
+Respond with ONLY valid JSON in this exact format:
+{{
+  "explanation": "<{lang} explanation>"
+}}"#,
+            selection = selection,
+            context = context,
+            lang = self.config.target_language,
+        )
+    }
+
     fn build_sentence_prompt(&self, sentence: &str) -> String {
         format!(
             r#"You are a professional translator and language tutor. Translate the following English text to {lang} and, if it is a long or complex sentence, also break it down so the reader can understand each fragment.
@@ -85,6 +108,46 @@ Respond with ONLY valid JSON in this exact format:
             sentence = sentence,
             lang = self.config.target_language,
         )
+    }
+
+    pub async fn explain_selection_streaming(
+        &self,
+        selection: &str,
+        context: &str,
+        mut on_progress: StreamProgress,
+    ) -> Result<TranslationResult, LumenError> {
+        let body = self.build_explanation_request(selection, context, true);
+        let url = self.completions_url();
+
+        let raw_buf = self
+            .stream_completion(&url, &body, |raw, last_emitted| {
+                let Some(current) = extract_streaming_string_value(raw, "explanation") else {
+                    return;
+                };
+                if current != *last_emitted {
+                    *last_emitted = current.clone();
+                    on_progress(TranslationResult {
+                        word: selection.to_string(),
+                        context_explanation: current,
+                        source: "llm".to_string(),
+                        ..Default::default()
+                    });
+                }
+            })
+            .await?;
+
+        let parsed: ExplanationPromptJson =
+            serde_json::from_str(&raw_buf).map_err(|e| LumenError::SerializationError {
+                message: e.to_string(),
+            })?;
+        let final_result = TranslationResult {
+            word: selection.to_string(),
+            context_explanation: parsed.explanation.unwrap_or_default(),
+            source: "llm".to_string(),
+            ..Default::default()
+        };
+        on_progress(final_result.clone());
+        Ok(final_result)
     }
 
     /// Translate a full sentence without word-level analysis (non-streaming).
@@ -191,6 +254,33 @@ Respond with ONLY valid JSON in this exact format:
             "{}/chat/completions",
             self.config.base_url.trim_end_matches('/')
         )
+    }
+
+    fn build_explanation_request(
+        &self,
+        selection: &str,
+        context: &str,
+        stream: bool,
+    ) -> ChatRequest {
+        ChatRequest {
+            model: self.config.model.clone(),
+            stream,
+            messages: vec![
+                Message {
+                    role: "system".into(),
+                    content:
+                        "You are a professional reading tutor. Always respond with valid JSON only."
+                            .into(),
+                },
+                Message {
+                    role: "user".into(),
+                    content: self.build_explanation_prompt(selection, context),
+                },
+            ],
+            response_format: ResponseFormat {
+                kind: "json_object".into(),
+            },
+        }
     }
 
     fn build_sentence_request(&self, sentence: &str, stream: bool) -> ChatRequest {
@@ -375,6 +465,11 @@ struct SentencePromptJson {
     translation: Option<String>,
     #[serde(default)]
     breakdown: Vec<SentenceChunkJson>,
+}
+
+#[derive(Deserialize)]
+struct ExplanationPromptJson {
+    explanation: Option<String>,
 }
 
 #[derive(Deserialize)]

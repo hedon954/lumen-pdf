@@ -64,10 +64,10 @@ struct TranslationBubble: View {
     }
 
     private var defaultCardSize: CGSize {
-        let baseWidth: CGFloat = request.isSentenceMode ? 560 : 380
-        let text = request.isSentenceMode ? request.word : request.sentence
+        let baseWidth: CGFloat = request.isSentenceMode || request.isExplanationMode ? 560 : 380
+        let text = request.isSentenceMode || request.isExplanationMode ? request.word : request.sentence
         let width = min(max(baseWidth, CGFloat(text.count) * 4.2), 760)
-        let height: CGFloat = request.isSentenceMode ? 680 : 560
+        let height: CGFloat = request.isSentenceMode || request.isExplanationMode ? 680 : 560
         return CGSize(width: width, height: height)
     }
 
@@ -332,13 +332,33 @@ struct TranslationBubble: View {
 
     @ViewBuilder
     private func contentBody(result: TranslationResult) -> some View {
-        // Check if this is sentence-only mode (word is the sentence, no word-level analysis)
-        let isSentenceOnly = request.isSentenceMode
+        if request.isExplanationMode {
+            VStack(alignment: .leading, spacing: 12) {
+                BubbleSection("原文") {
+                    Text(ContextSentenceFormatting.displayParagraph(request.word))
+                        .font(.body)
+                        .textSelection(.enabled)
+                        .foregroundStyle(.primary)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if !result.contextExplanation.isEmpty {
+                    BubbleSection("解释") {
+                        Text(result.contextExplanation)
+                            .font(.body)
+                            .textSelection(.enabled)
+                            .foregroundStyle(.primary)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .padding(14)
+        } else if request.isSentenceMode
             && result.contextTranslation.isEmpty
             && result.generalDefinition.isEmpty
             && result.phonetic.isEmpty
-
-        if isSentenceOnly {
+        {
             // Sentence translation mode: show original, translation, and (for
             // long / complex sentences) the per-fragment breakdown.
             VStack(alignment: .leading, spacing: 12) {
@@ -372,7 +392,7 @@ struct TranslationBubble: View {
             }
             .padding(14)
         } else {
-            // Word translation mode: show all fields
+            // Word translation mode: show all fields.
             VStack(alignment: .leading, spacing: 12) {
                 if !result.contextTranslation.isEmpty {
                     BubbleSection("语境翻译") {
@@ -494,9 +514,9 @@ struct TranslationBubble: View {
             } else {
                 Button {
                     savedEntryId = onSave(result)
-                    savedToNote = request.isSentenceMode
+                    savedToNote = request.isSentenceMode || request.isExplanationMode
                 } label: {
-                    if request.isSentenceMode {
+                    if request.isSentenceMode || request.isExplanationMode {
                         Label("保存到笔记", systemImage: "note.text")
                     } else {
                         Label("保存到单词本", systemImage: "bookmark")

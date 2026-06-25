@@ -104,6 +104,22 @@ final class BridgeService {
         )
     }
 
+    /// Streaming explanation for selected text. The selected text and its surrounding
+    /// sentence are sent to the LLM, and partial explanation text is emitted through
+    /// `contextExplanation` as it streams back.
+    func explainSelectionStreaming(
+        selection: String,
+        context: String,
+        onPartial: @escaping @MainActor (TranslationResult) -> Void
+    ) async throws -> TranslationResult {
+        let receiver = TranslationStreamReceiver(onPartial: onPartial)
+        return try await LumenPDF.explainSelectionStreaming(
+            selection: selection,
+            context: context,
+            callback: receiver
+        )
+    }
+
     // MARK: - Vocabulary
 
     @discardableResult
