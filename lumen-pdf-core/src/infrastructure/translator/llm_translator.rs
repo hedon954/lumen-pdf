@@ -63,15 +63,12 @@ Rules:
 2. Explain what the selected text means in this context; do not merely translate it.
 3. Explain why the author says this here and how it connects to the surrounding argument.
 4. Mention key terms and implied relationships; fix obvious OCR line-break or hyphenation errors silently.
-5. Use Markdown inside the JSON string: headings, bullet lists, bold key terms, short paragraphs, and code/math-style notation when useful.
-6. Preserve real line breaks in the JSON string. Put a blank line between sections and before every numbered or bulleted list item; never collapse the explanation into one giant paragraph.
+5. Use Markdown: headings, bullet lists, bold key terms, short paragraphs, and code/math-style notation when useful.
+6. Preserve real line breaks. Put a blank line between sections and before every numbered or bulleted list item; never collapse the explanation into one giant paragraph.
 7. Do not artificially shorten the answer. Use enough detail to make the idea understandable, while avoiding irrelevant digressions.
 8. Prefer a clear layered explanation: intuition first, then first-principles mechanics, then implications, then a concise takeaway useful for notes.
 
-Respond with ONLY valid JSON in this exact format:
-{
-  "explanation": "<{lang} Markdown explanation>"
-}"#;
+Return ONLY the Markdown explanation text. Do not wrap it in JSON, code fences, or quotes."#;
 
 pub const DEFAULT_SENTENCE_PROMPT_TEMPLATE: &str = r#"You are a professional translator and language tutor. Translate the following English text to {lang} and, if it is a long or complex sentence, also break it down so the reader can understand each fragment.
 
@@ -196,14 +193,11 @@ impl LlmTranslator {
 
         let raw_buf = self
             .stream_completion(&url, &body, |raw, last_emitted| {
-                let Some(current) = extract_streaming_string_value(raw, "explanation") else {
-                    return;
-                };
-                if current != *last_emitted {
-                    *last_emitted = current.clone();
+                if raw != *last_emitted {
+                    *last_emitted = raw.to_string();
                     on_progress(TranslationResult {
                         word: selection.to_string(),
-                        context_explanation: current,
+                        context_explanation: raw.to_string(),
                         source: "llm".to_string(),
                         ..Default::default()
                     });
@@ -211,13 +205,9 @@ impl LlmTranslator {
             })
             .await?;
 
-        let parsed: ExplanationPromptJson =
-            serde_json::from_str(&raw_buf).map_err(|e| LumenError::SerializationError {
-                message: e.to_string(),
-            })?;
         let final_result = TranslationResult {
             word: selection.to_string(),
-            context_explanation: parsed.explanation.unwrap_or_default(),
+            context_explanation: raw_buf,
             source: "llm".to_string(),
             ..Default::default()
         };
@@ -350,9 +340,7 @@ impl LlmTranslator {
                     content: self.build_explanation_prompt(selection, context),
                 },
             ],
-            response_format: ResponseFormat {
-                kind: "json_object".into(),
-            },
+            response_format: None,
         }
     }
 
@@ -370,9 +358,9 @@ impl LlmTranslator {
                     content: self.build_sentence_prompt(sentence),
                 },
             ],
-            response_format: ResponseFormat {
+            response_format: Some(ResponseFormat {
                 kind: "json_object".into(),
-            },
+            }),
         }
     }
 
@@ -482,7 +470,8 @@ fn map_to_translation_result(
 struct ChatRequest {
     model: String,
     messages: Vec<Message>,
-    response_format: ResponseFormat,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    response_format: Option<ResponseFormat>,
     #[serde(skip_serializing_if = "is_false")]
     stream: bool,
 }
@@ -536,11 +525,6 @@ struct SentencePromptJson {
     translation: Option<String>,
     #[serde(default)]
     breakdown: Vec<SentenceChunkJson>,
-}
-
-#[derive(Deserialize)]
-struct ExplanationPromptJson {
-    explanation: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -598,9 +582,9 @@ impl Translator for LlmTranslator {
                     content: self.build_prompt(word, sentence),
                 },
             ],
-            response_format: ResponseFormat {
+            response_format: Some(ResponseFormat {
                 kind: "json_object".into(),
-            },
+            }),
         };
 
         let resp = shared_client()
@@ -673,9 +657,9 @@ impl Translator for LlmTranslator {
                     content: self.build_prompt(word, sentence),
                 },
             ],
-            response_format: ResponseFormat {
+            response_format: Some(ResponseFormat {
                 kind: "json_object".into(),
-            },
+            }),
         };
 
         let mut last_keys: Vec<String> = Vec::new();
