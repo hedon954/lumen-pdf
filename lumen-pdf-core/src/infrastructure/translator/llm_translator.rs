@@ -17,27 +17,33 @@ pub struct LlmConfig {
     pub api_key: String,
     pub model: String,
     pub target_language: String,
+    pub word_prompt_template: String,
+    pub sentence_prompt_template: String,
+    pub explanation_prompt_template: String,
+    pub word_system_prompt: String,
+    pub sentence_system_prompt: String,
+    pub explanation_system_prompt: String,
 }
 
 pub struct LlmTranslator {
     config: LlmConfig,
 }
 
-impl LlmTranslator {
-    pub fn new(config: LlmConfig) -> Self {
-        Self { config }
-    }
+pub const DEFAULT_WORD_SYSTEM_PROMPT: &str =
+    "You are a professional language tutor. Always respond with valid JSON only.";
+pub const DEFAULT_SENTENCE_SYSTEM_PROMPT: &str =
+    "You are a professional translator. Always respond with valid JSON only.";
+pub const DEFAULT_EXPLANATION_SYSTEM_PROMPT: &str =
+    "You are a professional reading tutor. Always respond with valid JSON only.";
 
-    fn build_prompt(&self, word: &str, sentence: &str) -> String {
-        format!(
-            r#"You are a professional language tutor. The user selected the word "{word}" while reading a PDF.
+pub const DEFAULT_WORD_PROMPT_TEMPLATE: &str = r#"You are a professional language tutor. The user selected the word "{word}" while reading a PDF.
 
 Context sentence: "{sentence}"
 
 IMPORTANT: The selected text may contain OCR errors, line-break hyphens (e.g. "investi-\ngating"), or extra whitespace due to PDF extraction. In the "word" field, output the correctly spelled, properly joined word.
 
 Respond with ONLY valid JSON in this exact format:
-{{
+{
   "word": "correctly spelled word (fix any hyphenation, OCR errors, or typos from PDF extraction)",
   "phonetic": "IPA phonetic transcription",
   "part_of_speech": "noun/verb/adjective/adverb/etc",
@@ -45,39 +51,26 @@ Respond with ONLY valid JSON in this exact format:
   "context_explanation": "Why does it mean this here? Explain the nuance in {lang}",
   "general_definition": "General English definition of the word",
   "context_sentence_translation": "Full translation of the ENTIRE context sentence above to {lang} (not just the word)"
-}}"#,
-            word = word,
-            sentence = sentence,
-            lang = self.config.target_language,
-        )
-    }
+}"#;
 
-    fn build_explanation_prompt(&self, selection: &str, context: &str) -> String {
-        format!(
-            r#"You are a professional reading tutor. Explain the selected English text in {lang} for a PDF reader.
+pub const DEFAULT_EXPLANATION_PROMPT_TEMPLATE: &str = r#"You are a professional reading tutor. Explain the selected English text in {lang} for a PDF reader from first principles.
 
 Selected text: "{selection}"
 Context around the selection: "{context}"
 
 Rules:
-1. Explain what the selected text means in this context; do not merely translate it.
-2. Mention key terms, implied relationships, and why the author is saying this.
-3. Fix obvious OCR line-break or hyphenation errors silently.
-4. Keep the explanation concise but useful for note taking.
+1. Start from first principles: identify the basic concepts, assumptions, causal mechanisms, and constraints that make the statement true or important.
+2. Explain what the selected text means in this context; do not merely translate it.
+3. Explain why the author says this here and how it connects to the surrounding argument.
+4. Mention key terms and implied relationships; fix obvious OCR line-break or hyphenation errors silently.
+5. Prefer a clear layered explanation: intuition first, then details, then a concise takeaway useful for notes.
 
 Respond with ONLY valid JSON in this exact format:
-{{
+{
   "explanation": "<{lang} explanation>"
-}}"#,
-            selection = selection,
-            context = context,
-            lang = self.config.target_language,
-        )
-    }
+}"#;
 
-    fn build_sentence_prompt(&self, sentence: &str) -> String {
-        format!(
-            r#"You are a professional translator and language tutor. Translate the following English text to {lang} and, if it is a long or complex sentence, also break it down so the reader can understand each fragment.
+pub const DEFAULT_SENTENCE_PROMPT_TEMPLATE: &str = r#"You are a professional translator and language tutor. Translate the following English text to {lang} and, if it is a long or complex sentence, also break it down so the reader can understand each fragment.
 
 Text: "{sentence}"
 
@@ -94,20 +87,99 @@ Rules:
    - `grammar`: ONLY fill this when the fragment contains a grammatically noteworthy structure (subordinate clause, inversion, subjunctive mood, parallel structure, participle clause, nested complex structures, etc.). Leave it as an EMPTY STRING for plain SVO fragments. Be concise — 1 to 3 sentences in {lang}, naming the structure and explaining its role.
 
 Respond with ONLY valid JSON in this exact format:
-{{
+{
   "translation": "<full translation in {lang}>",
   "breakdown": [
-    {{
+    {
       "original": "<English fragment>",
       "translation": "<{lang} translation of the fragment>",
       "explanation": "<{lang} explanation>",
       "grammar": "<{lang} grammar analysis OR empty string>"
-    }}
+    }
   ]
-}}"#,
-            sentence = sentence,
-            lang = self.config.target_language,
+}"#;
+
+fn render_prompt_template(template: &str, vars: &[(&str, &str)]) -> String {
+    let mut rendered = template.to_string();
+    for (key, value) in vars {
+        rendered = rendered.replace(&format!("{{{key}}}"), value);
+    }
+    rendered
+}
+
+fn configured_template<'a>(configured: &'a str, default: &'a str) -> &'a str {
+    let trimmed = configured.trim();
+    if trimmed.is_empty() {
+        default
+    } else {
+        configured
+    }
+}
+
+impl LlmTranslator {
+    pub fn new(config: LlmConfig) -> Self {
+        Self { config }
+    }
+
+    fn build_prompt(&self, word: &str, sentence: &str) -> String {
+        render_prompt_template(
+            configured_template(
+                &self.config.word_prompt_template,
+                DEFAULT_WORD_PROMPT_TEMPLATE,
+            ),
+            &[
+                ("word", word),
+                ("sentence", sentence),
+                ("lang", &self.config.target_language),
+            ],
         )
+    }
+
+    fn build_explanation_prompt(&self, selection: &str, context: &str) -> String {
+        render_prompt_template(
+            configured_template(
+                &self.config.explanation_prompt_template,
+                DEFAULT_EXPLANATION_PROMPT_TEMPLATE,
+            ),
+            &[
+                ("selection", selection),
+                ("context", context),
+                ("lang", &self.config.target_language),
+            ],
+        )
+    }
+
+    fn build_sentence_prompt(&self, sentence: &str) -> String {
+        render_prompt_template(
+            configured_template(
+                &self.config.sentence_prompt_template,
+                DEFAULT_SENTENCE_PROMPT_TEMPLATE,
+            ),
+            &[
+                ("sentence", sentence),
+                ("lang", &self.config.target_language),
+            ],
+        )
+    }
+
+    fn word_system_prompt(&self) -> String {
+        configured_template(&self.config.word_system_prompt, DEFAULT_WORD_SYSTEM_PROMPT).to_string()
+    }
+
+    fn sentence_system_prompt(&self) -> String {
+        configured_template(
+            &self.config.sentence_system_prompt,
+            DEFAULT_SENTENCE_SYSTEM_PROMPT,
+        )
+        .to_string()
+    }
+
+    fn explanation_system_prompt(&self) -> String {
+        configured_template(
+            &self.config.explanation_system_prompt,
+            DEFAULT_EXPLANATION_SYSTEM_PROMPT,
+        )
+        .to_string()
     }
 
     pub async fn explain_selection_streaming(
@@ -268,9 +340,7 @@ Respond with ONLY valid JSON in this exact format:
             messages: vec![
                 Message {
                     role: "system".into(),
-                    content:
-                        "You are a professional reading tutor. Always respond with valid JSON only."
-                            .into(),
+                    content: self.explanation_system_prompt(),
                 },
                 Message {
                     role: "user".into(),
@@ -290,9 +360,7 @@ Respond with ONLY valid JSON in this exact format:
             messages: vec![
                 Message {
                     role: "system".into(),
-                    content:
-                        "You are a professional translator. Always respond with valid JSON only."
-                            .into(),
+                    content: self.sentence_system_prompt(),
                 },
                 Message {
                     role: "user".into(),
@@ -518,10 +586,18 @@ impl Translator for LlmTranslator {
             model: self.config.model.clone(),
             stream: false,
             messages: vec![
-                Message { role: "system".into(), content: "You are a professional language tutor. Always respond with valid JSON only.".into() },
-                Message { role: "user".into(), content: self.build_prompt(word, sentence) },
+                Message {
+                    role: "system".into(),
+                    content: self.word_system_prompt(),
+                },
+                Message {
+                    role: "user".into(),
+                    content: self.build_prompt(word, sentence),
+                },
             ],
-            response_format: ResponseFormat { kind: "json_object".into() },
+            response_format: ResponseFormat {
+                kind: "json_object".into(),
+            },
         };
 
         let resp = shared_client()
@@ -587,9 +663,7 @@ impl Translator for LlmTranslator {
             messages: vec![
                 Message {
                     role: "system".into(),
-                    content:
-                        "You are a professional language tutor. Always respond with valid JSON only."
-                            .into(),
+                    content: self.word_system_prompt(),
                 },
                 Message {
                     role: "user".into(),
