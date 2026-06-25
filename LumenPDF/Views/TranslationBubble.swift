@@ -15,6 +15,7 @@ struct TranslationBubble: View {
 
     // Drag offset — updated directly from AppKit mouse events (no SwiftUI gesture layer)
     @State private var offset: CGSize = .zero
+    @State private var customCardSize: CGSize?
 
     var body: some View {
         card
@@ -31,7 +32,11 @@ struct TranslationBubble: View {
             // The bubble is reused in place when the user selects a different word without first
             // dismissing it. `onAppear` won't fire again, so re-sync on request identity changes —
             // otherwise it would keep showing the previous word's saved/unsaved state.
-            .onChange(of: request.id) { _ in syncSavedState() }
+            .onChange(of: request.id) { _ in
+                syncSavedState()
+                customCardSize = nil
+                offset = .zero
+            }
     }
 
     /// Seed the local saved state from the request. `existingEntryId` is only ever a vocabulary
@@ -44,16 +49,43 @@ struct TranslationBubble: View {
     // MARK: - Card
 
     private var card: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        let size = customCardSize ?? defaultCardSize
+
+        return VStack(alignment: .leading, spacing: 0) {
             header
             Divider()
             content
         }
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(alignment: .bottomTrailing) { resizeHandle }
         .shadow(color: .black.opacity(0.18), radius: 14, x: 0, y: 6)
-        .frame(width: 380)
-        .frame(maxHeight: 680) // Upper bound for long content
+        .frame(width: size.width, height: size.height)
+    }
+
+    private var defaultCardSize: CGSize {
+        let baseWidth: CGFloat = request.isSentenceMode ? 560 : 380
+        let text = request.isSentenceMode ? request.word : request.sentence
+        let width = min(max(baseWidth, CGFloat(text.count) * 4.2), 760)
+        let height: CGFloat = request.isSentenceMode ? 680 : 560
+        return CGSize(width: width, height: height)
+    }
+
+    private var resizeHandle: some View {
+        Image(systemName: "arrow.down.right.and.arrow.up.left")
+            .font(.caption2)
+            .foregroundStyle(.tertiary)
+            .padding(8)
+            .background(
+                AppKitResizeCapture { delta in
+                    let current = customCardSize ?? defaultCardSize
+                    customCardSize = CGSize(
+                        width: min(max(current.width + delta.width, 340), 920),
+                        height: min(max(current.height + delta.height, 240), 820)
+                    )
+                }
+            )
+            .cursor(.resizeDiagonal)
     }
 
     // MARK: - Header (AppKit drag handle)
@@ -125,11 +157,8 @@ struct TranslationBubble: View {
                 if isLoading {
                     streamingBanner
                 }
-                ViewThatFits(in: .vertical) {
-                    contentBody(result: result)
-                    ScrollView { contentBody(result: result) }
-                        .frame(maxHeight: 520)
-                }
+                ScrollView { contentBody(result: result) }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                 errorSection(result: result)
 
@@ -316,6 +345,7 @@ struct TranslationBubble: View {
                 BubbleSection("原文") {
                     Text(ContextSentenceFormatting.displayParagraph(request.word))
                         .font(.body)
+                        .textSelection(.enabled)
                         .foregroundStyle(.primary)
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
@@ -324,6 +354,7 @@ struct TranslationBubble: View {
                     BubbleSection("译文") {
                         Text(result.contextSentenceTranslation)
                             .font(.body)
+                            .textSelection(.enabled)
                             .foregroundStyle(.primary)
                             .multilineTextAlignment(.leading)
                             .fixedSize(horizontal: false, vertical: true)
@@ -532,6 +563,53 @@ private struct AppKitDragCapture: NSViewRepresentable {
     }
 }
 
+// MARK: - AppKit resize capture
+
+private struct AppKitResizeCapture: NSViewRepresentable {
+    let onDelta: (CGSize) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(onDelta) }
+    func makeNSView(context: Context) -> NSView { context.coordinator.view }
+    func updateNSView(_ nsView: NSView, context: Context) {
+        context.coordinator.onDelta = onDelta
+    }
+
+    final class Coordinator: NSObject {
+        var onDelta: (CGSize) -> Void
+        lazy var view: CaptureView = CaptureView(coordinator: self)
+        init(_ cb: @escaping (CGSize) -> Void) { onDelta = cb }
+    }
+
+    final class CaptureView: NSView {
+        weak var coordinator: Coordinator?
+        private var lastLoc: CGPoint?
+
+        init(coordinator: Coordinator) {
+            self.coordinator = coordinator
+            super.init(frame: .zero)
+        }
+        required init?(coder: NSCoder) { fatalError() }
+
+        override func mouseDown(with event: NSEvent) {
+            lastLoc = event.locationInWindow
+        }
+
+        override func mouseDragged(with event: NSEvent) {
+            guard let last = lastLoc else { return }
+            let cur = event.locationInWindow
+            let delta = CGSize(width: cur.x - last.x, height: -(cur.y - last.y))
+            lastLoc = cur
+            coordinator?.onDelta(delta)
+        }
+
+        override func mouseUp(with event: NSEvent) {
+            lastLoc = nil
+        }
+
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    }
+}
+
 // MARK: - Spinner
 
 private struct SpinnerView: View {
@@ -579,5 +657,14 @@ private extension View {
         self.onHover { inside in
             if inside { cursor.push() } else { NSCursor.pop() }
         }
+    }
+}
+
+private extension NSCursor {
+    static var resizeDiagonal: NSCursor {
+        if #available(macOS 11.0, *) {
+            return NSCursor(image: NSImage(systemSymbolName: "arrow.down.right.and.arrow.up.left", accessibilityDescription: nil) ?? NSImage(), hotSpot: NSPoint(x: 6, y: 6))
+        }
+        return .crosshair
     }
 }
