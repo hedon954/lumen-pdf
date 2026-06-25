@@ -198,7 +198,7 @@ Rules:
 2. Explain what the selected text means in this context; do not merely translate it.
 3. Explain why the author says this here and how it connects to the surrounding argument.
 4. Mention key terms and implied relationships; fix obvious OCR line-break or hyphenation errors silently.
-5. Format the answer like a high-quality reading note in {lang}: start with a short bold thesis paragraph, then use clear Markdown section headings such as `## 一、...`, numbered lists, bullet lists, and short paragraphs.
+5. Format the answer like a high-quality reading note in {lang}: start with a short bold thesis paragraph, then use clear Markdown section headings such as `## 一、...`, numbered lists, bullet lists, and short paragraphs. Do not use Markdown tables; use bullet lists instead because the explanation is shown in a compact reader bubble.
 6. Preserve real line breaks: every heading, paragraph, numbered item, and bullet item must be on its own line, with a blank line between blocks. Never collapse the explanation into one giant paragraph.
 7. Do not artificially shorten the answer. Use enough detail to make the idea understandable, while avoiding irrelevant digressions.
 8. Prefer a clear layered explanation: intuition first, then first-principles mechanics, then implications, then a concise takeaway useful for notes.

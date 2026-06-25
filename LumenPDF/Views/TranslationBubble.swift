@@ -678,6 +678,26 @@ private struct MarkdownText: View {
                 options: .regularExpression
             )
             .replacingOccurrences(
+                of: #"(?m)^(\d+[.)])\s*\n(?=\S)"#,
+                with: "$1 ",
+                options: .regularExpression
+            )
+            .replacingOccurrences(
+                of: #"(?m)^([-*])\s*\n(?=\S)"#,
+                with: "$1 ",
+                options: .regularExpression
+            )
+            .replacingOccurrences(
+                of: #"\*\*\s+([^*]+?)\s+\*\*"#,
+                with: "**$1**",
+                options: .regularExpression
+            )
+            .replacingOccurrences(
+                of: #"__\s+([^_]+?)\s+__"#,
+                with: "__$1__",
+                options: .regularExpression
+            )
+            .replacingOccurrences(
                 of: #"([。！？.!?])(\S)"#,
                 with: "$1 $2",
                 options: .regularExpression
@@ -687,15 +707,8 @@ private struct MarkdownText: View {
 
     var body: some View {
         Markdown(normalizedMarkdown)
-            .markdownTheme(.gitHub)
-            .padding(16)
+            .padding(.vertical, 4)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(nsColor: .textBackgroundColor).opacity(0.78))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
-            )
     }
 }
 
