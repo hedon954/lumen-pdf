@@ -69,6 +69,12 @@ fn set_llm_config_inner(config: AppConfig) -> Result<(), LumenError> {
         api_key: config.llm_api_key,
         model: config.llm_model,
         target_language: config.target_language,
+        word_prompt_template: config.word_prompt_template,
+        sentence_prompt_template: config.sentence_prompt_template,
+        explanation_prompt_template: config.explanation_prompt_template,
+        word_system_prompt: config.word_system_prompt,
+        sentence_system_prompt: config.sentence_system_prompt,
+        explanation_system_prompt: config.explanation_system_prompt,
     });
     Ok(())
 }
@@ -94,6 +100,12 @@ pub struct AppConfig {
     pub llm_api_key: String,
     pub llm_model: String,
     pub target_language: String,
+    pub word_prompt_template: String,
+    pub sentence_prompt_template: String,
+    pub explanation_prompt_template: String,
+    pub word_system_prompt: String,
+    pub sentence_system_prompt: String,
+    pub explanation_system_prompt: String,
 }
 
 // ── Translation API ──────────────────────────────────────────────────────────
