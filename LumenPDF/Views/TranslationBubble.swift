@@ -64,10 +64,14 @@ struct TranslationBubble: View {
     }
 
     private var defaultCardSize: CGSize {
-        let baseWidth: CGFloat = request.isSentenceMode || request.isExplanationMode ? 560 : 380
-        let text = request.isSentenceMode || request.isExplanationMode ? request.word : request.sentence
+        if request.isExplanationMode {
+            return CGSize(width: 760, height: 780)
+        }
+
+        let baseWidth: CGFloat = request.isSentenceMode ? 560 : 380
+        let text = request.isSentenceMode ? request.word : request.sentence
         let width = min(max(baseWidth, CGFloat(text.count) * 4.2), 760)
-        let height: CGFloat = request.isSentenceMode || request.isExplanationMode ? 680 : 560
+        let height: CGFloat = request.isSentenceMode ? 680 : 560
         return CGSize(width: width, height: height)
     }
 
@@ -344,12 +348,8 @@ struct TranslationBubble: View {
                 }
                 if !result.contextExplanation.isEmpty {
                     BubbleSection("解释") {
-                        Text(result.contextExplanation)
-                            .font(.body)
+                        MarkdownText(markdown: result.contextExplanation)
                             .textSelection(.enabled)
-                            .foregroundStyle(.primary)
-                            .multilineTextAlignment(.leading)
-                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }
@@ -645,6 +645,27 @@ private struct SpinnerView: View {
                     angle = 360
                 }
             }
+    }
+}
+
+// MARK: - Markdown text
+
+private struct MarkdownText: View {
+    let markdown: String
+
+    var body: some View {
+        Group {
+            if let attributed = try? AttributedString(markdown: markdown) {
+                Text(attributed)
+            } else {
+                Text(markdown)
+            }
+        }
+        .font(.body)
+        .foregroundStyle(.primary)
+        .lineSpacing(4)
+        .multilineTextAlignment(.leading)
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 
