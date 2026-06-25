@@ -187,8 +187,9 @@ Rules:
 3. Explain why the author says this here and how it connects to the surrounding argument.
 4. Mention key terms and implied relationships; fix obvious OCR line-break or hyphenation errors silently.
 5. Use Markdown inside the JSON string: headings, bullet lists, bold key terms, short paragraphs, and code/math-style notation when useful.
-6. Do not artificially shorten the answer. Use enough detail to make the idea understandable, while avoiding irrelevant digressions.
-7. Prefer a clear layered explanation: intuition first, then first-principles mechanics, then implications, then a concise takeaway useful for notes.
+6. Preserve real line breaks in the JSON string. Put a blank line between sections and before every numbered or bulleted list item; never collapse the explanation into one giant paragraph.
+7. Do not artificially shorten the answer. Use enough detail to make the idea understandable, while avoiding irrelevant digressions.
+8. Prefer a clear layered explanation: intuition first, then first-principles mechanics, then implications, then a concise takeaway useful for notes.
 
 Respond with ONLY valid JSON in this exact format:
 {

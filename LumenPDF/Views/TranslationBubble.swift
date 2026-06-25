@@ -653,12 +653,36 @@ private struct SpinnerView: View {
 private struct MarkdownText: View {
     let markdown: String
 
+    private var normalizedMarkdown: String {
+        markdown
+            .replacingOccurrences(
+                of: #"(\S)\s+(#{1,6}\s+)"#,
+                with: "$1\n\n$2",
+                options: .regularExpression
+            )
+            .replacingOccurrences(
+                of: #"(\S)\s+([-*]\s+)"#,
+                with: "$1\n\n$2",
+                options: .regularExpression
+            )
+            .replacingOccurrences(
+                of: #"(\S)\s+(\d+\.\s+)"#,
+                with: "$1\n\n$2",
+                options: .regularExpression
+            )
+            .replacingOccurrences(
+                of: #"(\S)\s+(\*\*[^*]+\*\*[:：])"#,
+                with: "$1\n\n$2",
+                options: .regularExpression
+            )
+    }
+
     var body: some View {
         Group {
-            if let attributed = try? AttributedString(markdown: markdown) {
+            if let attributed = try? AttributedString(markdown: normalizedMarkdown) {
                 Text(attributed)
             } else {
-                Text(markdown)
+                Text(normalizedMarkdown)
             }
         }
         .font(.body)
