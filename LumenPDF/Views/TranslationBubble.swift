@@ -99,9 +99,10 @@ struct TranslationBubble: View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
                 // 纵向排列：单词独占一行按词换行，避免与音标挤在同一行导致「拦腰断词」
-                Text(request.result?.word ?? request.word)
+                Text(ContextSentenceFormatting.displayParagraph(request.result?.word ?? request.word))
                     .font(.title2.bold())
                     .multilineTextAlignment(.leading)
+                    .lineLimit(nil)
                     .fixedSize(horizontal: false, vertical: true)
                 if let phonetic = request.result?.phonetic, !phonetic.isEmpty {
                     Text("[\(phonetic)]")
@@ -118,6 +119,8 @@ struct TranslationBubble: View {
                     .font(.caption2).foregroundStyle(.orange)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .layoutPriority(1)
 
             Spacer()
 
@@ -651,57 +654,13 @@ private struct SpinnerView: View {
 
 // MARK: - Markdown text
 
-private struct MarkdownText: View {
+struct MarkdownText: View {
     let markdown: String
 
     private var normalizedMarkdown: String {
         markdown
             .replacingOccurrences(of: "\r\n", with: "\n")
-            .replacingOccurrences(
-                of: #"(\S)\s+(#{1,6}\s+)"#,
-                with: "$1\n\n$2",
-                options: .regularExpression
-            )
-            .replacingOccurrences(
-                of: #"(\S)\s+([-*]\s+)"#,
-                with: "$1\n\n$2",
-                options: .regularExpression
-            )
-            .replacingOccurrences(
-                of: #"(\S)\s+(\d+\.\s+)"#,
-                with: "$1\n\n$2",
-                options: .regularExpression
-            )
-            .replacingOccurrences(
-                of: #"(\S)\s+(\*\*[^*]+\*\*[:：])"#,
-                with: "$1\n\n$2",
-                options: .regularExpression
-            )
-            .replacingOccurrences(
-                of: #"(?m)^(\d+[.)])\s*\n(?=\S)"#,
-                with: "$1 ",
-                options: .regularExpression
-            )
-            .replacingOccurrences(
-                of: #"(?m)^([-*])\s*\n(?=\S)"#,
-                with: "$1 ",
-                options: .regularExpression
-            )
-            .replacingOccurrences(
-                of: #"\*\*\s+([^*]+?)\s+\*\*"#,
-                with: "**$1**",
-                options: .regularExpression
-            )
-            .replacingOccurrences(
-                of: #"__\s+([^_]+?)\s+__"#,
-                with: "__$1__",
-                options: .regularExpression
-            )
-            .replacingOccurrences(
-                of: #"([。！？.!?])(\S)"#,
-                with: "$1 $2",
-                options: .regularExpression
-            )
+            .replacingOccurrences(of: "\r", with: "\n")
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 

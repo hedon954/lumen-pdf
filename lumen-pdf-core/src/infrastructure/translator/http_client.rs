@@ -15,10 +15,9 @@ pub fn shared_client() -> &'static Client {
     HTTP_CLIENT.get_or_init(|| {
         Client::builder()
             .connect_timeout(Duration::from_secs(3))
-            // Total request timeout — caps both blocking RTT *and* slow streaming
-            // responses. 30s is enough for a long word-level translation with a
-            // verbose model while still bounding worst-case latency.
-            .timeout(Duration::from_secs(30))
+            // Total request timeout — caps both blocking RTT and slow streaming
+            // responses while still giving explanation requests room to finish.
+            .timeout(Duration::from_secs(120))
             .pool_idle_timeout(Duration::from_secs(60))
             .build()
             // `Client::builder().build()` only fails if the system TLS backend
