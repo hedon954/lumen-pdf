@@ -3,7 +3,7 @@ name: LumenPDF
 options:
   bundleIdPrefix: com.LumenPDF
   deploymentTarget:
-    macOS: "13.0"
+    macOS: "15.0"
   createIntermediateGroups: true
 
 packages:
@@ -14,7 +14,7 @@ packages:
 settings:
   base:
     SWIFT_VERSION: "5.9"
-    MACOSX_DEPLOYMENT_TARGET: "13.0"
+    MACOSX_DEPLOYMENT_TARGET: "15.0"
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: ""
 
