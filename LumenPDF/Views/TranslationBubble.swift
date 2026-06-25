@@ -1,6 +1,6 @@
 import SwiftUI
 import AppKit
-import MarkdownUI
+import Textual
 
 struct TranslationBubble: View {
     let request: TranslationBubbleRequest
@@ -706,7 +706,8 @@ private struct MarkdownText: View {
     }
 
     var body: some View {
-        Markdown(normalizedMarkdown)
+        StructuredText(markdown: normalizedMarkdown)
+            .textual.textSelection(.enabled)
             .padding(.vertical, 4)
             .frame(maxWidth: .infinity, alignment: .leading)
     }

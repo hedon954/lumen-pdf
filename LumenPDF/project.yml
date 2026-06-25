@@ -7,9 +7,9 @@ options:
   createIntermediateGroups: true
 
 packages:
-  MarkdownUI:
-    url: https://github.com/gonzalezreal/swift-markdown-ui
-    from: 2.4.1
+  Textual:
+    url: https://github.com/gonzalezreal/textual
+    from: 0.5.0
 
 settings:
   base:
@@ -46,7 +46,7 @@ targets:
       - framework: Generated/liblumen_pdf_core.dylib
         embed: true
         codeSign: true
-      - package: MarkdownUI
+      - package: Textual
     entitlements:
       path: LumenPDF.entitlements
       properties:
