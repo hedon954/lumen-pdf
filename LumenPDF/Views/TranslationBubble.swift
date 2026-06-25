@@ -17,6 +17,8 @@ struct TranslationBubble: View {
     // Drag offset — updated directly from AppKit mouse events (no SwiftUI gesture layer)
     @State private var offset: CGSize = .zero
     @State private var customCardSize: CGSize?
+    @State private var measuredCardSize: CGSize = .zero
+    @State private var measuredContentHeight: CGFloat = 0
 
     var body: some View {
         card
@@ -36,6 +38,8 @@ struct TranslationBubble: View {
             .onChange(of: request.id) { _ in
                 syncSavedState()
                 customCardSize = nil
+                measuredCardSize = .zero
+                measuredContentHeight = 0
                 offset = .zero
             }
     }
@@ -50,8 +54,6 @@ struct TranslationBubble: View {
     // MARK: - Card
 
     private var card: some View {
-        let size = customCardSize ?? defaultCardSize
-
         return VStack(alignment: .leading, spacing: 0) {
             header
             Divider()
@@ -61,19 +63,33 @@ struct TranslationBubble: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(alignment: .bottomTrailing) { resizeHandle }
         .shadow(color: .black.opacity(0.18), radius: 14, x: 0, y: 6)
-        .frame(width: size.width, height: size.height)
+        .frame(width: cardWidth, height: customCardSize?.height)
+        .onSizeChange { measuredCardSize = $0 }
     }
 
-    private var defaultCardSize: CGSize {
+    private var cardWidth: CGFloat {
+        if let customCardSize {
+            return customCardSize.width
+        }
+
         if request.isExplanationMode {
-            return CGSize(width: 760, height: 780)
+            return 760
         }
 
         let baseWidth: CGFloat = request.isSentenceMode ? 560 : 380
         let text = request.isSentenceMode ? request.word : request.sentence
-        let width = min(max(baseWidth, CGFloat(text.count) * 4.2), 760)
-        let height: CGFloat = request.isSentenceMode ? 680 : 560
-        return CGSize(width: width, height: height)
+        return min(max(baseWidth, CGFloat(text.count) * 4.2), 760)
+    }
+
+    private var shouldScrollContent: Bool {
+        customCardSize != nil || measuredContentHeight > maximumAutomaticContentHeight
+    }
+
+    private var maximumAutomaticContentHeight: CGFloat {
+        if request.isExplanationMode {
+            return 620
+        }
+        return request.isSentenceMode ? 560 : 520
     }
 
     private var resizeHandle: some View {
@@ -83,7 +99,10 @@ struct TranslationBubble: View {
             .padding(8)
             .background(
                 AppKitResizeCapture { delta in
-                    let current = customCardSize ?? defaultCardSize
+                    let current = customCardSize ?? CGSize(
+                        width: cardWidth,
+                        height: max(measuredCardSize.height, 240)
+                    )
                     customCardSize = CGSize(
                         width: min(max(current.width + delta.width, 340), 920),
                         height: min(max(current.height + delta.height, 240), 820)
@@ -165,8 +184,7 @@ struct TranslationBubble: View {
                 if isLoading {
                     streamingBanner
                 }
-                ScrollView { contentBody(result: result) }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                adaptiveContent(result: result)
 
                 errorSection(result: result)
 
@@ -210,6 +228,22 @@ struct TranslationBubble: View {
                 .padding(.bottom, 14)
             }
             .frame(maxWidth: .infinity, minHeight: 120, alignment: .leading)
+        }
+    }
+
+    @ViewBuilder
+    private func adaptiveContent(result: TranslationResult) -> some View {
+        if shouldScrollContent {
+            ScrollView {
+                contentBody(result: result)
+                    .onHeightChange { measuredContentHeight = $0 }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: customCardSize == nil ? maximumAutomaticContentHeight : nil)
+            .frame(maxHeight: customCardSize == nil ? nil : .infinity)
+        } else {
+            contentBody(result: result)
+                .onHeightChange { measuredContentHeight = $0 }
         }
     }
 
@@ -697,10 +731,44 @@ private struct BubbleSection<Content: View>: View {
 // MARK: - Cursor modifier (macOS)
 
 private extension View {
+    func onSizeChange(_ onChange: @escaping (CGSize) -> Void) -> some View {
+        background(
+            GeometryReader { proxy in
+                Color.clear.preference(key: ViewSizePreferenceKey.self, value: proxy.size)
+            }
+        )
+        .onPreferenceChange(ViewSizePreferenceKey.self, perform: onChange)
+    }
+
+    func onHeightChange(_ onChange: @escaping (CGFloat) -> Void) -> some View {
+        background(
+            GeometryReader { proxy in
+                Color.clear.preference(key: ViewHeightPreferenceKey.self, value: proxy.size.height)
+            }
+        )
+        .onPreferenceChange(ViewHeightPreferenceKey.self, perform: onChange)
+    }
+
     func cursor(_ cursor: NSCursor) -> some View {
         self.onHover { inside in
             if inside { cursor.push() } else { NSCursor.pop() }
         }
+    }
+}
+
+private struct ViewSizePreferenceKey: PreferenceKey {
+    static var defaultValue: CGSize = .zero
+
+    static func reduce(value: inout CGSize, nextValue: () -> CGSize) {
+        value = nextValue()
+    }
+}
+
+private struct ViewHeightPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
 
