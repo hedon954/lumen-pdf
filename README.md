@@ -1,318 +1,159 @@
 # LumenPDF
 
-> 为深度阅读者设计的 macOS 智能 PDF 工具——像系统预览一样流畅，但支持**上下文感知翻译**、**原生高亮 / 划线标注**与**知识永久沉淀**。
+LumenPDF 是一款面向深度阅读的 macOS PDF 阅读器。它保留系统 Preview 式的轻量阅读体验，同时把翻译、划线笔记、单词本和本地知识沉淀放在同一个工作流里。
 
 ![macOS 15+](https://img.shields.io/badge/macOS-15%2B-blue)
-![Swift 5.9](https://img.shields.io/badge/Swift-5.9-orange)
+![Swift](https://img.shields.io/badge/Swift-5.9-orange)
 ![Rust](https://img.shields.io/badge/Rust-stable-brown)
 ![License MIT](https://img.shields.io/badge/License-MIT-green)
 
----
+## 特性
 
-## 核心功能
+- 阅读 PDF：连续滚动、目录跳转、自动恢复上次阅读位置。
+- 看懂英文论文和技术书：划选单词或句子后，得到带上下文的中文解释。
+- 边读边沉淀：把单词保存到单词本，把句子解释保存成笔记。
+- 标注原文：高亮和下划线写入 PDF 标注，重启后仍能恢复。
+- 保持数据本地：笔记、单词、阅读进度存在本机 SQLite；API Key 存在 macOS Keychain。
 
-| 功能                   | 说明                                                                                                                                   |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| 📖 **PDF 阅读**        | PDFKit 渲染，连续滚动，工具栏实时显示文件名与页码；跨重启 / 最小化还原均恢复精确阅读位置（页码 + 纵向偏移），支持 Cmd+S 立即落库       |
-| 📑 **PDF 目录（TOC）** | 左侧栏展示完整大纲，支持一键收起/展开；随阅读进度自动高亮并滚入可视区；启动 / 最小化还原后自动归位                                     |
-| 🖱 **选词操作菜单**    | 划选后弹出贴近选区的菜单：**翻译 / 高亮 / 划线笔记**，按钮尺寸优化提升点击体验                                                         |
-| 🌐 **语境感知翻译**    | 每个语境独立翻译；**流式输出**——单词模式按字段渐进，句子模式**逐字渲染**（首字 0.5–2s 出现）；选中长句时自动**拆解分析**：每段配中文解释 + 复杂语法节，帮你看懂为什么这么翻；保存时自动写入笔记并添加划线标注；LLM 失败时气泡展示具体原因，网关挂死时 30s 内自动降级到 MyMemory 兜底 |
-| 🖊 **原生 PDF 标注**   | 高亮（黄）/ 划线（红，同 macOS Preview），支持跨行精确标注、Toggle 移除、部分重叠自动合并；**标注持久化到 PDF 元数据**，重启后自动恢复 |
-| 📝 **划线笔记**        | 划线时自动保存笔记；句子翻译后可直接保存到笔记（含译文）；支持搜索、编辑、删除、跳转；删除笔记时同步移除划线；**Markdown 导出** |
-| 📚 **单词本**          | 同一单词多语境聚合展示；保存时 PDF 原文自动高亮                                                                                        |
-| 🔊 **本地发音**        | AVSpeechSynthesizer，零延迟，完全离线                                                                                                  |
-| 🔒 **数据本地化**      | 所有数据存 SQLite，API Key 存 Keychain，无云服务依赖                                                                                   |
+## 安装
 
----
+### 下载 DMG
 
-## 截图
+如果 GitHub Releases 中已经提供 DMG，下载最新版，打开后把 `LumenPDF.app` 拖到 `Applications`。
 
-> 启动 App → 打开 PDF → 划词选择操作 → 翻译气泡 → 保存到单词本
+首次打开如果 macOS 提示“无法验证开发者”，在 Finder 中右键点击 `LumenPDF.app`，选择“打开”，再在弹窗里确认一次即可。
 
----
+### 从源码打包
 
-## 安装方式
-
-### 方式一：下载预编译包（推荐）
-
-> 目前尚未发布 Release 包，请使用方式二从源码构建。
-
-### 方式二：自行打包 DMG
-
-适合需要分发或在多台 Mac 上使用的场景。
-
-#### 环境要求
-
-| 工具            | 版本要求                                       |
-| --------------- | ---------------------------------------------- |
-| macOS           | 15.0+（打包机）                                |
-| Xcode           | 16.0+（含命令行工具 `xcodebuild`）             |
-| Rust            | stable（`rustup show` 确认）                   |
-| `rustup target` | `aarch64-apple-darwin` + `x86_64-apple-darwin` |
-
-> `hdiutil`（DMG 制作工具）是 macOS 内置命令，无需额外安装。
-
-#### 本地开发包（不签名，仅自用）
+适合开发者，或当前还没有预编译 DMG 时使用。
 
 ```bash
-# 克隆并进入项目
-git clone https://github.com/yourname/lumen-pdf.git
+git clone https://github.com/hedon954/lumen-pdf.git
 cd lumen-pdf
 
-# 生成 Xcode 工程（首次）
-brew install xcodegen
-cd LumenPDF && xcodegen generate && cd ..
-
-# 一键打包 DMG
-make dmg
-# 或等价写法：
-# ./scripts/package-dmg.sh
-```
-
-产物路径：`build/LumenPDF-1.0.0.dmg`
-
-打开 DMG → 将 `LumenPDF.app` 拖入 `Applications` 文件夹即可。
-
-> **首次打开提示"无法验证开发者"**：这是 macOS Gatekeeper 的正常提示，不是病毒警告。在 Finder 中**右键点击** `LumenPDF.app` → 选择「打开」→ 弹窗中再点击「打开」即可。此后双击直接运行，无需重复此步骤。
-
-#### 使用 Developer ID 正式签名（可分发给他人）
-
-前提：拥有苹果开发者账号，并在 Xcode → Settings → Accounts 中配置好证书。
-
-```bash
-# 查找你的 Team ID（10 位字母数字）
-# Xcode → Settings → Accounts → 选择账号 → Team ID 列
-TEAM_ID=XXXXXXXXXX make dmg
-```
-
-签名后的 DMG 可直接分发，其他用户双击即可安装，无需绕过 Gatekeeper。
-
-若需 **Notarization（公证）**（推荐对外正式分发时使用）：
-
-```bash
-# 提交公证（替换占位符）
-xcrun notarytool submit build/LumenPDF-1.0.0.dmg \
-    --apple-id "your@email.com" \
-    --team-id "XXXXXXXXXX" \
-    --password "@keychain:AC_PASSWORD" \
-    --wait
-
-# 公证通过后装订票据到 DMG
-xcrun stapler staple build/LumenPDF-1.0.0.dmg
-```
-
-#### 指定版本号
-
-```bash
-VERSION=2.0.0 make dmg
-# 产物：build/LumenPDF-2.0.0.dmg
-```
-
-### 方式三：从源码构建（开发调试）
-
-#### 环境要求
-
-| 工具     | 版本要求                     |
-| -------- | ---------------------------- |
-| macOS    | 15.0+                        |
-| Xcode    | 16.0+                        |
-| Rust     | stable（`rustup show` 确认） |
-| Homebrew | 最新版                       |
-
-#### 步骤
-
-```bash
-# 1. 克隆仓库
-git clone https://github.com/yourname/lumen-pdf.git
-cd lumen-pdf
-
-# 2. 安装工具依赖
 brew install xcodegen
 rustup target add aarch64-apple-darwin x86_64-apple-darwin
 
-# 3. 构建 Rust 后端 + 生成 UniFFI Swift 绑定
-./scripts/build-rust.sh
-
-# 4. 生成 Xcode 工程（首次或 project.yml 变更时）
-cd LumenPDF && xcodegen generate && cd ..
-
-# 5. 打开 Xcode 编译运行
-open LumenPDF/LumenPDF.xcodeproj
-# 选择 My Mac 目标 → ⌘R 运行
+make dmg
 ```
 
-> **Apple Silicon 用户**：脚本自动检测架构，无需额外配置。
-> **Intel 用户**：同上，脚本会选 `x86_64-apple-darwin` 目标。
+产物会生成在 `build/LumenPDF-<version>.dmg`。
 
----
-
-## 首次使用设置
-
-启动 App 后点击右上角 ⚙️ 进入「设置」。保存后**立即生效**，无需重启 App：
-
-| 配置项       | 说明                        | 默认值                      |
-| ------------ | --------------------------- | --------------------------- |
-| API Base URL | OpenAI 兼容接口地址         | `https://api.openai.com/v1` |
-| API Key      | 存储在系统 Keychain，不落盘 | —                           |
-| 模型         | 任意 OpenAI 兼容模型        | `gpt-4o-mini`               |
-| 目标语言     | LLM 输出的翻译目标语言      | `简体中文`                  |
-
-> 不配置 LLM 也可使用：翻译会自动降级到 **MyMemory 免费 API**（无需注册，但只提供基础词义，无语境解释）。
-
----
-
-## 使用指南
-
-### 打开 PDF
-
-点击工具栏「文库」图标 → Popover 中选择「打开 PDF」，或直接点击「打开 PDF」按钮。  
-已打开的文件会记录在文库中。阅读位置（页码 + 纵向滚动）在以下时机自动保存：
-
-- **实时滚动**：停止滚动 0.5s 后自动写入。
-- **Cmd+S**：立即写入当前位置。
-- **最小化前**：窗口最小化前同步保存，还原后精确恢复。
-- **App 退出前**：自动同步保存，下次启动直接跳回。
-
-### 划词翻译
-
-1. 用鼠标划选 PDF 中的单词或短句
-2. 在选区附近弹出的操作菜单中点击「**翻译**」
-3. 翻译气泡展示：
-   - **单词模式**：单词 · 音标 · 语境翻译 · 语境解释 · 整句译文 · 原文；点击「保存到单词本」→ PDF 原文自动添加黄色高亮
-   - **句子模式**（选中短语/句子）：整句译文，简化布局；点击「保存到笔记」→ PDF 原文自动添加红色划线，笔记包含原文和译文
-
-### 高亮 / 划线笔记
-
-- **高亮**：选中文字 → 操作菜单 → 「**高亮**」（黄色标注）
-- **划线笔记**：选中文字 → 操作菜单 → 「**划线笔记**」（红色下划线 + 自动保存笔记）
-- 跨行选区精确标注：每行分别创建一个标注，无行间空白缝隙
-- 再次选中相同区域点击同一按钮 → **移除标注**（Toggle）
-- 选区与已有标注部分重叠 → 自动**合并**为更大范围
-- 标注持久化到 PDF 元数据，重启后自动恢复
-
-### 单词本
-
-点击工具栏中间「**单词本**」Tab：
-
-- 按单词分组，同词多语境下方展开
-- 点击来源页码 → 跳转到对应 PDF 页面
-- 右侧编辑（✏️）/ 删除（🗑）按钮；删除时同步移除 PDF 高亮
-- 搜索框支持按单词、翻译、解释、整句译文筛选
-
-### 笔记
-
-点击工具栏「**笔记**」Tab：
-
-- 查看所有划线笔记，包含划线文本和用户备注
-- 点击来源页码 → 跳转到对应 PDF 页面
-- 支持搜索、编辑、删除；删除笔记时同步移除划线标注
-- 支持导出为 Markdown 文件
-
-### PDF 目录
-
-打开含大纲的 PDF 后，左侧自动显示目录。点击工具栏侧边栏按钮可收起/展开。随阅读进度自动高亮当前章节并滚入可视区；点击条目跳转对应页面。
-
----
-
-## 日常开发
+如果你只是想把当前构建安装到本机：
 
 ```bash
-make build-rust      # Rust 代码有改动时重新构建 + 生成绑定
-make test            # 运行 Rust 单元测试
-make gen-project     # project.yml 有改动时重新生成 Xcode 项目
-make dmg             # 打包为 DMG（不签名）
-TEAM_ID=XXXXXX make dmg  # 打包为 DMG（Developer ID 签名）
+make upgrade
 ```
 
----
+它会先打包，再终止正在运行的 LumenPDF，并替换 `/Applications/LumenPDF.app`。
+
+## 首次设置
+
+打开 App 后，点击右上角设置按钮，填写一个 OpenAI 兼容接口：
+
+| 配置项 | 说明 |
+| --- | --- |
+| API Base URL | 例如 `https://api.openai.com/v1`，也可以使用兼容 OpenAI API 的服务 |
+| API Key | 存入 macOS Keychain，不写入明文配置文件 |
+| 模型 | 任意兼容 Chat Completions 的模型 |
+| 目标语言 | 默认简体中文 |
+
+不配置 LLM 也能使用基础翻译，应用会降级到 MyMemory 免费 API；但上下文解释、长句分析和更自然的笔记体验需要 LLM。
+
+## 常用操作
+
+### 打开和阅读 PDF
+
+点击工具栏中的文库按钮打开 PDF。LumenPDF 会记录阅读位置，下次打开自动回到上次阅读处。包含目录的 PDF 会在左侧显示大纲，点击章节即可跳转。
+
+### 翻译单词或句子
+
+在 PDF 中划选文本，点击浮动菜单里的“翻译”：
+
+- 选中单词时，会显示音标、词性、上下文释义、例句位置和原句译文。
+- 选中句子时，会直接解释这句话在当前上下文中的含义。
+- 翻译结果可以保存到单词本或笔记。
+
+### 高亮和划线笔记
+
+划选文本后可以直接高亮，或创建划线笔记。笔记和标注会保存在本地；删除笔记时，对应的划线标注也会同步移除。
+
+### 管理单词和笔记
+
+切换到“单词本”或“笔记”页，可以搜索、编辑、删除已有内容，也可以跳回原 PDF 位置继续阅读。
+
+## 开发
+
+### 环境要求
+
+- macOS 15+
+- Xcode 16+
+- Rust stable
+- Homebrew
+
+### 常用命令
+
+```bash
+make setup        # 首次安装工具并生成工程
+make build-rust   # 构建 Rust 后端并生成 UniFFI Swift 绑定
+make gen-project  # 根据 project.yml 重新生成 Xcode 工程
+make test         # 运行 Rust 单元测试
+make dmg          # 打包 DMG
+make upgrade      # 打包并安装到本机 /Applications
+```
+
+也可以直接用 Xcode 打开工程运行：
+
+```bash
+open LumenPDF/LumenPDF.xcodeproj
+```
 
 ## 技术架构
 
-```
-SwiftUI (PDFKit)
-    │
-    │  Mozilla UniFFI（自动生成 Swift 绑定）
-    ▼
-Rust — DDD 分层架构
-    ├── interfaces/    UniFFI 导出 + 依赖注入
-    ├── application/   用例编排（无直接 I/O）
-    ├── domain/        实体 + Repository Traits（零外部依赖）
-    └── infrastructure/  SQLite (rusqlite) + HTTP (reqwest)
-```
+LumenPDF 由 SwiftUI 前端和 Rust 后端组成，中间通过 Mozilla UniFFI 连接：
 
-翻译三级降级：**本地 SQLite 缓存** → **LLM（OpenAI 兼容，SSE 流式）** → **MyMemory API（兜底）**
+```mermaid
+flowchart TB
+    subgraph Mac["macOS App"]
+        UI["SwiftUI + PDFKit"]
+    end
 
-LLM 流式通过 UniFFI 回调把翻译进度即时推给 SwiftUI 主线程：
+    subgraph Core["Rust Core"]
+        IF["interfaces<br/>UniFFI 导出 + 依赖注入"]
+        APP["application<br/>用例编排"]
+        DOMAIN["domain<br/>纯领域逻辑"]
+        INFRA["infrastructure<br/>SQLite / HTTP / LLM"]
+    end
 
-- **单词模式**：按"已完成的 JSON 字段"渐进推送（音标 → 词性 → 语境翻译 → …），避免短字段间的闪烁。
-- **句子模式**（v1.0.5 起）：从 SSE 字节流里增量提取 `translation` 字段当前在写的内容，**字符级渲染**——长句也能看到"边写边出"。流式结束后再追加"拆解分析"节（长难句才有），含每段的解释和可选的语法分析。
-
-详见 [v1.0.4 TDD](docs/tdd/tdd-2026-05-06-v104.md) 与 [v1.0.5 TDD](docs/tdd/tdd-2026-05-06-v105.md)。
-
----
-
-## 数据存储
-
-| 数据                     | 位置                                             |
-| ------------------------ | ------------------------------------------------ |
-| SQLite 数据库            | `~/Library/Application Support/LumenPDF/data.db` |
-| API Key                  | macOS Keychain                                   |
-| 上次打开文件路径         | `UserDefaults`                                   |
-| Security-Scoped Bookmark | `UserDefaults["bm_<filePath>"]`                  |
-
----
-
-## 项目结构
-
-```
-lumen-pdf/
-├── lumen-pdf-core/         Rust 后端（DDD）
-│   └── src/
-│       ├── interfaces/     UniFFI 导出
-│       ├── application/    用例层
-│       ├── domain/         领域层（纯逻辑，无 I/O）
-│       └── infrastructure/ SQLite + HTTP 实现
-├── LumenPDF/               Swift 前端
-│   ├── App/                AppState（全局状态）
-│   ├── Views/              SwiftUI 视图
-│   ├── Services/           BridgeService / AudioService 等
-│   ├── Generated/          UniFFI 自动生成（勿手改）
-│   └── project.yml         xcodegen 配置
-├── scripts/build-rust.sh  Rust 构建脚本
-├── Makefile
-└── docs/
-    ├── prd/                    产品需求文档（每次迭代一份）
-    └── tdd/                    技术实现文档（每次迭代一份）
+    UI -->|"Mozilla UniFFI"| IF
+    IF --> APP
+    APP --> DOMAIN
+    APP --> INFRA
+    INFRA --> DB[("SQLite 本地存储")]
+    INFRA --> LLM["OpenAI-compatible LLM"]
+    INFRA --> FALLBACK["MyMemory fallback"]
 ```
 
-Rust 翻译子模块结构（v1.0.4 起）：
+Rust 后端按 DDD 分层组织：
 
-```
-lumen-pdf-core/src/infrastructure/translator/
-├── mod.rs
-├── http_client.rs        共享 reqwest::Client（含超时配置）
-├── streaming.rs          SSE 行重组 + 增量 JSON 字段提取
-├── llm_translator.rs     OpenAI 兼容流式翻译（含非流式兜底）
-└── fallback_translator.rs MyMemory 兜底（非流式，trait 默认实现自动适配）
-```
-
----
+- `interfaces/`：UniFFI 导出和依赖注入
+- `application/`：用例编排
+- `domain/`：纯领域逻辑，不依赖 SQL 或 HTTP
+- `infrastructure/`：SQLite、HTTP、LLM 和 fallback 实现
 
 ## 文档
 
-- [产品需求文档 v1.0.0 (PRD)](docs/prd/prd-2026-03-22.md)
-- [产品需求文档 v1.0.2 (PRD)](docs/prd/prd-2026-03-31.md)
-- [产品需求文档 v1.0.3 (PRD)](docs/prd/prd-2026-03-31-v103.md)
-- [产品需求文档 v1.0.4 (PRD) — 流式翻译](docs/prd/prd-2026-05-06-v104.md)
-- [产品需求文档 v1.0.5 (PRD) — 句子流式细化 + 拆解分析 + 语法分析](docs/prd/prd-2026-05-06-v105.md)
-- [技术实现文档 v1.0.0 — 总体架构](docs/tdd/tdd-2026-03-22.md)
-- [技术实现文档 v1.0.2 — 2026-03-24 迭代变更](docs/tdd/tdd-2026-03-24.md)
-- [技术实现文档 v1.0.3 — 2026-03-25 迭代变更](docs/tdd/tdd-2026-03-25.md)
-- [技术实现文档 v1.0.3 — 2026-03-31 迭代变更](docs/tdd/tdd-2026-03-31-v103.md)
-- [技术实现文档 v1.0.4 — 流式翻译 / SSE / UniFFI 回调](docs/tdd/tdd-2026-05-06-v104.md)
-- [技术实现文档 v1.0.5 — partial-string 流式 / 句子拆解](docs/tdd/tdd-2026-05-06-v105.md)
+- 最新 PRD：[docs/prd/prd-2026-06-25-v109.md](docs/prd/prd-2026-06-25-v109.md)
+- 最新 TDD：[docs/tdd/tdd-2026-06-25-v109.md](docs/tdd/tdd-2026-06-25-v109.md)
+- 历史产品和技术文档见 [docs/](docs/)
 
----
+## 数据位置
+
+| 数据 | 位置 |
+| --- | --- |
+| SQLite 数据库 | `~/Library/Application Support/LumenPDF/data.db` |
+| API Key | macOS Keychain |
+| 阅读状态 | `UserDefaults` |
 
 ## License
 
