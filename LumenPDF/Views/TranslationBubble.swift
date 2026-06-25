@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import MarkdownUI
 
 struct TranslationBubble: View {
     let request: TranslationBubbleRequest
@@ -655,6 +656,7 @@ private struct MarkdownText: View {
 
     private var normalizedMarkdown: String {
         markdown
+            .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(
                 of: #"(\S)\s+(#{1,6}\s+)"#,
                 with: "$1\n\n$2",
@@ -675,21 +677,25 @@ private struct MarkdownText: View {
                 with: "$1\n\n$2",
                 options: .regularExpression
             )
+            .replacingOccurrences(
+                of: #"([。！？.!?])(\S)"#,
+                with: "$1 $2",
+                options: .regularExpression
+            )
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     var body: some View {
-        Group {
-            if let attributed = try? AttributedString(markdown: normalizedMarkdown) {
-                Text(attributed)
-            } else {
-                Text(normalizedMarkdown)
-            }
-        }
-        .font(.body)
-        .foregroundStyle(.primary)
-        .lineSpacing(4)
-        .multilineTextAlignment(.leading)
-        .fixedSize(horizontal: false, vertical: true)
+        Markdown(normalizedMarkdown)
+            .markdownTheme(.gitHub)
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(nsColor: .textBackgroundColor).opacity(0.78))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+            )
     }
 }
 

@@ -34,7 +34,7 @@ pub const DEFAULT_WORD_SYSTEM_PROMPT: &str =
 pub const DEFAULT_SENTENCE_SYSTEM_PROMPT: &str =
     "You are a professional translator. Always respond with valid JSON only.";
 pub const DEFAULT_EXPLANATION_SYSTEM_PROMPT: &str =
-    "You are a professional reading tutor. Always respond with valid JSON only.";
+    "You are a professional reading tutor. Return clear Markdown/plain text only; never return JSON for explanations.";
 
 pub const DEFAULT_WORD_PROMPT_TEMPLATE: &str = r#"You are a professional language tutor. The user selected the word "{word}" while reading a PDF.
 
@@ -63,8 +63,8 @@ Rules:
 2. Explain what the selected text means in this context; do not merely translate it.
 3. Explain why the author says this here and how it connects to the surrounding argument.
 4. Mention key terms and implied relationships; fix obvious OCR line-break or hyphenation errors silently.
-5. Use Markdown: headings, bullet lists, bold key terms, short paragraphs, and code/math-style notation when useful.
-6. Preserve real line breaks. Put a blank line between sections and before every numbered or bulleted list item; never collapse the explanation into one giant paragraph.
+5. Format the answer like a high-quality reading note in {lang}: start with a short bold thesis paragraph, then use clear Markdown section headings such as `## 一、...`, numbered lists, bullet lists, and short paragraphs.
+6. Preserve real line breaks: every heading, paragraph, numbered item, and bullet item must be on its own line, with a blank line between blocks. Never collapse the explanation into one giant paragraph.
 7. Do not artificially shorten the answer. Use enough detail to make the idea understandable, while avoiding irrelevant digressions.
 8. Prefer a clear layered explanation: intuition first, then first-principles mechanics, then implications, then a concise takeaway useful for notes.
 
