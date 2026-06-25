@@ -44,7 +44,13 @@ final class BridgeService {
             llmBaseUrl: UserDefaults.standard.string(forKey: "llm_base_url") ?? "https://api.openai.com/v1",
             llmApiKey: KeychainService.load(key: "llm_api_key") ?? "",
             llmModel: UserDefaults.standard.string(forKey: "llm_model") ?? "gpt-4o-mini",
-            targetLanguage: UserDefaults.standard.string(forKey: "target_language") ?? "简体中文"
+            targetLanguage: UserDefaults.standard.string(forKey: "target_language") ?? "简体中文",
+            wordPromptTemplate: UserDefaults.standard.string(forKey: "word_prompt_template") ?? "",
+            sentencePromptTemplate: UserDefaults.standard.string(forKey: "sentence_prompt_template") ?? "",
+            explanationPromptTemplate: UserDefaults.standard.string(forKey: "explanation_prompt_template") ?? "",
+            wordSystemPrompt: UserDefaults.standard.string(forKey: "word_system_prompt") ?? "",
+            sentenceSystemPrompt: UserDefaults.standard.string(forKey: "sentence_system_prompt") ?? "",
+            explanationSystemPrompt: UserDefaults.standard.string(forKey: "explanation_system_prompt") ?? ""
         )
         guard (try? _initialize(dbURL.path, config)) != nil else {
             // Do not flip isInitialized — allow retry on next launch / next call path.
@@ -54,12 +60,29 @@ final class BridgeService {
     }
 
     /// Hot-swap LLM config — takes effect for the very next translation call.
-    func updateConfig(baseURL: String, apiKey: String, model: String, targetLanguage: String) {
+    func updateConfig(
+        baseURL: String,
+        apiKey: String,
+        model: String,
+        targetLanguage: String,
+        wordPromptTemplate: String,
+        sentencePromptTemplate: String,
+        explanationPromptTemplate: String,
+        wordSystemPrompt: String,
+        sentenceSystemPrompt: String,
+        explanationSystemPrompt: String
+    ) {
         try? _updateLlmConfig(AppConfig(
             llmBaseUrl: baseURL,
             llmApiKey: apiKey,
             llmModel: model,
-            targetLanguage: targetLanguage
+            targetLanguage: targetLanguage,
+            wordPromptTemplate: wordPromptTemplate,
+            sentencePromptTemplate: sentencePromptTemplate,
+            explanationPromptTemplate: explanationPromptTemplate,
+            wordSystemPrompt: wordSystemPrompt,
+            sentenceSystemPrompt: sentenceSystemPrompt,
+            explanationSystemPrompt: explanationSystemPrompt
         ))
     }
 
@@ -100,6 +123,22 @@ final class BridgeService {
         let receiver = TranslationStreamReceiver(onPartial: onPartial)
         return try await LumenPDF.translateSentenceStreaming(
             sentence: sentence,
+            callback: receiver
+        )
+    }
+
+    /// Streaming explanation for selected text. The selected text and its surrounding
+    /// sentence are sent to the LLM, and partial explanation text is emitted through
+    /// `contextExplanation` as it streams back.
+    func explainSelectionStreaming(
+        selection: String,
+        context: String,
+        onPartial: @escaping @MainActor (TranslationResult) -> Void
+    ) async throws -> TranslationResult {
+        let receiver = TranslationStreamReceiver(onPartial: onPartial)
+        return try await LumenPDF.explainSelectionStreaming(
+            selection: selection,
+            context: context,
             callback: receiver
         )
     }
@@ -189,11 +228,12 @@ final class BridgeService {
         pdfPath: String, pdfName: String, pageIndex: UInt32,
         content: String, note: String, boundsStr: String
     ) throws -> NoteEntry {
-        try _saveNote(SaveNoteRequest(
+        let normalizedContent = ContextSentenceFormatting.displayParagraph(content)
+        return try _saveNote(SaveNoteRequest(
             pdfPath: pdfPath,
             pdfName: pdfName,
             pageIndex: pageIndex,
-            content: content,
+            content: normalizedContent,
             note: note,
             boundsStr: boundsStr
         ))
