@@ -41,7 +41,7 @@ struct SettingsView: View {
             }
 
             Section("提示词模板") {
-                Text("User prompt 可用变量：{lang}、{word}、{sentence}、{selection}、{context}。请保留 JSON 输出格式，否则可能导致译文解析失败。System prompt 建议继续要求模型输出合法 JSON。")
+                Text("User prompt 可用变量：{lang}、{word}、{sentence}、{selection}、{context}。单词/整句翻译仍需保留 JSON 输出格式；选区解释会直接渲染 Markdown 纯文本。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -186,15 +186,12 @@ Rules:
 2. Explain what the selected text means in this context; do not merely translate it.
 3. Explain why the author says this here and how it connects to the surrounding argument.
 4. Mention key terms and implied relationships; fix obvious OCR line-break or hyphenation errors silently.
-5. Use Markdown inside the JSON string: headings, bullet lists, bold key terms, short paragraphs, and code/math-style notation when useful.
-6. Preserve real line breaks in the JSON string. Put a blank line between sections and before every numbered or bulleted list item; never collapse the explanation into one giant paragraph.
+5. Use Markdown: headings, bullet lists, bold key terms, short paragraphs, and code/math-style notation when useful.
+6. Preserve real line breaks. Put a blank line between sections and before every numbered or bulleted list item; never collapse the explanation into one giant paragraph.
 7. Do not artificially shorten the answer. Use enough detail to make the idea understandable, while avoiding irrelevant digressions.
 8. Prefer a clear layered explanation: intuition first, then first-principles mechanics, then implications, then a concise takeaway useful for notes.
 
-Respond with ONLY valid JSON in this exact format:
-{
-  "explanation": "<{lang} Markdown explanation>"
-}
+Return ONLY the Markdown explanation text. Do not wrap it in JSON, code fences, or quotes.
 """#
 
     static let sentence = #"""
