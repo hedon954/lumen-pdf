@@ -1,11 +1,19 @@
 # LumenPDF
 
+<p align="center">
+  <img src="LumenPDF/Assets.xcassets/AppIcon.appiconset/256.png" alt="LumenPDF icon" width="96" height="96">
+</p>
+
 LumenPDF 是一款面向深度阅读的 macOS PDF 阅读器。它保留系统 Preview 式的轻量阅读体验，同时把翻译、划线笔记、单词本和本地知识沉淀放在同一个工作流里。
 
 ![macOS 15+](https://img.shields.io/badge/macOS-15%2B-blue)
 ![Swift](https://img.shields.io/badge/Swift-5.9-orange)
 ![Rust](https://img.shields.io/badge/Rust-stable-brown)
 ![License MIT](https://img.shields.io/badge/License-MIT-green)
+
+<p align="center">
+  <img src="assets/img/snapshot.jpg" alt="LumenPDF reading and translation interface" width="860">
+</p>
 
 ## 特性
 
