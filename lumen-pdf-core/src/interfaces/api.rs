@@ -69,6 +69,12 @@ fn set_llm_config_inner(config: AppConfig) -> Result<(), LumenError> {
         api_key: config.llm_api_key,
         model: config.llm_model,
         target_language: config.target_language,
+        word_prompt_template: config.word_prompt_template,
+        sentence_prompt_template: config.sentence_prompt_template,
+        explanation_prompt_template: config.explanation_prompt_template,
+        word_system_prompt: config.word_system_prompt,
+        sentence_system_prompt: config.sentence_system_prompt,
+        explanation_system_prompt: config.explanation_system_prompt,
     });
     Ok(())
 }
@@ -94,6 +100,12 @@ pub struct AppConfig {
     pub llm_api_key: String,
     pub llm_model: String,
     pub target_language: String,
+    pub word_prompt_template: String,
+    pub sentence_prompt_template: String,
+    pub explanation_prompt_template: String,
+    pub word_system_prompt: String,
+    pub sentence_system_prompt: String,
+    pub explanation_system_prompt: String,
 }
 
 // ── Translation API ──────────────────────────────────────────────────────────
@@ -177,6 +189,28 @@ pub async fn translate_sentence_streaming(
     };
 
     llm.translate_sentence_streaming(&sentence, on_progress)
+        .await
+}
+
+/// Streaming explanation for selected text. The LLM receives the selection and
+/// its surrounding context, then streams an explanation into
+/// `context_explanation` so the Swift UI can display it immediately and save
+/// it as a note.
+#[uniffi::export(async_runtime = "tokio")]
+pub async fn explain_selection_streaming(
+    selection: String,
+    context: String,
+    callback: Arc<dyn TranslationStreamCallback>,
+) -> Result<TranslationResult, LumenError> {
+    let config = llm_config()?;
+    let llm = LlmTranslator::new(config.clone());
+
+    let on_progress: crate::domain::translation::repository::StreamProgress = {
+        let cb = callback.clone();
+        Box::new(move |partial| cb.on_progress(partial))
+    };
+
+    llm.explain_selection_streaming(&selection, &context, on_progress)
         .await
 }
 

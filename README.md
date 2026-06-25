@@ -2,7 +2,7 @@
 
 > 为深度阅读者设计的 macOS 智能 PDF 工具——像系统预览一样流畅，但支持**上下文感知翻译**、**原生高亮 / 划线标注**与**知识永久沉淀**。
 
-![macOS 13+](https://img.shields.io/badge/macOS-13%2B-blue)
+![macOS 15+](https://img.shields.io/badge/macOS-15%2B-blue)
 ![Swift 5.9](https://img.shields.io/badge/Swift-5.9-orange)
 ![Rust](https://img.shields.io/badge/Rust-stable-brown)
 ![License MIT](https://img.shields.io/badge/License-MIT-green)
@@ -45,8 +45,8 @@
 
 | 工具            | 版本要求                                       |
 | --------------- | ---------------------------------------------- |
-| macOS           | 13.0+（打包机）                                |
-| Xcode           | 15.0+（含命令行工具 `xcodebuild`）             |
+| macOS           | 15.0+（打包机）                                |
+| Xcode           | 16.0+（含命令行工具 `xcodebuild`）             |
 | Rust            | stable（`rustup show` 确认）                   |
 | `rustup target` | `aarch64-apple-darwin` + `x86_64-apple-darwin` |
 
@@ -114,8 +114,8 @@ VERSION=2.0.0 make dmg
 
 | 工具     | 版本要求                     |
 | -------- | ---------------------------- |
-| macOS    | 13.0+                        |
-| Xcode    | 15.0+                        |
+| macOS    | 15.0+                        |
+| Xcode    | 16.0+                        |
 | Rust     | stable（`rustup show` 确认） |
 | Homebrew | 最新版                       |
 
