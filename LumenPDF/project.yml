@@ -6,6 +6,11 @@ options:
     macOS: "13.0"
   createIntermediateGroups: true
 
+packages:
+  MarkdownUI:
+    url: https://github.com/gonzalezreal/swift-markdown-ui
+    from: 2.4.1
+
 settings:
   base:
     SWIFT_VERSION: "5.9"
@@ -41,6 +46,7 @@ targets:
       - framework: Generated/liblumen_pdf_core.dylib
         embed: true
         codeSign: true
+      - package: MarkdownUI
     entitlements:
       path: LumenPDF.entitlements
       properties:
