@@ -160,9 +160,9 @@ struct PDFReaderView: View {
             }
             Divider().frame(height: 26)
             actionBarBtn(icon: "text.bubble", label: "解释") {
-                requestExplanation(selection: sel.word, context: sel.sentence,
-                                   bounds: sel.bounds, boundsStr: sel.boundsStr,
-                                   page: sel.page, focus: nil)
+                presentExplanationPrompt(selection: sel.word, context: sel.sentence,
+                                         bounds: sel.bounds, boundsStr: sel.boundsStr,
+                                         page: sel.page)
                 pendingSelection = nil
             }
             Divider().frame(height: 26)
@@ -441,6 +441,19 @@ struct PDFReaderView: View {
 
 
     // MARK: - Explanation
+
+    private func presentExplanationPrompt(selection: String, context: String,
+                                          bounds: CGRect, boundsStr: String, page: Int) {
+        translationRequest = TranslationBubbleRequest(
+            word: selection, sentence: context,
+            bounds: bounds, boundsStr: boundsStr,
+            page: page, result: nil, translationError: nil,
+            existingEntryId: nil,
+            isSentenceMode: true,
+            isExplanationMode: true
+        )
+        isTranslating = false
+    }
 
     private func requestExplanation(selection: String, context: String,
                                     bounds: CGRect, boundsStr: String, page: Int,
