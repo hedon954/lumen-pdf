@@ -164,13 +164,31 @@ struct SettingsView: View {
 
         func template(_ baseKey: String, currentValue: String, languageDefault: String, legacyDefaults: [String] = []) -> String {
             let key = promptStorageKey(baseKey, language: language)
+            let languageBuiltInDefaults = [
+                languageDefaults.word,
+                languageDefaults.sentence,
+                languageDefaults.explanation,
+                languageDefaults.wordSystem,
+                languageDefaults.sentenceSystem,
+                languageDefaults.explanationSystem
+            ]
+
             if let stored = defaults.string(forKey: key) {
+                // Earlier versions could accidentally save the currently visible Chinese
+                // defaults into the English prompt slots while switching languages. If a
+                // stored value is one of our built-in templates but not the selected
+                // language's built-in template, treat it as stale and replace it.
+                if PromptTemplateDefaults.allBuiltInDefaults.contains(stored)
+                    && !languageBuiltInDefaults.contains(stored)
+                {
+                    return languageDefault
+                }
                 return stored
             }
             if replacingLegacyDefaults && (legacyDefaults + PromptTemplateDefaults.allBuiltInDefaults).contains(currentValue) {
                 return languageDefault
             }
-            return currentValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? languageDefault : currentValue
+            return languageDefault
         }
 
         wordPromptTemplate = template("word_prompt_template", currentValue: wordPromptTemplate, languageDefault: languageDefaults.word)
