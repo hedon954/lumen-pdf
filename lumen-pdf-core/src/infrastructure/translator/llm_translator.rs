@@ -55,21 +55,37 @@ Respond with ONLY valid JSON in this exact format:
 }"#;
 
 pub const DEFAULT_EXPLANATION_PROMPT_TEMPLATE: &str = r#"You are a professional reading tutor. Explain the selected English text in {lang} for a PDF reader from first principles.
+你是一名专业阅读导师。请用{lang}从第一性原理解释用户在 PDF 中选中的英文内容。
 
-Selected text: "{selection}"
-Context around the selection: "{context}"
-Optional user focus/question: "{focus}"
+Selected text / 选中文本: "{selection}"
+Context / 上下文: "{context}"
 
-Rules:
-1. Start from first principles: identify the basic concepts, assumptions, causal mechanisms, and constraints that make the statement true or important.
-2. Explain what the selected text means in this context; do not merely translate it.
-3. If Optional user focus/question is non-empty, center the explanation on that concern while still reasoning from first principles; otherwise provide a general quick explanation.
-4. Explain why the author says this here and how it connects to the surrounding argument.
-5. Mention key terms and implied relationships; fix obvious OCR line-break or hyphenation errors silently.
+Rules / 规则:
+1. Start from first principles: identify basic concepts, assumptions, mechanisms, and constraints.
+2. Explain meaning in context; do not merely translate.
+3. Explain why the author says this here and how it connects to the surrounding argument.
+4. Mention key terms and implied relationships; silently fix obvious OCR line-break or hyphenation errors.
+5. Preserve real line breaks between distinct ideas and blocks.
+6. Prefer layered explanation: intuition, first-principles mechanics, implications, and reading-note value.
+
+Return ONLY the explanation text in {lang}. Do not wrap it in JSON, code fences, or quotes."#;
+
+pub const DEFAULT_FOCUSED_EXPLANATION_PROMPT_TEMPLATE: &str = r#"You are a professional reading tutor. Explain the selected English text in {lang} for a PDF reader from first principles, centered on the user's question.
+你是一名专业阅读导师。请用{lang}围绕用户的问题，从第一性原理解释 PDF 中选中的英文内容。
+
+Selected text / 选中文本: "{selection}"
+Context / 上下文: "{context}"
+User question / 用户疑问: "{focus}"
+
+Rules / 规则:
+1. Answer the user's question directly first, then expand from first principles.
+2. Center the explanation on the user's concern; omit generic background that does not help answer it.
+3. Explain the selected text's contextual meaning and why the author says it here.
+4. Mention key terms, assumptions, mechanisms, constraints, and implied relationships.
+5. Silently fix obvious OCR line-break or hyphenation errors.
 6. Preserve real line breaks between distinct ideas and blocks.
-7. Prefer a layered explanation: intuition, first-principles mechanics, implications, and reading-note value.
 
-Return ONLY the explanation text. Do not wrap it in JSON, code fences, or quotes."#;
+Return ONLY the explanation text in {lang}. Do not wrap it in JSON, code fences, or quotes."#;
 
 pub const DEFAULT_SENTENCE_PROMPT_TEMPLATE: &str = r#"You are a professional translator and language tutor. Translate the following English text to {lang} and, if it is a long or complex sentence, also break it down so the reader can understand each fragment.
 
@@ -137,10 +153,16 @@ impl LlmTranslator {
     }
 
     fn build_explanation_prompt(&self, selection: &str, context: &str, focus: &str) -> String {
-        let template = configured_template(
-            &self.config.explanation_prompt_template,
-            DEFAULT_EXPLANATION_PROMPT_TEMPLATE,
-        );
+        let focus = focus.trim();
+        let configured = self.config.explanation_prompt_template.trim();
+        let template = if configured.is_empty() && !focus.is_empty() {
+            DEFAULT_FOCUSED_EXPLANATION_PROMPT_TEMPLATE
+        } else {
+            configured_template(
+                &self.config.explanation_prompt_template,
+                DEFAULT_EXPLANATION_PROMPT_TEMPLATE,
+            )
+        };
         let mut prompt = render_prompt_template(
             template,
             &[
@@ -151,10 +173,10 @@ impl LlmTranslator {
             ],
         );
 
-        if !focus.trim().is_empty() && !template.contains("{focus}") {
-            prompt.push_str("\n\nUser focus/question: ");
+        if !focus.is_empty() && !template.contains("{focus}") {
+            prompt.push_str("\n\nUser question / 用户疑问: ");
             prompt.push_str(focus);
-            prompt.push_str("\nCenter the explanation on this concern while still reasoning from first principles.");
+            prompt.push_str("\nPlease answer this question first, then explain from first principles. 请先回答这个问题，再从第一性原理解释。");
         }
 
         prompt

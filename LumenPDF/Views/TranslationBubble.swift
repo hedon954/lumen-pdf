@@ -184,7 +184,9 @@ struct TranslationBubble: View {
         // populated. Falling back to the full spinner only when we have
         // nothing to display avoids the awkward "blank → 5 s → everything"
         // transition the non-streaming version produced.
-        if let result = request.result, Self.hasAnyContent(result) {
+        if request.isExplanationMode && request.result == nil && !isLoading {
+            explanationPromptContent
+        } else if let result = request.result, Self.hasAnyContent(result) {
             if result.isCompleteFailure {
                 completeFailureView(result: result)
             } else {
@@ -545,17 +547,32 @@ struct TranslationBubble: View {
                 TextField("例如：这里为什么强调 CPU 时间？", text: $explanationQuestion)
                     .textFieldStyle(.roundedBorder)
                     .disabled(isLoading)
-                Button("围绕问题解释") {
-                    let focus = explanationQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !focus.isEmpty else { return }
-                    onAskExplanation(focus)
+                Button(explanationQuestion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "直接解释" : "解释") {
+                    onAskExplanation(explanationQuestion.trimmingCharacters(in: .whitespacesAndNewlines))
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(isLoading || explanationQuestion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(isLoading)
             }
         }
         .padding(10)
         .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+
+    private var explanationPromptContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            explanationQuestionBar
+
+            BubbleSection("原文") {
+                Text(ContextSentenceFormatting.displayParagraph(request.word))
+                    .font(.body)
+                    .textSelection(.enabled)
+                    .foregroundStyle(.primary)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(14)
     }
 
     // MARK: - Footer

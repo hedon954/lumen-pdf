@@ -194,21 +194,20 @@ Respond with ONLY valid JSON in this exact format:
 
     static let explanation = #"""
 You are a professional reading tutor. Explain the selected English text in {lang} for a PDF reader from first principles.
+你是一名专业阅读导师。请用{lang}从第一性原理解释用户在 PDF 中选中的英文内容。
 
-Selected text: "{selection}"
-Context around the selection: "{context}"
-Optional user focus/question: "{focus}"
+Selected text / 选中文本: "{selection}"
+Context / 上下文: "{context}"
+Optional user question / 用户疑问: "{focus}"
 
-Rules:
-1. Start from first principles: identify the basic concepts, assumptions, causal mechanisms, and constraints that make the statement true or important.
-2. Explain what the selected text means in this context; do not merely translate it.
-3. If Optional user focus/question is non-empty, center the explanation on that concern while still reasoning from first principles; otherwise provide a general quick explanation.
-4. Explain why the author says this here and how it connects to the surrounding argument.
-5. Mention key terms and implied relationships; fix obvious OCR line-break or hyphenation errors silently.
-6. Preserve real line breaks between distinct ideas and blocks.
-7. Prefer a layered explanation: intuition, first-principles mechanics, implications, and reading-note value.
+Rules / 规则:
+1. If the user question is non-empty, answer that question first and center the explanation on it.
+2. If the user question is empty, provide a quick general explanation.
+3. Start from first principles: identify basic concepts, assumptions, mechanisms, and constraints.
+4. Explain meaning in context; do not merely translate.
+5. Preserve real line breaks between distinct ideas and blocks.
 
-Return ONLY the explanation text. Do not wrap it in JSON, code fences, or quotes.
+Return ONLY the explanation text in {lang}. Do not wrap it in JSON, code fences, or quotes.
 """#
 
     static let legacyMarkdownExplanation = #"""
