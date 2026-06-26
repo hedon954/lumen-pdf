@@ -41,7 +41,7 @@ struct SettingsView: View {
             }
 
             Section("提示词模板") {
-                Text("User prompt 可用变量：{lang}、{word}、{sentence}、{selection}、{context}。单词/整句翻译仍需保留 JSON 输出格式；选区解释会直接展示模型输出。")
+                Text("User prompt 可用变量：{lang}、{word}、{sentence}、{selection}、{context}、{focus}。单词/整句翻译仍需保留 JSON 输出格式；选区解释会直接展示模型输出。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -197,14 +197,16 @@ You are a professional reading tutor. Explain the selected English text in {lang
 
 Selected text: "{selection}"
 Context around the selection: "{context}"
+Optional user focus/question: "{focus}"
 
 Rules:
 1. Start from first principles: identify the basic concepts, assumptions, causal mechanisms, and constraints that make the statement true or important.
 2. Explain what the selected text means in this context; do not merely translate it.
-3. Explain why the author says this here and how it connects to the surrounding argument.
-4. Mention key terms and implied relationships; fix obvious OCR line-break or hyphenation errors silently.
-5. Preserve real line breaks between distinct ideas and blocks.
-6. Prefer a layered explanation: intuition, first-principles mechanics, implications, and reading-note value.
+3. If Optional user focus/question is non-empty, center the explanation on that concern while still reasoning from first principles; otherwise provide a general quick explanation.
+4. Explain why the author says this here and how it connects to the surrounding argument.
+5. Mention key terms and implied relationships; fix obvious OCR line-break or hyphenation errors silently.
+6. Preserve real line breaks between distinct ideas and blocks.
+7. Prefer a layered explanation: intuition, first-principles mechanics, implications, and reading-note value.
 
 Return ONLY the explanation text. Do not wrap it in JSON, code fences, or quotes.
 """#

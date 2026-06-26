@@ -5,8 +5,10 @@ import Textual
 struct TranslationBubble: View {
     let request: TranslationBubbleRequest
     let isLoading: Bool
+    let availableSize: CGSize
     let onSave: (TranslationResult) -> String?
     let onDelete: (String) -> Void
+    let onAskExplanation: (String) -> Void
     let onDismiss: () -> Void
 
     @StateObject private var audio = AudioService()
@@ -19,6 +21,7 @@ struct TranslationBubble: View {
     @State private var customCardSize: CGSize?
     @State private var measuredCardSize: CGSize = .zero
     @State private var measuredContentHeight: CGFloat = 0
+    @State private var explanationQuestion: String = ""
 
     var body: some View {
         card
@@ -67,13 +70,17 @@ struct TranslationBubble: View {
         .onSizeChange { measuredCardSize = $0 }
     }
 
+    private var effectiveAvailableSize: CGSize {
+        CGSize(width: max(availableSize.width, 900), height: max(availableSize.height, 600))
+    }
+
     private var cardWidth: CGFloat {
         if let customCardSize {
             return customCardSize.width
         }
 
         if request.isExplanationMode {
-            return 760
+            return min(max(effectiveAvailableSize.width * 0.48, 520), min(920, effectiveAvailableSize.width * 0.78))
         }
 
         let baseWidth: CGFloat = request.isSentenceMode ? 560 : 380
@@ -87,7 +94,7 @@ struct TranslationBubble: View {
 
     private var maximumAutomaticContentHeight: CGFloat {
         if request.isExplanationMode {
-            return 620
+            return min(max(effectiveAvailableSize.height * 0.58, 360), effectiveAvailableSize.height * 0.78)
         }
         return request.isSentenceMode ? 560 : 520
     }
@@ -104,8 +111,8 @@ struct TranslationBubble: View {
                         height: max(measuredCardSize.height, 240)
                     )
                     customCardSize = CGSize(
-                        width: min(max(current.width + delta.width, 340), 920),
-                        height: min(max(current.height + delta.height, 240), 820)
+                        width: min(max(current.width + delta.width, 340), max(340, effectiveAvailableSize.width * 0.86)),
+                        height: min(max(current.height + delta.height, 240), max(240, effectiveAvailableSize.height * 0.86))
                     )
                 }
             )
@@ -376,6 +383,8 @@ struct TranslationBubble: View {
     private func contentBody(result: TranslationResult) -> some View {
         if request.isExplanationMode {
             VStack(alignment: .leading, spacing: 12) {
+                explanationQuestionBar
+
                 BubbleSection("原文") {
                     Text(ContextSentenceFormatting.displayParagraph(request.word))
                         .font(.body)
@@ -524,6 +533,29 @@ struct TranslationBubble: View {
                 .padding(.leading, 18)
             }
         }
+    }
+
+
+    private var explanationQuestionBar: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("快速解释会直接从第一性原理展开；也可以先输入你关心的问题，再围绕该关注点解释。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                TextField("例如：这里为什么强调 CPU 时间？", text: $explanationQuestion)
+                    .textFieldStyle(.roundedBorder)
+                    .disabled(isLoading)
+                Button("围绕问题解释") {
+                    let focus = explanationQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !focus.isEmpty else { return }
+                    onAskExplanation(focus)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isLoading || explanationQuestion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(10)
+        .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
     }
 
     // MARK: - Footer

@@ -75,17 +75,19 @@ struct PDFReaderView: View {
 
             // Translation bubble
             if let req = translationRequest {
-                TranslationBubble(
-                    request: req,
-                    isLoading: isTranslating,
-                    onSave: { result in
-                        if req.isExplanationMode || req.isSentenceMode {
-                            saveSentenceToNote(result: result, request: req)
-                        } else {
-                            saveToDiary(result: result, request: req)
-                        }
-                    },
-                    onDelete: { deletedId in
+                GeometryReader { bubbleProxy in
+                    TranslationBubble(
+                        request: req,
+                        isLoading: isTranslating,
+                        availableSize: bubbleProxy.size,
+                        onSave: { result in
+                            if req.isExplanationMode || req.isSentenceMode {
+                                saveSentenceToNote(result: result, request: req)
+                            } else {
+                                saveToDiary(result: result, request: req)
+                            }
+                        },
+                        onDelete: { deletedId in
                         // Remove underline annotation if it was saved as a note
                         NotificationCenter.default.post(
                             name: .removeUnderlineNote,
@@ -106,11 +108,17 @@ struct PDFReaderView: View {
                                 "filePath": document.filePath
                             ]
                         )
-                        appState.refreshVocabulary()
-                        appState.refreshNotes()
-                    },
-                    onDismiss: { translationRequest = nil }
-                )
+                            appState.refreshVocabulary()
+                            appState.refreshNotes()
+                        },
+                        onAskExplanation: { focus in
+                            requestExplanation(selection: req.word, context: req.sentence,
+                                               bounds: req.bounds, boundsStr: req.boundsStr,
+                                               page: req.page, focus: focus)
+                        },
+                        onDismiss: { translationRequest = nil }
+                    )
+                }
                 .transition(.opacity.combined(with: .scale(scale: 0.95)))
                 .animation(.easeOut(duration: 0.15), value: translationRequest != nil)
             }
@@ -154,7 +162,7 @@ struct PDFReaderView: View {
             actionBarBtn(icon: "text.bubble", label: "解释") {
                 requestExplanation(selection: sel.word, context: sel.sentence,
                                    bounds: sel.bounds, boundsStr: sel.boundsStr,
-                                   page: sel.page)
+                                   page: sel.page, focus: nil)
                 pendingSelection = nil
             }
             Divider().frame(height: 26)
@@ -435,7 +443,8 @@ struct PDFReaderView: View {
     // MARK: - Explanation
 
     private func requestExplanation(selection: String, context: String,
-                                    bounds: CGRect, boundsStr: String, page: Int) {
+                                    bounds: CGRect, boundsStr: String, page: Int,
+                                    focus: String?) {
         BridgeService.shared.initializeIfNeeded()
 
         translationRequest = TranslationBubbleRequest(
@@ -462,6 +471,7 @@ struct PDFReaderView: View {
                 let result = try await BridgeService.shared.explainSelectionStreaming(
                     selection: selection,
                     context: context,
+                    focus: focus ?? "",
                     onPartial: { partial in applyPartial(partial) }
                 )
 

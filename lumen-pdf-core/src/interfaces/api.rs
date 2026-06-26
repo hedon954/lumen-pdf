@@ -200,6 +200,7 @@ pub async fn translate_sentence_streaming(
 pub async fn explain_selection_streaming(
     selection: String,
     context: String,
+    focus: String,
     callback: Arc<dyn TranslationStreamCallback>,
 ) -> Result<TranslationResult, LumenError> {
     let config = llm_config()?;
@@ -210,7 +211,7 @@ pub async fn explain_selection_streaming(
         Box::new(move |partial| cb.on_progress(partial))
     };
 
-    llm.explain_selection_streaming(&selection, &context, on_progress)
+    llm.explain_selection_streaming(&selection, &context, &focus, on_progress)
         .await
 }
 
