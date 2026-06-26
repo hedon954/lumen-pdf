@@ -122,6 +122,7 @@ struct SettingsView: View {
             persistPromptTemplates(for: loadedPromptLanguage)
             loadPromptTemplates(for: newLanguage, replacingLegacyDefaults: false)
             loadedPromptLanguage = newLanguage
+            syncRuntimeConfig()
         }
         .frame(width: 760, height: 860)
     }
@@ -225,9 +226,7 @@ struct SettingsView: View {
         .padding(.vertical, 6)
     }
 
-    private func saveSettings() {
-        KeychainService.save(key: "llm_api_key", value: apiKey)
-        // Hot-swap config in the running Rust backend — takes effect immediately.
+    private func syncRuntimeConfig() {
         persistPromptTemplates(for: targetLanguage)
         BridgeService.shared.updateConfig(
             baseURL: baseURL,
@@ -241,6 +240,12 @@ struct SettingsView: View {
             sentenceSystemPrompt: sentenceSystemPrompt,
             explanationSystemPrompt: explanationSystemPrompt
         )
+    }
+
+    private func saveSettings() {
+        KeychainService.save(key: "llm_api_key", value: apiKey)
+        // Hot-swap config in the running Rust backend — takes effect immediately.
+        syncRuntimeConfig()
         withAnimation { showSavedBadge = true }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
             withAnimation { showSavedBadge = false }
