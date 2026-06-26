@@ -16,8 +16,18 @@ impl TranslationUseCase {
         llm: Arc<dyn Translator>,
         fallback: Arc<dyn Translator>,
     ) -> Self {
+        Self::new_for_language(cache, llm, fallback, "")
+    }
+
+    pub fn new_for_language(
+        cache: Arc<dyn TranslationCacheRepository>,
+        llm: Arc<dyn Translator>,
+        fallback: Arc<dyn Translator>,
+        target_language: impl Into<String>,
+    ) -> Self {
         Self {
-            service: TranslationDomainService::new(cache, llm, fallback),
+            service: TranslationDomainService::new(cache, llm, fallback)
+                .with_cache_target_language(target_language),
         }
     }
 
@@ -29,8 +39,20 @@ impl TranslationUseCase {
         fallback: Arc<dyn Translator>,
         phonetic: Arc<dyn PhoneticProvider>,
     ) -> Self {
+        Self::with_phonetic_for_language(cache, llm, fallback, phonetic, "")
+    }
+
+    pub fn with_phonetic_for_language(
+        cache: Arc<dyn TranslationCacheRepository>,
+        llm: Arc<dyn Translator>,
+        fallback: Arc<dyn Translator>,
+        phonetic: Arc<dyn PhoneticProvider>,
+        target_language: impl Into<String>,
+    ) -> Self {
         Self {
-            service: TranslationDomainService::new(cache, llm, fallback).with_phonetic(phonetic),
+            service: TranslationDomainService::new(cache, llm, fallback)
+                .with_cache_target_language(target_language)
+                .with_phonetic(phonetic),
         }
     }
 

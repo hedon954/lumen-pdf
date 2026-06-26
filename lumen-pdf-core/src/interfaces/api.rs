@@ -120,9 +120,15 @@ pub async fn translate(request: TranslationRequest) -> Result<TranslationResult,
     let fallback = Arc::new(FallbackTranslator::new(config.target_language.clone()));
     let phonetic = Arc::new(DictionaryApiPhoneticProvider::new());
 
-    TranslationUseCase::with_phonetic(cache, llm, fallback, phonetic)
-        .translate(request)
-        .await
+    TranslationUseCase::with_phonetic_for_language(
+        cache,
+        llm,
+        fallback,
+        phonetic,
+        config.target_language.clone(),
+    )
+    .translate(request)
+    .await
 }
 
 /// Foreign-implemented callback used by streaming translation APIs to publish
@@ -156,9 +162,15 @@ pub async fn translate_streaming(
         Box::new(move |partial| cb.on_progress(partial))
     };
 
-    TranslationUseCase::with_phonetic(cache, llm, fallback, phonetic)
-        .translate_streaming(request, on_progress)
-        .await
+    TranslationUseCase::with_phonetic_for_language(
+        cache,
+        llm,
+        fallback,
+        phonetic,
+        config.target_language.clone(),
+    )
+    .translate_streaming(request, on_progress)
+    .await
 }
 
 /// Translate a full sentence without word-level analysis.
