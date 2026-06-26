@@ -58,14 +58,16 @@ pub const DEFAULT_EXPLANATION_PROMPT_TEMPLATE: &str = r#"You are a professional 
 
 Selected text: "{selection}"
 Context around the selection: "{context}"
+Optional user focus/question: "{focus}"
 
 Rules:
 1. Start from first principles: identify the basic concepts, assumptions, causal mechanisms, and constraints that make the statement true or important.
 2. Explain what the selected text means in this context; do not merely translate it.
-3. Explain why the author says this here and how it connects to the surrounding argument.
-4. Mention key terms and implied relationships; fix obvious OCR line-break or hyphenation errors silently.
-5. Preserve real line breaks between distinct ideas and blocks.
-6. Prefer a layered explanation: intuition, first-principles mechanics, implications, and reading-note value.
+3. If Optional user focus/question is non-empty, center the explanation on that concern while still reasoning from first principles; otherwise provide a general quick explanation.
+4. Explain why the author says this here and how it connects to the surrounding argument.
+5. Mention key terms and implied relationships; fix obvious OCR line-break or hyphenation errors silently.
+6. Preserve real line breaks between distinct ideas and blocks.
+7. Prefer a layered explanation: intuition, first-principles mechanics, implications, and reading-note value.
 
 Return ONLY the explanation text. Do not wrap it in JSON, code fences, or quotes."#;
 
@@ -134,18 +136,28 @@ impl LlmTranslator {
         )
     }
 
-    fn build_explanation_prompt(&self, selection: &str, context: &str) -> String {
-        render_prompt_template(
-            configured_template(
-                &self.config.explanation_prompt_template,
-                DEFAULT_EXPLANATION_PROMPT_TEMPLATE,
-            ),
+    fn build_explanation_prompt(&self, selection: &str, context: &str, focus: &str) -> String {
+        let template = configured_template(
+            &self.config.explanation_prompt_template,
+            DEFAULT_EXPLANATION_PROMPT_TEMPLATE,
+        );
+        let mut prompt = render_prompt_template(
+            template,
             &[
                 ("selection", selection),
                 ("context", context),
+                ("focus", focus),
                 ("lang", &self.config.target_language),
             ],
-        )
+        );
+
+        if !focus.trim().is_empty() && !template.contains("{focus}") {
+            prompt.push_str("\n\nUser focus/question: ");
+            prompt.push_str(focus);
+            prompt.push_str("\nCenter the explanation on this concern while still reasoning from first principles.");
+        }
+
+        prompt
     }
 
     fn build_sentence_prompt(&self, sentence: &str) -> String {
@@ -185,9 +197,10 @@ impl LlmTranslator {
         &self,
         selection: &str,
         context: &str,
+        focus: &str,
         mut on_progress: StreamProgress,
     ) -> Result<TranslationResult, LumenError> {
-        let body = self.build_explanation_request(selection, context, true);
+        let body = self.build_explanation_request(selection, context, focus, true);
         let url = self.completions_url();
 
         let raw_buf = self
@@ -324,6 +337,7 @@ impl LlmTranslator {
         &self,
         selection: &str,
         context: &str,
+        focus: &str,
         stream: bool,
     ) -> ChatRequest {
         ChatRequest {
@@ -336,7 +350,7 @@ impl LlmTranslator {
                 },
                 Message {
                     role: "user".into(),
-                    content: self.build_explanation_prompt(selection, context),
+                    content: self.build_explanation_prompt(selection, context, focus),
                 },
             ],
             response_format: None,
