@@ -67,6 +67,7 @@ struct TranslationBubble: View {
         .overlay(alignment: .bottomTrailing) { resizeHandle }
         .shadow(color: .black.opacity(0.18), radius: 14, x: 0, y: 6)
         .frame(width: cardWidth, height: customCardSize?.height)
+        .frame(maxHeight: customCardSize == nil ? maximumAutomaticCardHeight : nil)
         .onSizeChange { measuredCardSize = $0 }
     }
 
@@ -92,9 +93,18 @@ struct TranslationBubble: View {
         customCardSize != nil || measuredContentHeight > maximumAutomaticContentHeight
     }
 
+    private var maximumAutomaticCardHeight: CGFloat? {
+        guard request.isExplanationMode else { return nil }
+        return min(max(effectiveAvailableSize.height * 0.72, 420), effectiveAvailableSize.height * 0.82)
+    }
+
     private var maximumAutomaticContentHeight: CGFloat {
         if request.isExplanationMode {
-            return min(max(effectiveAvailableSize.height * 0.58, 360), effectiveAvailableSize.height * 0.78)
+            let cardLimit = maximumAutomaticCardHeight ?? (effectiveAvailableSize.height * 0.72)
+            // Keep the whole explanation window within a proportional height of the
+            // reader window. The header/divider and outer padding need reserved space,
+            // so the scrollable body is slightly smaller than the card cap.
+            return max(240, cardLimit - 86)
         }
         return request.isSentenceMode ? 560 : 520
     }
@@ -242,7 +252,15 @@ struct TranslationBubble: View {
 
     @ViewBuilder
     private func adaptiveContent(result: TranslationResult) -> some View {
-        if shouldScrollContent {
+        if request.isExplanationMode {
+            ScrollView {
+                contentBody(result: result)
+                    .onHeightChange { measuredContentHeight = $0 }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: customCardSize == nil ? maximumAutomaticContentHeight : nil)
+            .frame(maxHeight: customCardSize == nil ? nil : .infinity)
+        } else if shouldScrollContent {
             ScrollView {
                 contentBody(result: result)
                     .onHeightChange { measuredContentHeight = $0 }
@@ -560,19 +578,25 @@ struct TranslationBubble: View {
 
 
     private var explanationPromptContent: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            explanationQuestionBar
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                explanationQuestionBar
 
-            BubbleSection("原文") {
-                Text(ContextSentenceFormatting.displayParagraph(request.word))
-                    .font(.body)
-                    .textSelection(.enabled)
-                    .foregroundStyle(.primary)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
+                BubbleSection("原文") {
+                    Text(ContextSentenceFormatting.displayParagraph(request.word))
+                        .font(.body)
+                        .textSelection(.enabled)
+                        .foregroundStyle(.primary)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
+            .padding(14)
+            .onHeightChange { measuredContentHeight = $0 }
         }
-        .padding(14)
+        .frame(maxWidth: .infinity)
+        .frame(height: customCardSize == nil ? maximumAutomaticContentHeight : nil)
+        .frame(maxHeight: customCardSize == nil ? nil : .infinity)
     }
 
     // MARK: - Footer
