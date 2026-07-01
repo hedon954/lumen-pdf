@@ -133,12 +133,14 @@ final class BridgeService {
     func explainSelectionStreaming(
         selection: String,
         context: String,
+        focus: String,
         onPartial: @escaping @MainActor (TranslationResult) -> Void
     ) async throws -> TranslationResult {
         let receiver = TranslationStreamReceiver(onPartial: onPartial)
         return try await LumenPDF.explainSelectionStreaming(
             selection: selection,
             context: context,
+            focus: focus,
             callback: receiver
         )
     }

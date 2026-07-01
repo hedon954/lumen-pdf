@@ -10,6 +10,7 @@ pub struct TranslationDomainService {
     cache: Arc<dyn TranslationCacheRepository>,
     llm: Arc<dyn Translator>,
     fallback: Arc<dyn Translator>,
+    cache_target_language: String,
     /// Optional authoritative source of (American) IPA for single words. When
     /// present, it overrides the LLM-produced `phonetic`, which is frequently
     /// inaccurate. Best-effort: a `None` result leaves the existing phonetic
@@ -38,8 +39,16 @@ impl TranslationDomainService {
             cache,
             llm,
             fallback,
+            cache_target_language: String::new(),
             phonetic: None,
         }
+    }
+
+    /// Use the target language as part of the cache key so cached translations
+    /// generated for one output language never leak into another language.
+    pub fn with_cache_target_language(mut self, target_language: impl Into<String>) -> Self {
+        self.cache_target_language = target_language.into();
+        self
     }
 
     /// Attach a phonetic provider used to override the LLM's IPA for single
@@ -78,7 +87,10 @@ impl TranslationDomainService {
         let hash = Self::sentence_hash(&request.sentence);
 
         // Level 1: local cache
-        if let Some(mut cached) = self.cache.get(&word_lower, &hash)? {
+        if let Some(mut cached) = self
+            .cache
+            .get(&word_lower, &hash, &self.cache_target_language)?
+        {
             cached.source = TranslationSource::Cache.to_string();
             // Backfill an authoritative phonetic for older cache entries that
             // were stored before a provider was available (empty phonetic).
@@ -103,7 +115,9 @@ impl TranslationDomainService {
                 if let Some(p) = &phonetic {
                     result.phonetic = p.clone();
                 }
-                let _ = self.cache.set(&word_lower, &hash, &result);
+                let _ = self
+                    .cache
+                    .set(&word_lower, &hash, &self.cache_target_language, &result);
                 return Ok(result);
             }
             Err(e) => Some(e.user_hint_zh()),
@@ -165,7 +179,10 @@ impl TranslationDomainService {
         };
 
         // Level 1: local cache
-        if let Some(mut cached) = self.cache.get(&word_lower, &hash)? {
+        if let Some(mut cached) = self
+            .cache
+            .get(&word_lower, &hash, &self.cache_target_language)?
+        {
             cached.source = TranslationSource::Cache.to_string();
             if cached.phonetic.trim().is_empty() {
                 if let Some(p) = self.fetch_phonetic_override(&request.word).await {
@@ -201,7 +218,9 @@ impl TranslationDomainService {
                 if let Some(p) = &phonetic {
                     result.phonetic = p.clone();
                 }
-                let _ = self.cache.set(&word_lower, &hash, &result);
+                let _ = self
+                    .cache
+                    .set(&word_lower, &hash, &self.cache_target_language, &result);
                 emit(result.clone());
                 return Ok(result);
             }
@@ -256,19 +275,30 @@ mod tests {
     }
 
     impl TranslationCacheRepository for FakeCache {
-        fn get(&self, word: &str, hash: &str) -> Result<Option<TranslationResult>, LumenError> {
+        fn get(
+            &self,
+            word: &str,
+            hash: &str,
+            target_language: &str,
+        ) -> Result<Option<TranslationResult>, LumenError> {
             Ok(self
                 .0
                 .lock()
                 .unwrap()
-                .get(&format!("{word}:{hash}"))
+                .get(&format!("{word}:{hash}:{target_language}"))
                 .cloned())
         }
-        fn set(&self, word: &str, hash: &str, r: &TranslationResult) -> Result<(), LumenError> {
+        fn set(
+            &self,
+            word: &str,
+            hash: &str,
+            target_language: &str,
+            r: &TranslationResult,
+        ) -> Result<(), LumenError> {
             self.0
                 .lock()
                 .unwrap()
-                .insert(format!("{word}:{hash}"), r.clone());
+                .insert(format!("{word}:{hash}:{target_language}"), r.clone());
             Ok(())
         }
     }
@@ -371,6 +401,7 @@ mod tests {
             .set(
                 "run",
                 &hash,
+                "",
                 &TranslationResult {
                     word: "run".to_string(),
                     general_definition: "cached".to_string(),
@@ -417,8 +448,44 @@ mod tests {
 
         // Verify it was written to cache
         let hash = TranslationDomainService::sentence_hash("the quick brown fox");
-        let cached = cache.get("run", &hash).unwrap();
+        let cached = cache.get("run", &hash, "").unwrap();
         assert!(cached.is_some());
+    }
+
+    #[tokio::test]
+    async fn cache_is_scoped_by_target_language() {
+        let cache = FakeCache::new();
+        let english = TranslationDomainService::new(
+            cache.clone(),
+            Arc::new(FakeLlm {
+                word_result: "English definition",
+            }),
+            Arc::new(FailingLlm),
+        )
+        .with_cache_target_language("English");
+        let chinese = TranslationDomainService::new(
+            cache.clone(),
+            Arc::new(FakeLlm {
+                word_result: "中文释义",
+            }),
+            Arc::new(FailingLlm),
+        )
+        .with_cache_target_language("简体中文");
+
+        let request = TranslationRequest {
+            word: "run".to_string(),
+            sentence: "the quick brown fox".to_string(),
+        };
+
+        let english_result = english.translate(request.clone()).await.unwrap();
+        let chinese_result = chinese.translate(request).await.unwrap();
+
+        assert_eq!(english_result.general_definition, "English definition");
+        assert_eq!(chinese_result.general_definition, "中文释义");
+
+        let hash = TranslationDomainService::sentence_hash("the quick brown fox");
+        assert!(cache.get("run", &hash, "English").unwrap().is_some());
+        assert!(cache.get("run", &hash, "简体中文").unwrap().is_some());
     }
 
     #[tokio::test]
@@ -447,7 +514,7 @@ mod tests {
 
         // Fallback result must not be cached
         let hash = TranslationDomainService::sentence_hash("the quick brown fox");
-        let cached = cache.get("run", &hash).unwrap();
+        let cached = cache.get("run", &hash, "").unwrap();
         assert!(cached.is_none());
     }
 
@@ -489,6 +556,7 @@ mod tests {
             .set(
                 "run",
                 &hash,
+                "",
                 &TranslationResult {
                     word: "run".to_string(),
                     general_definition: "cached".to_string(),
@@ -572,7 +640,7 @@ mod tests {
 
         // Cached after success
         let hash = TranslationDomainService::sentence_hash("He is running");
-        assert!(cache.get("run", &hash).unwrap().is_some());
+        assert!(cache.get("run", &hash, "").unwrap().is_some());
     }
 
     #[tokio::test]
@@ -608,7 +676,7 @@ mod tests {
 
         // Fallback result must NOT be cached
         let hash = TranslationDomainService::sentence_hash("He is running");
-        assert!(cache.get("run", &hash).unwrap().is_none());
+        assert!(cache.get("run", &hash, "").unwrap().is_none());
     }
 
     #[tokio::test]
@@ -679,7 +747,7 @@ mod tests {
 
         // The corrected phonetic is what gets cached.
         let hash = TranslationDomainService::sentence_hash("hello world");
-        let cached = cache.get("hello", &hash).unwrap().unwrap();
+        let cached = cache.get("hello", &hash, "").unwrap().unwrap();
         assert_eq!(cached.phonetic, "həˈloʊ");
     }
 
@@ -743,6 +811,7 @@ mod tests {
             .set(
                 "hello",
                 &hash,
+                "",
                 &TranslationResult {
                     word: "hello".to_string(),
                     phonetic: String::new(),
