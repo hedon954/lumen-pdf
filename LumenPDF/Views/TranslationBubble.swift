@@ -403,7 +403,7 @@ struct TranslationBubble: View {
     private func contentBody(result: TranslationResult) -> some View {
         if request.isExplanationMode {
             VStack(alignment: .leading, spacing: 12) {
-                explanationQuestionBar
+                explanationQuestionBar(defaultSubmitOnReturn: false)
 
                 BubbleSection("原文") {
                     Text(ContextSentenceFormatting.displayParagraph(request.word))
@@ -556,7 +556,16 @@ struct TranslationBubble: View {
     }
 
 
-    private var explanationQuestionBar: some View {
+    private var trimmedExplanationQuestion: String {
+        explanationQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func submitExplanationQuestion() {
+        guard !isLoading else { return }
+        onAskExplanation(trimmedExplanationQuestion)
+    }
+
+    private func explanationQuestionBar(defaultSubmitOnReturn: Bool) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("快速解释会直接从第一性原理展开；也可以先输入你关心的问题，再围绕该关注点解释。")
                 .font(.caption)
@@ -564,23 +573,36 @@ struct TranslationBubble: View {
             HStack(spacing: 8) {
                 TextField("例如：这里为什么强调 CPU 时间？", text: $explanationQuestion)
                     .textFieldStyle(.roundedBorder)
+                    .submitLabel(.send)
+                    .onSubmit { submitExplanationQuestion() }
                     .disabled(isLoading)
-                Button(explanationQuestion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "直接解释" : "解释") {
-                    onAskExplanation(explanationQuestion.trimmingCharacters(in: .whitespacesAndNewlines))
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(isLoading)
+                explanationSubmitButton(defaultSubmitOnReturn: defaultSubmitOnReturn)
             }
         }
         .padding(10)
         .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
     }
 
+    @ViewBuilder
+    private func explanationSubmitButton(defaultSubmitOnReturn: Bool) -> some View {
+        let button = Button(trimmedExplanationQuestion.isEmpty ? "直接解释" : "解释") {
+            submitExplanationQuestion()
+        }
+        .buttonStyle(.borderedProminent)
+        .disabled(isLoading)
+
+        if defaultSubmitOnReturn {
+            button.keyboardShortcut(.defaultAction)
+        } else {
+            button
+        }
+    }
+
 
     private var explanationPromptContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                explanationQuestionBar
+                explanationQuestionBar(defaultSubmitOnReturn: true)
 
                 BubbleSection("原文") {
                     Text(ContextSentenceFormatting.displayParagraph(request.word))
