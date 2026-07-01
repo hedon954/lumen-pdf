@@ -30,7 +30,7 @@ LumenPDF 是一款面向深度阅读的 macOS PDF 阅读器。它保留系统 Pr
 
 如果 GitHub Releases 中已经提供 DMG，下载最新版，打开后把 `LumenPDF.app` 拖到 `Applications`。
 
-首次打开如果 macOS 提示“无法验证开发者”，在 Finder 中右键点击 `LumenPDF.app`，选择“打开”，再在弹窗里确认一次即可。
+如果首次打开时 macOS 提示“无法验证开发者”或“无法打开”，先尝试打开一次 `LumenPDF.app`，然后进入 **系统设置 → 隐私与安全性**，在“安全性”区域点击“仍要打开 / Open Anyway”，再在确认弹窗中选择“打开”。这个入口通常只会在尝试打开后的短时间内出现。参考：[Apple 官方说明](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac)。
 
 ### 从源码打包
 
