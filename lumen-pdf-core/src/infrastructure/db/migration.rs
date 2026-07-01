@@ -28,14 +28,15 @@ pub fn run(conn: &Connection) -> Result<(), LumenError> {
         );
 
         CREATE TABLE IF NOT EXISTS translation_cache (
-            id            TEXT PRIMARY KEY,
-            word          TEXT NOT NULL,
-            sentence_hash TEXT NOT NULL,
-            response_json TEXT NOT NULL,
-            source        TEXT NOT NULL DEFAULT 'llm',
-            created_at    INTEGER NOT NULL,
-            hit_count     INTEGER NOT NULL DEFAULT 0,
-            UNIQUE(word, sentence_hash)
+            id              TEXT PRIMARY KEY,
+            word            TEXT NOT NULL,
+            sentence_hash   TEXT NOT NULL,
+            target_language TEXT NOT NULL DEFAULT '',
+            response_json   TEXT NOT NULL,
+            source          TEXT NOT NULL DEFAULT 'llm',
+            created_at      INTEGER NOT NULL,
+            hit_count       INTEGER NOT NULL DEFAULT 0,
+            UNIQUE(word, sentence_hash, target_language)
         );
 
         CREATE TABLE IF NOT EXISTS pdf_documents (
@@ -70,5 +71,43 @@ pub fn run(conn: &Connection) -> Result<(), LumenError> {
         "ALTER TABLE vocabulary_entries ADD COLUMN context_sentence_translation TEXT NOT NULL DEFAULT '';"
     );
 
+    migrate_translation_cache_language_key(conn)?;
+
+    Ok(())
+}
+
+fn migrate_translation_cache_language_key(conn: &Connection) -> Result<(), LumenError> {
+    let mut stmt = conn.prepare("PRAGMA table_info(translation_cache)")?;
+    let columns = stmt
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<Result<Vec<_>, _>>()?;
+    if columns.iter().any(|column| column == "target_language") {
+        return Ok(());
+    }
+
+    conn.execute_batch(
+        "
+        ALTER TABLE translation_cache RENAME TO translation_cache_old;
+
+        CREATE TABLE translation_cache (
+            id              TEXT PRIMARY KEY,
+            word            TEXT NOT NULL,
+            sentence_hash   TEXT NOT NULL,
+            target_language TEXT NOT NULL DEFAULT '',
+            response_json   TEXT NOT NULL,
+            source          TEXT NOT NULL DEFAULT 'llm',
+            created_at      INTEGER NOT NULL,
+            hit_count       INTEGER NOT NULL DEFAULT 0,
+            UNIQUE(word, sentence_hash, target_language)
+        );
+
+        INSERT INTO translation_cache
+            (id, word, sentence_hash, target_language, response_json, source, created_at, hit_count)
+        SELECT id, word, sentence_hash, '', response_json, source, created_at, hit_count
+        FROM translation_cache_old;
+
+        DROP TABLE translation_cache_old;
+        ",
+    )?;
     Ok(())
 }
