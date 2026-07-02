@@ -39,6 +39,69 @@ struct SelectionInfo: Equatable {
     }
 }
 
+struct UnderlineNoteDraft: Equatable {
+    let word: String
+    let boundsStr: String
+    let page: Int
+    let anchor: CGPoint
+}
+
+private struct UnderlineNoteDraftView: View {
+    let draft: UnderlineNoteDraft
+    let onCancel: () -> Void
+    let onSave: (String) -> Void
+
+    @State private var noteText = ""
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("划线笔记", systemImage: "note.text")
+                    .font(.headline)
+                Spacer()
+                Button(action: onCancel) {
+                    Image(systemName: "xmark")
+                        .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.plain)
+            }
+
+            Text(ContextSentenceFormatting.displayParagraph(draft.word))
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .lineLimit(3)
+
+            TextEditor(text: $noteText)
+                .font(.callout)
+                .frame(height: 84)
+                .focused($isFocused)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.primary.opacity(0.12), lineWidth: 1)
+                )
+
+            HStack {
+                Text("可留空，仅保存划线")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                Spacer()
+                Button("取消", action: onCancel)
+                Button("保存") {
+                    onSave(noteText.trimmingCharacters(in: .whitespacesAndNewlines))
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(14)
+        .frame(width: 340)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.separator, lineWidth: 0.5))
+        .shadow(color: .black.opacity(0.18), radius: 14, x: 0, y: 6)
+        .onAppear { isFocused = true }
+    }
+}
+
 struct PDFReaderView: View {
     let document: PdfDocument
     @EnvironmentObject private var appState: AppState
@@ -47,6 +110,7 @@ struct PDFReaderView: View {
     @State private var translationRequest: TranslationBubbleRequest?
     @State private var isTranslating = false
     @State private var pendingSelection: SelectionInfo?
+    @State private var underlineDraft: UnderlineNoteDraft?
     // totalPages is kept as a local state for the initial load callback,
     // then written to appState so ContentView can display it in the toolbar.
 
@@ -75,7 +139,7 @@ struct PDFReaderView: View {
                     )
                 },
                 onClearSelection: {
-                    if translationRequest == nil { pendingSelection = nil }
+                    if translationRequest == nil && underlineDraft == nil { pendingSelection = nil }
                 },
                 onDocumentLoaded: { total in
                     handleDocumentLoaded(totalPages: total)
@@ -83,10 +147,33 @@ struct PDFReaderView: View {
             )
 
             // Selection action menu — positioned near the selection
-            if let sel = pendingSelection, translationRequest == nil {
+            if let sel = pendingSelection, translationRequest == nil && underlineDraft == nil {
                 selectionActionBar(sel)
                     .transition(.opacity.combined(with: .scale(scale: 0.88)))
                     .animation(.spring(duration: 0.18), value: pendingSelection)
+            }
+
+            if let draft = underlineDraft {
+                UnderlineNoteDraftView(
+                    draft: draft,
+                    onCancel: {
+                        underlineDraft = nil
+                        pendingSelection = nil
+                    },
+                    onSave: { noteText in
+                        saveUnderlineNote(
+                            word: draft.word,
+                            noteText: noteText,
+                            boundsStr: draft.boundsStr,
+                            page: draft.page
+                        )
+                        underlineDraft = nil
+                        pendingSelection = nil
+                    }
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                .position(x: draft.anchor.x, y: draft.anchor.y + 72)
+                .zIndex(2)
             }
 
             // Translation bubble
@@ -188,8 +275,17 @@ struct PDFReaderView: View {
             }
             Divider().frame(height: 26)
             actionBarBtn(icon: "note.text", label: "划线") {
-                saveUnderlineNote(word: sel.word, boundsStr: sel.boundsStr, page: sel.page)
-                pendingSelection = nil
+                if hasExactUnderlineNote(boundsStr: sel.boundsStr, page: sel.page) {
+                    saveUnderlineNote(word: sel.word, noteText: "", boundsStr: sel.boundsStr, page: sel.page)
+                    pendingSelection = nil
+                } else {
+                    underlineDraft = UnderlineNoteDraft(
+                        word: sel.word,
+                        boundsStr: sel.boundsStr,
+                        page: sel.page,
+                        anchor: sel.menuAnchor
+                    )
+                }
             }
             Divider().frame(height: 26)
             actionBarBtn(icon: "xmark", label: "") {
@@ -233,8 +329,17 @@ struct PDFReaderView: View {
         )
     }
 
+    private func hasExactUnderlineNote(boundsStr: String, page: Int) -> Bool {
+        guard let existingNotes = try? BridgeService.shared.listNotesByPdf(pdfPath: document.filePath) else {
+            return false
+        }
+        return existingNotes.contains { note in
+            note.pageIndex == UInt32(page) && note.boundsStr == boundsStr
+        }
+    }
+
     /// 划线并自动保存为笔记：相同选区 toggle，子区域不变，部分重叠则扩展/合并。
-    private func saveUnderlineNote(word: String, boundsStr: String, page: Int) {
+    private func saveUnderlineNote(word: String, noteText: String, boundsStr: String, page: Int) {
         BridgeService.shared.initializeIfNeeded()
 
         let newRects = Self.parseAnnotationRectsStatic(boundsStr)
@@ -282,6 +387,7 @@ struct PDFReaderView: View {
         if !overlappingNotes.isEmpty {
             mergeUnderlineNote(
                 word: word,
+                noteText: noteText,
                 page: page,
                 newRects: newRects,
                 overlappingNotes: overlappingNotes
@@ -289,11 +395,12 @@ struct PDFReaderView: View {
             return
         }
 
-        createUnderlineNote(word: word, noteText: "", boundsStr: boundsStr, page: page, deletedNotesInfo: [])
+        createUnderlineNote(word: word, noteText: noteText, boundsStr: boundsStr, page: page, deletedNotesInfo: [])
     }
 
     private func mergeUnderlineNote(
         word: String,
+        noteText: String,
         page: Int,
         newRects: [CGRect],
         overlappingNotes: [NoteEntry]
@@ -315,10 +422,10 @@ struct PDFReaderView: View {
             existing: overlappingNotes.map(\.content),
             new: word
         )
-        let mergedNoteText = overlappingNotes
-            .map(\.note)
-            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-            .joined(separator: "\n\n")
+        let mergedNoteText = Self.mergedNoteText(
+            existing: overlappingNotes.map(\.note),
+            new: noteText
+        )
 
         for note in overlappingNotes {
             try? BridgeService.shared.deleteNote(id: note.id)
@@ -434,6 +541,13 @@ struct PDFReaderView: View {
         return (existingParagraphs + [normalizedNew])
             .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             .joined(separator: " ")
+    }
+
+    private static func mergedNoteText(existing: [String], new: String) -> String {
+        (existing + [new])
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n\n")
     }
 
     private static func mergeAnnotationRects(_ rects: [CGRect]) -> [CGRect] {
