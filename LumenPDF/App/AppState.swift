@@ -26,6 +26,8 @@ final class AppState: ObservableObject {
                 totalPages = 0
             }
             loadKitDocument()
+            refreshVocabulary()
+            refreshNotes()
         }
     }
     @Published var vocabulary: [VocabularyEntry] = []
