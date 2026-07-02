@@ -4,6 +4,22 @@ import AppKit
 
 // MARK: - Selection info for the action menu
 
+private extension CGRect {
+    var area: CGFloat {
+        max(0, width) * max(0, height)
+    }
+
+    var expandedForComparison: CGRect {
+        insetBy(dx: -1, dy: -1)
+    }
+
+    func isSameTextLine(as other: CGRect) -> Bool {
+        let verticalOverlap = min(maxY, other.maxY) - max(minY, other.minY)
+        return verticalOverlap > min(height, other.height) * 0.4
+            || abs(midY - other.midY) <= max(height, other.height) * 0.5
+    }
+}
+
 struct SelectionInfo: Equatable {
     let word: String
     let sentence: String
@@ -217,22 +233,25 @@ struct PDFReaderView: View {
         )
     }
 
-    /// 划线并自动保存为笔记（相同选区 toggle；重叠选区保持为独立笔记）
+    /// 划线并自动保存为笔记：相同选区 toggle，子区域不变，部分重叠则扩展/合并。
     private func saveUnderlineNote(word: String, boundsStr: String, page: Int) {
         BridgeService.shared.initializeIfNeeded()
+
+        let newRects = Self.parseAnnotationRectsStatic(boundsStr)
+        guard !newRects.isEmpty else {
+            appState.showToast("保存笔记失败")
+            return
+        }
 
         guard let existingNotes = try? BridgeService.shared.listNotesByPdf(pdfPath: document.filePath) else {
             appState.showToast("保存笔记失败")
             return
         }
 
-        // Same selection keeps the existing toggle behavior. Partially overlapping selections
-        // must remain independent notes, otherwise selecting a sentence that crosses an older
-        // underline would delete that older note and visually look like notes were merged.
-        let exactMatch = existingNotes.first { note in
-            note.pageIndex == UInt32(page) && note.boundsStr == boundsStr
-        }
-        if let match = exactMatch {
+        let samePageNotes = existingNotes.filter { $0.pageIndex == UInt32(page) }
+
+        // Same selection keeps the toggle behavior: tap/draw the exact same underline again to remove it.
+        if let match = samePageNotes.first(where: { $0.boundsStr == boundsStr }) {
             try? BridgeService.shared.deleteNote(id: match.id)
             NotificationCenter.default.post(
                 name: .removeUnderlineNote,
@@ -248,16 +267,104 @@ struct PDFReaderView: View {
             return
         }
 
+        // If the new selection is entirely inside an existing note, keep the existing note unchanged.
+        if samePageNotes.contains(where: { note in
+            Self.rects(newRects, areCoveredBy: Self.parseAnnotationRectsStatic(note.boundsStr))
+        }) {
+            appState.showToast("已在现有笔记范围内")
+            return
+        }
+
+        let overlappingNotes = samePageNotes.filter { note in
+            Self.rects(newRects, overlap: Self.parseAnnotationRectsStatic(note.boundsStr))
+        }
+
+        if !overlappingNotes.isEmpty {
+            mergeUnderlineNote(
+                word: word,
+                page: page,
+                newRects: newRects,
+                overlappingNotes: overlappingNotes
+            )
+            return
+        }
+
+        createUnderlineNote(word: word, noteText: "", boundsStr: boundsStr, page: page, deletedNotesInfo: [])
+    }
+
+    private func mergeUnderlineNote(
+        word: String,
+        page: Int,
+        newRects: [CGRect],
+        overlappingNotes: [NoteEntry]
+    ) {
+        let deletedNotesInfo = overlappingNotes.map { note in
+            NoteUndoInfo(
+                id: note.id,
+                pdfPath: note.pdfPath,
+                pdfName: note.pdfName,
+                pageIndex: note.pageIndex,
+                content: note.content,
+                note: note.note,
+                boundsStr: note.boundsStr
+            )
+        }
+        let oldRects = overlappingNotes.flatMap { Self.parseAnnotationRectsStatic($0.boundsStr) }
+        let mergedBoundsStr = Self.annotationBoundsString(from: Self.mergeAnnotationRects(oldRects + newRects))
+        let mergedContent = Self.mergedNoteContent(
+            existing: overlappingNotes.map(\.content),
+            new: word
+        )
+        let mergedNoteText = overlappingNotes
+            .map(\.note)
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .joined(separator: "\n\n")
+
+        for note in overlappingNotes {
+            try? BridgeService.shared.deleteNote(id: note.id)
+        }
+
+        guard createUnderlineNote(
+            word: mergedContent,
+            noteText: mergedNoteText,
+            boundsStr: mergedBoundsStr,
+            page: page,
+            deletedNotesInfo: deletedNotesInfo,
+            toastMessage: "已扩展笔记"
+        ) != nil else {
+            for info in deletedNotesInfo {
+                _ = try? BridgeService.shared.saveNote(
+                    pdfPath: info.pdfPath,
+                    pdfName: info.pdfName,
+                    pageIndex: info.pageIndex,
+                    content: info.content,
+                    note: info.note,
+                    boundsStr: info.boundsStr
+                )
+            }
+            return
+        }
+    }
+
+    @discardableResult
+    private func createUnderlineNote(
+        word: String,
+        noteText: String,
+        boundsStr: String,
+        page: Int,
+        deletedNotesInfo: [NoteUndoInfo],
+        toastMessage: String = "已添加笔记"
+    ) -> NoteEntry? {
         guard let noteEntry = try? BridgeService.shared.saveNote(
             pdfPath: document.filePath,
             pdfName: document.fileName,
             pageIndex: UInt32(page),
             content: word,
-            note: "",
+            note: noteText,
             boundsStr: boundsStr
         ) else {
             appState.showToast("保存笔记失败")
-            return
+            return nil
         }
 
         NotificationCenter.default.post(
@@ -268,20 +375,23 @@ struct PDFReaderView: View {
                 "pageIndex": page,
                 "boundsStr": boundsStr,
                 "filePath": document.filePath,
+                "deletedNoteIds": deletedNotesInfo.map { $0.id },
+                "deletedNotesInfo": deletedNotesInfo,
                 "newNoteInfo": NoteUndoInfo(
                     id: noteEntry.id,
                     pdfPath: document.filePath,
                     pdfName: document.fileName,
                     pageIndex: UInt32(page),
                     content: word,
-                    note: "",
+                    note: noteText,
                     boundsStr: boundsStr
                 )
             ]
         )
 
         appState.refreshNotes()
-        appState.showToast("已添加笔记")
+        appState.showToast(toastMessage)
+        return noteEntry
     }
 
     /// 静态方法解析 boundsStr，供多处使用
@@ -289,6 +399,59 @@ struct PDFReaderView: View {
         boundsStr.components(separatedBy: "|").compactMap { part -> CGRect? in
             let r = NSRectFromString(part)
             return r.isEmpty ? nil : r
+        }
+    }
+
+    private static func annotationBoundsString(from rects: [CGRect]) -> String {
+        rects.map { NSStringFromRect($0) }.joined(separator: "|")
+    }
+
+    private static func rects(_ candidates: [CGRect], areCoveredBy existing: [CGRect]) -> Bool {
+        !candidates.isEmpty && candidates.allSatisfy { candidate in
+            existing.contains { existingRect in
+                existingRect.expandedForComparison.contains(candidate)
+            }
+        }
+    }
+
+    private static func rects(_ lhs: [CGRect], overlap rhs: [CGRect]) -> Bool {
+        lhs.contains { left in
+            rhs.contains { right in
+                left.intersection(right).area > 1.0
+            }
+        }
+    }
+
+    private static func mergedNoteContent(existing: [String], new: String) -> String {
+        let normalizedNew = ContextSentenceFormatting.displayParagraph(new)
+        let existingParagraphs = existing.map(ContextSentenceFormatting.displayParagraph)
+        if existingParagraphs.contains(where: { normalizedNew.contains($0) }) {
+            return normalizedNew
+        }
+        if let containingExisting = existingParagraphs.first(where: { $0.contains(normalizedNew) }) {
+            return containingExisting
+        }
+        return (existingParagraphs + [normalizedNew])
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .joined(separator: " ")
+    }
+
+    private static func mergeAnnotationRects(_ rects: [CGRect]) -> [CGRect] {
+        let sortedRects = rects
+            .filter { !$0.isEmpty && $0 != .zero }
+            .sorted { lhs, rhs in
+                if abs(lhs.midY - rhs.midY) > max(lhs.height, rhs.height) * 0.6 {
+                    return lhs.midY > rhs.midY
+                }
+                return lhs.minX < rhs.minX
+            }
+
+        return sortedRects.reduce(into: [CGRect]()) { merged, rect in
+            guard let index = merged.firstIndex(where: { $0.isSameTextLine(as: rect) && $0.expandedForComparison.intersects(rect.expandedForComparison) }) else {
+                merged.append(rect)
+                return
+            }
+            merged[index] = merged[index].union(rect)
         }
     }
 
@@ -1048,13 +1211,12 @@ struct PDFKitView: NSViewRepresentable {
             let lineRects = Self.parseAnnotationRects(boundsStr)
             guard !lineRects.isEmpty else { return }
 
-            // Optional legacy merge payload. New note creation no longer sends this for
-            // partially overlapping notes, but undo remains backward-compatible.
+            // Merge payload: partial-overlap saves delete old notes and recreate one expanded note.
             let deletedNoteIds = notification.userInfo?["deletedNoteIds"] as? [String] ?? []
             let deletedNotesInfo = notification.userInfo?["deletedNotesInfo"] as? [NoteUndoInfo] ?? []
             let newNoteInfo = notification.userInfo?["newNoteInfo"] as? NoteUndoInfo
 
-            // 移除旧划线标注（仅兼容旧的合并撤销数据）
+            // 移除旧划线标注（合并场景）
             var removedSnapshots: [NoteAnnotationSnapshot] = []
             for oldNoteId in deletedNoteIds {
                 let oldAnns = page.annotations.filter { $0.userName == oldNoteId }
