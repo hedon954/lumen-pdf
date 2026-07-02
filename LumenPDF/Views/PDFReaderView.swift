@@ -55,14 +55,18 @@ private struct UnderlineNoteDraftView: View {
     @FocusState private var isFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label("划线笔记", systemImage: "note.text")
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "note.text")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text("添加划线笔记")
                     .font(.headline)
                 Spacer()
                 Button(action: onCancel) {
                     Image(systemName: "xmark")
-                        .font(.caption.weight(.semibold))
+                        .font(.callout.weight(.medium))
+                        .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
             }
@@ -70,34 +74,43 @@ private struct UnderlineNoteDraftView: View {
             Text(ContextSentenceFormatting.displayParagraph(draft.word))
                 .font(.callout)
                 .foregroundStyle(.secondary)
-                .lineLimit(3)
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             TextEditor(text: $noteText)
-                .font(.callout)
-                .frame(height: 84)
+                .font(.body)
+                .scrollContentBackground(.hidden)
+                .padding(8)
+                .frame(height: 74)
                 .focused($isFocused)
+                .background(.background.opacity(0.72), in: RoundedRectangle(cornerRadius: 9))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.primary.opacity(0.12), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 9)
+                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
                 )
 
-            HStack {
+            HStack(alignment: .center) {
                 Text("可留空，仅保存划线")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
                 Spacer()
                 Button("取消", action: onCancel)
+                    .buttonStyle(.borderless)
                 Button("保存") {
                     onSave(noteText.trimmingCharacters(in: .whitespacesAndNewlines))
                 }
+                .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
             }
         }
-        .padding(14)
-        .frame(width: 340)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.separator, lineWidth: 0.5))
-        .shadow(color: .black.opacity(0.18), radius: 14, x: 0, y: 6)
+        .padding(16)
+        .frame(width: 380)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+        )
+        .shadow(color: .black.opacity(0.12), radius: 18, x: 0, y: 8)
         .onAppear { isFocused = true }
     }
 }

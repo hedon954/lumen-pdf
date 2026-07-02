@@ -62,30 +62,27 @@ struct ReadingContextSidebarView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: "sidebar.right")
-                    .foregroundStyle(.secondary)
-                Text("单词 / 笔记")
-                    .font(.headline)
-                Spacer()
-                Text("\(items.count)")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(.quinary, in: Capsule())
-            }
-
+        HStack(spacing: 12) {
             Picker("", selection: $mode) {
                 ForEach(ReadingContextMode.allCases) { mode in
                     Text(mode.title).tag(mode)
                 }
             }
             .pickerStyle(.segmented)
+            .controlSize(.large)
+            .frame(width: 190)
+
+            Spacer()
+
+            Text("\(items.count)")
+                .font(.callout.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(.quinary, in: Capsule())
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 11)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 14)
     }
 
     private var emptyState: some View {
