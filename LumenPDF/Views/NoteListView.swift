@@ -137,12 +137,18 @@ struct NoteCardView: View {
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            // User note
-            if !note.note.isEmpty {
-                MarkdownText(markdown: note.note)
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+            // User notes
+            let noteItems = NoteTextList.decode(note.note)
+            if !noteItems.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array(noteItems.enumerated()), id: \.offset) { _, item in
+                        MarkdownText(markdown: item)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
             }
 
             // Footer
@@ -198,7 +204,7 @@ struct NoteEditSheet: View {
     init(note: NoteEntry, onSave: @escaping () -> Void) {
         self.note = note
         self.onSave = onSave
-        _noteText = State(initialValue: note.note)
+        _noteText = State(initialValue: NoteTextList.editText(note.note))
     }
 
     var body: some View {

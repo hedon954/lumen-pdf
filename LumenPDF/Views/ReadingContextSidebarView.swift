@@ -2,47 +2,33 @@ import SwiftUI
 
 struct ReadingContextSidebarView: View {
     @EnvironmentObject private var appState: AppState
-    @State private var kindFilter: ReadingContextKindFilter = .all
-    @State private var pageFilter: ReadingContextPageFilter = .all
+    @State private var mode: ReadingContextMode = .vocabulary
 
     private var currentPdfPath: String? { appState.selectedDocument?.filePath }
 
     private var items: [ReadingContextItem] {
         guard let currentPdfPath else { return [] }
-
-        let vocabularyItems = appState.vocabulary
-            .filter { $0.pdfPath == currentPdfPath }
-            .map(ReadingContextItem.vocabulary)
-        let noteItems = appState.notes
-            .filter { $0.pdfPath == currentPdfPath }
-            .map(ReadingContextItem.note)
-
-        return (vocabularyItems + noteItems)
-            .filter { item in
-                switch kindFilter {
-                case .all: return true
-                case .vocabulary: return item.kind == .vocabulary
-                case .note: return item.kind == .note
-                }
-            }
-            .filter { item in
-                switch pageFilter {
-                case .all: return true
-                case .currentPage: return Int(item.pageIndex) == appState.currentPageIndex
-                }
-            }
-            .sorted { lhs, rhs in
-                if lhs.pageIndex != rhs.pageIndex { return lhs.pageIndex < rhs.pageIndex }
-                if lhs.createdAt != rhs.createdAt { return lhs.createdAt > rhs.createdAt }
-                return lhs.id < rhs.id
-            }
+        let source: [ReadingContextItem]
+        switch mode {
+        case .vocabulary:
+            source = appState.vocabulary
+                .filter { $0.pdfPath == currentPdfPath }
+                .map(ReadingContextItem.vocabulary)
+        case .note:
+            source = appState.notes
+                .filter { $0.pdfPath == currentPdfPath }
+                .map(ReadingContextItem.note)
+        }
+        return source.sorted { lhs, rhs in
+            if lhs.pageIndex != rhs.pageIndex { return lhs.pageIndex < rhs.pageIndex }
+            if lhs.createdAt != rhs.createdAt { return lhs.createdAt > rhs.createdAt }
+            return lhs.id < rhs.id
+        }
     }
 
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider()
-            filters
             Divider()
 
             if items.isEmpty {
@@ -57,11 +43,12 @@ struct ReadingContextSidebarView: View {
                         }
                         .padding(12)
                     }
-                    .onChange(of: appState.currentPageIndex) { _, pageIndex in
-                        guard pageFilter == .currentPage else { return }
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            proxy.scrollTo(UInt32(pageIndex), anchor: .top)
-                        }
+                    .onAppear { scrollToCurrentPage(proxy) }
+                    .onChange(of: appState.currentPageIndex) { _, _ in
+                        scrollToCurrentPage(proxy)
+                    }
+                    .onChange(of: mode) { _, _ in
+                        scrollToCurrentPage(proxy)
                     }
                 }
             }
@@ -75,13 +62,13 @@ struct ReadingContextSidebarView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "sidebar.right")
-                .foregroundStyle(.secondary)
-            Text("单词 / 笔记")
-                .font(.headline)
-            Spacer()
-            if !items.isEmpty {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "sidebar.right")
+                    .foregroundStyle(.secondary)
+                Text("单词 / 笔记")
+                    .font(.headline)
+                Spacer()
                 Text("\(items.count)")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
@@ -89,54 +76,35 @@ struct ReadingContextSidebarView: View {
                     .padding(.vertical, 3)
                     .background(.quinary, in: Capsule())
             }
+
+            Picker("", selection: $mode) {
+                ForEach(ReadingContextMode.allCases) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 11)
     }
 
-    private var filters: some View {
-        VStack(spacing: 8) {
-            Picker("类型", selection: $kindFilter) {
-                ForEach(ReadingContextKindFilter.allCases) { filter in
-                    Text(filter.title).tag(filter)
-                }
-            }
-            .pickerStyle(.segmented)
-
-            Picker("范围", selection: $pageFilter) {
-                ForEach(ReadingContextPageFilter.allCases) { filter in
-                    Text(filter.title).tag(filter)
-                }
-            }
-            .pickerStyle(.segmented)
-        }
-        .padding(12)
-    }
-
     private var emptyState: some View {
         VStack(spacing: 10) {
             Spacer()
-            Image(systemName: pageFilter == .currentPage ? "doc.text.magnifyingglass" : "tray")
+            Image(systemName: mode.emptySystemImage)
                 .font(.system(size: 30))
                 .foregroundStyle(.tertiary)
-            Text(emptyTitle)
+            Text("这个 PDF 还没有\(mode.title)")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-            Text("选中文本后保存到单词本或笔记，会显示在这里。")
+            Text(mode.emptyHint)
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 20)
             Spacer()
         }
-    }
-
-    private var emptyTitle: String {
-        if pageFilter == .currentPage {
-            return "当前页暂无单词或笔记"
-        }
-        return "这个 PDF 还没有单词或笔记"
     }
 
     private var groupedItems: [(pageIndex: UInt32, items: [ReadingContextItem])] {
@@ -162,6 +130,16 @@ struct ReadingContextSidebarView: View {
         }
     }
 
+    private func scrollToCurrentPage(_ proxy: ScrollViewProxy) {
+        let current = UInt32(max(0, appState.currentPageIndex))
+        let target = groupedItems.first { $0.pageIndex >= current }?.pageIndex
+            ?? groupedItems.last?.pageIndex
+        guard let target else { return }
+        withAnimation(.easeInOut(duration: 0.2)) {
+            proxy.scrollTo(target, anchor: .top)
+        }
+    }
+
     private func jump(to item: ReadingContextItem) {
         appState.activeTab = .reader
         NotificationCenter.default.post(
@@ -179,8 +157,7 @@ struct ReadingContextSidebarView: View {
     }
 }
 
-private enum ReadingContextKindFilter: String, CaseIterable, Identifiable {
-    case all
+private enum ReadingContextMode: String, CaseIterable, Identifiable {
     case vocabulary
     case note
 
@@ -188,23 +165,22 @@ private enum ReadingContextKindFilter: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .all: return "全部"
         case .vocabulary: return "单词"
         case .note: return "笔记"
         }
     }
-}
 
-private enum ReadingContextPageFilter: String, CaseIterable, Identifiable {
-    case all
-    case currentPage
-
-    var id: String { rawValue }
-
-    var title: String {
+    var emptySystemImage: String {
         switch self {
-        case .all: return "全部范围"
-        case .currentPage: return "本页"
+        case .vocabulary: return "book.closed"
+        case .note: return "note.text"
+        }
+    }
+
+    var emptyHint: String {
+        switch self {
+        case .vocabulary: return "选中文本后保存到单词本，会显示在这里。"
+        case .note: return "选中文本后保存为划线笔记，会显示在这里。"
         }
     }
 }
@@ -268,7 +244,7 @@ private struct ReadingContextItem: Identifiable {
             pdfPath: note.pdfPath,
             boundsStr: note.boundsStr,
             title: ContextSentenceFormatting.displayParagraph(note.content),
-            subtitle: note.note,
+            subtitle: NoteTextList.plainSummary(note.note),
             detail: "",
             createdAt: note.createdAt
         )
