@@ -117,7 +117,7 @@ struct ContentView: View {
             ToolbarItemGroup(placement: .automatic) {
                 if appState.activeTab == .reader && appState.selectedDocument != nil {
                     Button {
-                        showReadingContextSidebar.toggle()
+                        toggleReadingContextSidebarPreservingViewport()
                     } label: {
                         Label(
                             showReadingContextSidebar ? "隐藏单词 / 笔记栏" : "显示单词 / 笔记栏",
@@ -157,6 +157,34 @@ struct ContentView: View {
                 .environmentObject(appState)
         }
     }
+    private func toggleReadingContextSidebarPreservingViewport() {
+        guard let doc = appState.selectedDocument else {
+            showReadingContextSidebar.toggle()
+            return
+        }
+        NotificationCenter.default.post(
+            name: .saveReadingPositionNow,
+            object: nil,
+            userInfo: ["filePath": doc.filePath]
+        )
+        DispatchQueue.main.async {
+            let page = appState.currentPageIndex
+            let offset = appState.currentScrollOffset
+            showReadingContextSidebar.toggle()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                NotificationCenter.default.post(
+                    name: .restoreReadingViewport,
+                    object: nil,
+                    userInfo: [
+                        "filePath": doc.filePath,
+                        "pageIndex": page,
+                        "scrollOffset": offset
+                    ]
+                )
+            }
+        }
+    }
+
 }
 
 // MARK: - Library Picker Popover

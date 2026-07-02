@@ -3,6 +3,7 @@ import SwiftUI
 struct ReadingContextSidebarView: View {
     @EnvironmentObject private var appState: AppState
     @State private var mode: ReadingContextMode = .vocabulary
+    @State private var isProgrammaticScroll = true
 
     private var currentPdfPath: String? { appState.selectedDocument?.filePath }
 
@@ -62,7 +63,7 @@ struct ReadingContextSidebarView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 12) {
+        ZStack {
             Picker("", selection: $mode) {
                 ForEach(ReadingContextMode.allCases) { mode in
                     Text(mode.title).tag(mode)
@@ -70,16 +71,17 @@ struct ReadingContextSidebarView: View {
             }
             .pickerStyle(.segmented)
             .controlSize(.large)
-            .frame(width: 190)
+            .frame(width: 260)
 
-            Spacer()
-
-            Text("\(items.count)")
-                .font(.callout.monospacedDigit())
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(.quinary, in: Capsule())
+            HStack {
+                Spacer()
+                Text("\(items.count)")
+                    .font(.callout.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(.quinary, in: Capsule())
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 14)
@@ -125,6 +127,9 @@ struct ReadingContextSidebarView: View {
                 }
             }
         }
+        .onAppear {
+            syncPdfToSidebarPage(group.pageIndex)
+        }
     }
 
     private func scrollToCurrentPage(_ proxy: ScrollViewProxy) {
@@ -132,9 +137,27 @@ struct ReadingContextSidebarView: View {
         let target = groupedItems.first { $0.pageIndex >= current }?.pageIndex
             ?? groupedItems.last?.pageIndex
         guard let target else { return }
+        isProgrammaticScroll = true
         withAnimation(.easeInOut(duration: 0.2)) {
             proxy.scrollTo(target, anchor: .top)
         }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+            isProgrammaticScroll = false
+        }
+    }
+
+    private func syncPdfToSidebarPage(_ pageIndex: UInt32) {
+        guard !isProgrammaticScroll,
+              Int(pageIndex) != appState.currentPageIndex,
+              let currentPdfPath else { return }
+        NotificationCenter.default.post(
+            name: .jumpToPage,
+            object: nil,
+            userInfo: [
+                "pageIndex": Int(pageIndex),
+                "filePath": currentPdfPath
+            ]
+        )
     }
 
     private func jump(to item: ReadingContextItem) {
