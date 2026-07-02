@@ -217,26 +217,22 @@ struct PDFReaderView: View {
         )
     }
 
-    /// 划线并自动保存为笔记（支持 toggle 和合并重叠笔记）
+    /// 划线并自动保存为笔记（相同选区 toggle；重叠选区保持为独立笔记）
     private func saveUnderlineNote(word: String, boundsStr: String, page: Int) {
         BridgeService.shared.initializeIfNeeded()
 
-        // 解析新选区的 rects
-        let newRects = Self.parseAnnotationRectsStatic(boundsStr)
-        let newUnion = newRects.dropFirst().reduce(newRects.first ?? .zero) { $0.union($1) }
-
-        // 获取当前 PDF 的所有笔记
         guard let existingNotes = try? BridgeService.shared.listNotesByPdf(pdfPath: document.filePath) else {
             appState.showToast("保存笔记失败")
             return
         }
 
-        // 检查是否已存在完全相同的笔记（toggle 逻辑）
+        // Same selection keeps the existing toggle behavior. Partially overlapping selections
+        // must remain independent notes, otherwise selecting a sentence that crosses an older
+        // underline would delete that older note and visually look like notes were merged.
         let exactMatch = existingNotes.first { note in
             note.pageIndex == UInt32(page) && note.boundsStr == boundsStr
         }
         if let match = exactMatch {
-            // 已存在相同选区 → 删除笔记和划线
             try? BridgeService.shared.deleteNote(id: match.id)
             NotificationCenter.default.post(
                 name: .removeUnderlineNote,
@@ -252,36 +248,6 @@ struct PDFReaderView: View {
             return
         }
 
-        // 检查是否有重叠的笔记（合并逻辑）
-        let samePageNotes = existingNotes.filter { $0.pageIndex == UInt32(page) }
-        var overlappingNotes: [NoteEntry] = []
-        for note in samePageNotes {
-            let noteRects = Self.parseAnnotationRectsStatic(note.boundsStr)
-            let noteUnion = noteRects.dropFirst().reduce(noteRects.first ?? .zero) { $0.union($1) }
-            if newUnion.intersects(noteUnion) || newUnion.contains(noteUnion) || noteUnion.contains(newUnion) {
-                overlappingNotes.append(note)
-            }
-        }
-
-        // 保存被删除笔记的信息（用于撤销恢复）
-        let deletedNotesInfo = overlappingNotes.map { note in
-            NoteUndoInfo(
-                id: note.id,
-                pdfPath: note.pdfPath,
-                pdfName: note.pdfName,
-                pageIndex: note.pageIndex,
-                content: note.content,
-                note: note.note,
-                boundsStr: note.boundsStr
-            )
-        }
-
-        // 删除重叠的旧笔记
-        for note in overlappingNotes {
-            try? BridgeService.shared.deleteNote(id: note.id)
-        }
-
-        // 创建新笔记
         guard let noteEntry = try? BridgeService.shared.saveNote(
             pdfPath: document.filePath,
             pdfName: document.fileName,
@@ -290,22 +256,10 @@ struct PDFReaderView: View {
             note: "",
             boundsStr: boundsStr
         ) else {
-            // 恢复被删除的笔记
-            for info in deletedNotesInfo {
-                _ = try? BridgeService.shared.saveNote(
-                    pdfPath: info.pdfPath,
-                    pdfName: info.pdfName,
-                    pageIndex: info.pageIndex,
-                    content: info.content,
-                    note: info.note,
-                    boundsStr: info.boundsStr
-                )
-            }
             appState.showToast("保存笔记失败")
             return
         }
 
-        // 发送通知添加划线，包含需要删除的旧划线 ID 和撤销信息
         NotificationCenter.default.post(
             name: .addUnderlineNote,
             object: nil,
@@ -314,8 +268,6 @@ struct PDFReaderView: View {
                 "pageIndex": page,
                 "boundsStr": boundsStr,
                 "filePath": document.filePath,
-                "deletedNoteIds": overlappingNotes.map { $0.id },
-                "deletedNotesInfo": deletedNotesInfo,
                 "newNoteInfo": NoteUndoInfo(
                     id: noteEntry.id,
                     pdfPath: document.filePath,
@@ -329,7 +281,7 @@ struct PDFReaderView: View {
         )
 
         appState.refreshNotes()
-        appState.showToast(overlappingNotes.isEmpty ? "已添加笔记" : "已合并 \(overlappingNotes.count + 1) 个笔记")
+        appState.showToast("已添加笔记")
     }
 
     /// 静态方法解析 boundsStr，供多处使用
@@ -614,6 +566,8 @@ struct PDFKitView: NSViewRepresentable {
                        name: .outlineNavigate, object: nil)
         nc.addObserver(context.coordinator, selector: #selector(Coordinator.jumpToPage(_:)),
                        name: .jumpToPage, object: nil)
+        nc.addObserver(context.coordinator, selector: #selector(Coordinator.jumpToSelectionBounds(_:)),
+                       name: .jumpToSelectionBounds, object: nil)
         nc.addObserver(context.coordinator, selector: #selector(Coordinator.addHighlight(_:)),
                        name: .addHighlight, object: nil)
         nc.addObserver(context.coordinator, selector: #selector(Coordinator.removeHighlight(_:)),
@@ -1080,7 +1034,7 @@ struct PDFKitView: NSViewRepresentable {
 
         // MARK: Underline note (划线 + 笔记)
 
-        /// 添加划线笔记（划线 + 自动保存到笔记，支持合并和撤销）
+        /// 添加划线笔记（划线 + 自动保存到笔记，支持撤销）
         @objc func addUnderlineNote(_ notification: Notification) {
             guard let noteId     = notification.userInfo?["noteId"]     as? String,
                   let pageIndex  = notification.userInfo?["pageIndex"]  as? Int,
@@ -1094,12 +1048,13 @@ struct PDFKitView: NSViewRepresentable {
             let lineRects = Self.parseAnnotationRects(boundsStr)
             guard !lineRects.isEmpty else { return }
 
-            // 获取需要删除的旧划线标注的 noteId 列表
+            // Optional legacy merge payload. New note creation no longer sends this for
+            // partially overlapping notes, but undo remains backward-compatible.
             let deletedNoteIds = notification.userInfo?["deletedNoteIds"] as? [String] ?? []
             let deletedNotesInfo = notification.userInfo?["deletedNotesInfo"] as? [NoteUndoInfo] ?? []
             let newNoteInfo = notification.userInfo?["newNoteInfo"] as? NoteUndoInfo
 
-            // 移除旧划线标注（合并场景）
+            // 移除旧划线标注（仅兼容旧的合并撤销数据）
             var removedSnapshots: [NoteAnnotationSnapshot] = []
             for oldNoteId in deletedNoteIds {
                 let oldAnns = page.annotations.filter { $0.userName == oldNoteId }
@@ -1374,6 +1329,73 @@ struct PDFKitView: NSViewRepresentable {
             pdfView.go(to: page)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
                 self?.isJumping = false
+            }
+        }
+
+        @objc func jumpToSelectionBounds(_ notification: Notification) {
+            guard let pageIndex = notification.userInfo?["pageIndex"] as? Int,
+                  let filePath = notification.userInfo?["filePath"] as? String,
+                  filePath == currentFilePath,
+                  let pdfView,
+                  let page = pdfView.document?.page(at: pageIndex)
+            else { return }
+
+            let boundsStr = notification.userInfo?["boundsStr"] as? String ?? ""
+            pendingRestoreTargetPage = nil
+            pendingRestoreTimeoutWorkItem?.cancel()
+            isJumping = true
+            pdfView.go(to: page)
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self, weak pdfView, weak page] in
+                guard let self, let pdfView, let page else { return }
+                self.focusSelection(boundsStr: boundsStr, on: page, in: pdfView)
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                self?.isJumping = false
+            }
+        }
+
+        private func focusSelection(boundsStr: String, on page: PDFPage, in pdfView: PDFView) {
+            let rects = Self.parseAnnotationRects(boundsStr)
+            guard !rects.isEmpty else { return }
+            let union = rects.reduce(CGRect.null) { partial, rect in
+                partial.isNull ? rect : partial.union(rect)
+            }
+            guard !union.isNull, !union.isEmpty else { return }
+
+            center(rect: union, on: page, in: pdfView)
+            flashFocus(rects: rects, on: page)
+        }
+
+        private func center(rect: CGRect, on page: PDFPage, in pdfView: PDFView) {
+            guard let scrollView = pdfView.enclosingScrollView,
+                  let documentView = scrollView.documentView else { return }
+            let rectInPDFView = pdfView.convert(rect, from: page)
+            let targetInDocument = pdfView.convert(rectInPDFView, to: documentView)
+            let visibleSize = scrollView.contentView.bounds.size
+            let targetOrigin = NSPoint(
+                x: max(0, targetInDocument.midX - visibleSize.width / 2),
+                y: max(0, targetInDocument.midY - visibleSize.height / 2)
+            )
+            scrollView.contentView.animator().scroll(to: targetOrigin)
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+        }
+
+        private func flashFocus(rects: [CGRect], on page: PDFPage) {
+            let annotations = rects.compactMap { rect -> PDFAnnotation? in
+                guard !rect.isEmpty, rect != .zero else { return nil }
+                let ann = PDFAnnotation(bounds: rect.insetBy(dx: -2, dy: -2), forType: .highlight, withProperties: nil)
+                ann.color = NSColor.controlAccentColor.withAlphaComponent(0.28)
+                ann.userName = "__focus"
+                ann.contents = "focus:reading-context"
+                page.addAnnotation(ann)
+                return ann
+            }
+            guard !annotations.isEmpty else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { [weak page] in
+                guard let page else { return }
+                annotations.forEach { page.removeAnnotation($0) }
             }
         }
 
