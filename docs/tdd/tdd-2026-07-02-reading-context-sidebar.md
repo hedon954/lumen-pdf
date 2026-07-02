@@ -151,7 +151,19 @@ extension Notification.Name {
 
 ---
 
-## 7. 线程与架构约束
+
+## 7. 笔记划线合并算法
+
+`PDFReaderView.saveUnderlineNote` 在保存笔记前读取当前 PDF 的同页笔记，并按 bounds 关系分流：
+
+1. `boundsStr` 完全一致：删除已有 note，并发送 `.removeUnderlineNote`。
+2. 新 rects 被任一已有 note 的 rects 完全覆盖：直接返回，不写 DB、不改 PDF annotation。
+3. 新 rects 与已有 note rects 有面积交集：删除参与合并的旧 notes，创建一条包含旧 rects + 新 rects 的新 note，并通过 `.addUnderlineNote` 的 `deletedNoteIds` / `deletedNotesInfo` 让 PDFKit 移除旧下划线、绘制扩展后的下划线；undo 使用这些 payload 恢复旧 notes。
+4. 无交集：创建独立 note。
+
+合并 rects 时只合并同一文本行上相交/相邻的矩形，跨行选区仍保持 pipe-separated per-line bounds，避免把行间空白也画成下划线区域。
+
+## 8. 线程与架构约束
 
 - 新增右栏 View 不直接调用 `BridgeService`。
 - 数据读取走 `AppState.vocabulary` / `AppState.notes`。
@@ -161,9 +173,9 @@ extension Notification.Name {
 
 ---
 
-## 8. 测试策略
+## 9. 测试策略
 
-### 8.1 手动验证
+### 9.1 手动验证
 
 1. 打开含单词和笔记的 PDF。
 2. 确认右侧栏展示当前 PDF 的条目。
@@ -172,7 +184,7 @@ extension Notification.Name {
 5. 点击笔记卡片，确认 PDF 跳转到对应页并尽量定位到下划线附近。
 6. 点击工具栏按钮隐藏 / 显示右栏。
 
-### 8.2 程序检查
+### 9.2 程序检查
 
 - `swiftc` 不直接适用完整 App，因为项目依赖 Xcode / PDFKit / UniFFI 生成物。
 - 优先运行 Xcode build 或 `xcodebuild`。
@@ -180,7 +192,7 @@ extension Notification.Name {
 
 ---
 
-## 9. 后续优化
+## 10. 后续优化
 
 1. 加 `list_vocabulary_by_pdf` UniFFI API，避免全量加载词库。
 2. 添加右栏卡片选中态，并在定位后保持当前选中项。
