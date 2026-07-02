@@ -115,6 +115,8 @@ HStack(spacing: 0) {
 
 右栏显隐状态用 `@AppStorage` 持久化。
 
+右栏不再提供全部 / 范围筛选：`ReadingContextMode` 只有 `.vocabulary` 和 `.note`，`onChange(appState.currentPageIndex)` 自动滚动到当前页或后续最近条目。
+
 ---
 
 ## 6. 定位通知
@@ -163,7 +165,14 @@ extension Notification.Name {
 - 支持「取消」直接关闭；
 - 支持「保存」后把 trim 后的 note text 传回 `saveUnderlineNote(word:noteText:boundsStr:page:)`。
 
-保存路径继续复用原笔记合并算法：新建笔记时把 note text 写入 `SaveNoteRequest.note`；合并旧笔记时把旧 note 文本与本次输入按空行拼接，避免丢失已有理解。
+笔记文本使用 `NoteTextList` 以 JSON `[String]` 形式存入现有 `notes.note` TEXT 字段：
+
+- 旧纯文本 note 会按单元素 list 兼容读取；
+- 新建笔记把输入保存为一条 list item；
+- 合并旧笔记时把旧 list 与本次输入 append，避免丢失已有理解；
+- 展示、编辑、导出时再解码为多条笔记。
+
+保存路径继续复用原笔记合并算法。
 
 ## 8. 笔记划线合并算法
 
