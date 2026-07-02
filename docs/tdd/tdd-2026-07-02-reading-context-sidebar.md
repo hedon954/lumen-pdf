@@ -152,7 +152,20 @@ extension Notification.Name {
 ---
 
 
-## 7. 笔记划线合并算法
+## 7. 划线笔记输入框
+
+`PDFReaderView` 新增 `UnderlineNoteDraft` 状态。用户点击选区菜单「划线」时，只创建 draft，不立即调用 `BridgeService.saveNote`。
+
+`UnderlineNoteDraftView` 负责：
+
+- 展示选中文本预览；
+- 提供 `TextEditor` 输入用户自己的想法 / 理解；
+- 支持「取消」直接关闭；
+- 支持「保存」后把 trim 后的 note text 传回 `saveUnderlineNote(word:noteText:boundsStr:page:)`。
+
+保存路径继续复用原笔记合并算法：新建笔记时把 note text 写入 `SaveNoteRequest.note`；合并旧笔记时把旧 note 文本与本次输入按空行拼接，避免丢失已有理解。
+
+## 8. 笔记划线合并算法
 
 `PDFReaderView.saveUnderlineNote` 在保存笔记前读取当前 PDF 的同页笔记，并按 bounds 关系分流：
 
@@ -163,7 +176,7 @@ extension Notification.Name {
 
 合并 rects 时只合并同一文本行上相交/相邻的矩形，跨行选区仍保持 pipe-separated per-line bounds，避免把行间空白也画成下划线区域。
 
-## 8. 线程与架构约束
+## 9. 线程与架构约束
 
 - 新增右栏 View 不直接调用 `BridgeService`。
 - 数据读取走 `AppState.vocabulary` / `AppState.notes`。
@@ -173,18 +186,22 @@ extension Notification.Name {
 
 ---
 
-## 9. 测试策略
+## 10. 测试策略
 
-### 9.1 手动验证
+### 10.1 手动验证
 
 1. 打开含单词和笔记的 PDF。
 2. 确认右侧栏展示当前 PDF 的条目。
 3. 切换「本页」，确认只显示当前页条目。
-4. 点击单词卡片，确认 PDF 跳转到对应页并尽量定位到高亮附近。
-5. 点击笔记卡片，确认 PDF 跳转到对应页并尽量定位到下划线附近。
-6. 点击工具栏按钮隐藏 / 显示右栏。
+4. 点击「划线」，填写理解并保存，确认笔记页和右栏都展示该理解。
+5. 对完全相同选区再次点击「划线」，确认直接删除旧笔记。
+6. 对已有笔记的子区域点击「划线」并保存，确认不新增、不改动。
+7. 对一半旧选区一半新区点击「划线」并保存，确认旧笔记扩展为一条合并笔记。
+8. 点击单词卡片，确认 PDF 跳转到对应页并尽量定位到高亮附近。
+9. 点击笔记卡片，确认 PDF 跳转到对应页并尽量定位到下划线附近。
+10. 点击工具栏按钮隐藏 / 显示右栏。
 
-### 9.2 程序检查
+### 10.2 程序检查
 
 - `swiftc` 不直接适用完整 App，因为项目依赖 Xcode / PDFKit / UniFFI 生成物。
 - 优先运行 Xcode build 或 `xcodebuild`。
@@ -192,7 +209,7 @@ extension Notification.Name {
 
 ---
 
-## 10. 后续优化
+## 11. 后续优化
 
 1. 加 `list_vocabulary_by_pdf` UniFFI API，避免全量加载词库。
 2. 添加右栏卡片选中态，并在定位后保持当前选中项。
