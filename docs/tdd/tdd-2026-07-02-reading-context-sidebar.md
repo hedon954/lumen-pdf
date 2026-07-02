@@ -115,7 +115,9 @@ HStack(spacing: 0) {
 
 右栏显隐状态用 `@AppStorage` 持久化。
 
-右栏不再提供全部 / 范围筛选：`ReadingContextMode` 只有 `.vocabulary` 和 `.note`，`onChange(appState.currentPageIndex)` 自动滚动到当前页或后续最近条目。
+右栏不再提供全部 / 范围筛选：`ReadingContextMode` 只有 `.vocabulary` 和 `.note`，`onChange(appState.currentPageIndex)` 自动滚动到当前页或后续最近条目。用户手动滚动右栏时，页分组 `onAppear` 会发送 `.jumpToPage`，让 PDF 同步到右栏所在页；程序化滚动用 `isProgrammaticScroll` 抑制反向跳转，避免循环。
+
+右栏显隐通过 `toggleReadingContextSidebarPreservingViewport()` 完成：先发送 `.saveReadingPositionNow` 刷新 AppState 中的当前页和 normalized offset，再切换右栏，最后发送 `.restoreReadingViewport` 给 PDFKit coordinator，在布局变化后恢复页码和页内滚动位置。
 
 ---
 
@@ -172,7 +174,7 @@ extension Notification.Name {
 - 合并旧笔记时把旧 list 与本次输入 append，避免丢失已有理解；
 - 展示、编辑、导出时再解码为多条笔记。
 
-保存路径继续复用原笔记合并算法。
+保存路径继续复用原笔记合并算法。完全相同选区不再只承担删除语义：选区菜单会显示「添加笔记」用于向现有 note list append 新条目，同时保留「取消划线」用于删除该划线笔记。
 
 ## 8. 笔记划线合并算法
 

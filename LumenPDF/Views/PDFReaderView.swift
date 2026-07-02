@@ -44,6 +44,8 @@ struct UnderlineNoteDraft: Equatable {
     let boundsStr: String
     let page: Int
     let anchor: CGPoint
+    let appendingNoteId: String?
+    let existingNoteText: String
 }
 
 private struct UnderlineNoteDraftView: View {
@@ -60,7 +62,7 @@ private struct UnderlineNoteDraftView: View {
                 Image(systemName: "note.text")
                     .font(.callout.weight(.semibold))
                     .foregroundStyle(.secondary)
-                Text("添加划线笔记")
+                Text(draft.appendingNoteId == nil ? "添加划线笔记" : "追加笔记")
                     .font(.headline)
                 Spacer()
                 Button(action: onCancel) {
@@ -90,7 +92,7 @@ private struct UnderlineNoteDraftView: View {
                 )
 
             HStack(alignment: .center) {
-                Text("可留空，仅保存划线")
+                Text(draft.appendingNoteId == nil ? "可留空，仅保存划线" : "会追加到现有笔记")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
                 Spacer()
@@ -174,12 +176,16 @@ struct PDFReaderView: View {
                         pendingSelection = nil
                     },
                     onSave: { noteText in
-                        saveUnderlineNote(
-                            word: draft.word,
-                            noteText: noteText,
-                            boundsStr: draft.boundsStr,
-                            page: draft.page
-                        )
+                        if let noteId = draft.appendingNoteId {
+                            appendUnderlineNoteText(noteId: noteId, existingNoteText: draft.existingNoteText, noteText: noteText)
+                        } else {
+                            saveUnderlineNote(
+                                word: draft.word,
+                                noteText: noteText,
+                                boundsStr: draft.boundsStr,
+                                page: draft.page
+                            )
+                        }
                         underlineDraft = nil
                         pendingSelection = nil
                     }
@@ -287,16 +293,31 @@ struct PDFReaderView: View {
                 pendingSelection = nil
             }
             Divider().frame(height: 26)
-            actionBarBtn(icon: "note.text", label: "划线") {
-                if hasExactUnderlineNote(boundsStr: sel.boundsStr, page: sel.page) {
-                    saveUnderlineNote(word: sel.word, noteText: "", boundsStr: sel.boundsStr, page: sel.page)
-                    pendingSelection = nil
-                } else {
+            if let existingNote = exactUnderlineNote(boundsStr: sel.boundsStr, page: sel.page) {
+                actionBarBtn(icon: "plus.bubble", label: "添加笔记") {
                     underlineDraft = UnderlineNoteDraft(
                         word: sel.word,
                         boundsStr: sel.boundsStr,
                         page: sel.page,
-                        anchor: sel.menuAnchor
+                        anchor: sel.menuAnchor,
+                        appendingNoteId: existingNote.id,
+                        existingNoteText: existingNote.note
+                    )
+                }
+                Divider().frame(height: 26)
+                actionBarBtn(icon: "note.text", label: "取消划线") {
+                    saveUnderlineNote(word: sel.word, noteText: "", boundsStr: sel.boundsStr, page: sel.page)
+                    pendingSelection = nil
+                }
+            } else {
+                actionBarBtn(icon: "note.text", label: "划线") {
+                    underlineDraft = UnderlineNoteDraft(
+                        word: sel.word,
+                        boundsStr: sel.boundsStr,
+                        page: sel.page,
+                        anchor: sel.menuAnchor,
+                        appendingNoteId: nil,
+                        existingNoteText: ""
                     )
                 }
             }
@@ -342,13 +363,27 @@ struct PDFReaderView: View {
         )
     }
 
-    private func hasExactUnderlineNote(boundsStr: String, page: Int) -> Bool {
+    private func exactUnderlineNote(boundsStr: String, page: Int) -> NoteEntry? {
         guard let existingNotes = try? BridgeService.shared.listNotesByPdf(pdfPath: document.filePath) else {
-            return false
+            return nil
         }
-        return existingNotes.contains { note in
+        return existingNotes.first { note in
             note.pageIndex == UInt32(page) && note.boundsStr == boundsStr
         }
+    }
+
+    private func appendUnderlineNoteText(noteId: String, existingNoteText: String, noteText: String) {
+        let trimmed = noteText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            appState.showToast("请输入笔记内容")
+            return
+        }
+        _ = try? BridgeService.shared.updateNote(
+            id: noteId,
+            note: NoteTextList.appending(trimmed, to: existingNoteText)
+        )
+        appState.refreshNotes()
+        appState.showToast("已追加笔记")
     }
 
     /// 划线并自动保存为笔记：相同选区 toggle，子区域不变，部分重叠则扩展/合并。
@@ -858,6 +893,8 @@ struct PDFKitView: NSViewRepresentable {
                        name: .jumpToPage, object: nil)
         nc.addObserver(context.coordinator, selector: #selector(Coordinator.jumpToSelectionBounds(_:)),
                        name: .jumpToSelectionBounds, object: nil)
+        nc.addObserver(context.coordinator, selector: #selector(Coordinator.restoreReadingViewport(_:)),
+                       name: .restoreReadingViewport, object: nil)
         nc.addObserver(context.coordinator, selector: #selector(Coordinator.addHighlight(_:)),
                        name: .addHighlight, object: nil)
         nc.addObserver(context.coordinator, selector: #selector(Coordinator.removeHighlight(_:)),
@@ -1617,6 +1654,27 @@ struct PDFKitView: NSViewRepresentable {
             isJumping = true
             pdfView.go(to: page)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                self?.isJumping = false
+            }
+        }
+
+        @objc func restoreReadingViewport(_ notification: Notification) {
+            guard let pageIndex = notification.userInfo?["pageIndex"] as? Int,
+                  let scrollOffset = notification.userInfo?["scrollOffset"] as? Double,
+                  let filePath = notification.userInfo?["filePath"] as? String,
+                  filePath == currentFilePath,
+                  let pdfView,
+                  let page = pdfView.document?.page(at: pageIndex)
+            else { return }
+            pendingRestoreTargetPage = nil
+            pendingRestoreTimeoutWorkItem?.cancel()
+            isJumping = true
+            pdfView.go(to: page)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak pdfView] in
+                guard let pdfView else { return }
+                Self.applyNormalizedScrollOffset(scrollOffset, to: pdfView)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
                 self?.isJumping = false
             }
         }
