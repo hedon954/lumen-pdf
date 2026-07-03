@@ -9,6 +9,7 @@ struct ContentView: View {
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @AppStorage("llm_base_url") private var baseURL = ""
     @AppStorage("llm_model") private var model = ""
+    @AppStorage("show_reading_context_sidebar") private var showReadingContextSidebar = true
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -35,10 +36,17 @@ struct ContentView: View {
                 // Keep PDFReaderView alive (never destroyed on tab switch),
                 // so scroll position is preserved.
                 if let doc = appState.selectedDocument {
-                    PDFReaderView(document: doc)
-                        .id(doc.id)
-                        .opacity(appState.activeTab == .reader ? 1 : 0)
-                        .allowsHitTesting(appState.activeTab == .reader)
+                    HStack(spacing: 0) {
+                        PDFReaderView(document: doc)
+                            .id(doc.id)
+
+                        if showReadingContextSidebar {
+                            Divider()
+                            ReadingContextSidebarView()
+                        }
+                    }
+                    .opacity(appState.activeTab == .reader ? 1 : 0)
+                    .allowsHitTesting(appState.activeTab == .reader)
                 } else if appState.activeTab == .reader {
                     EmptyStateView()
                 }
@@ -107,6 +115,17 @@ struct ContentView: View {
 
             // Right: Open file + Settings
             ToolbarItemGroup(placement: .automatic) {
+                if appState.activeTab == .reader && appState.selectedDocument != nil {
+                    Button {
+                        toggleReadingContextSidebarPreservingViewport()
+                    } label: {
+                        Label(
+                            showReadingContextSidebar ? "隐藏单词 / 笔记栏" : "显示单词 / 笔记栏",
+                            systemImage: showReadingContextSidebar ? "sidebar.right" : "sidebar.right"
+                        )
+                    }
+                }
+
                 Button {
                     appState.openFilePicker()
                 } label: {
@@ -138,6 +157,34 @@ struct ContentView: View {
                 .environmentObject(appState)
         }
     }
+    private func toggleReadingContextSidebarPreservingViewport() {
+        guard let doc = appState.selectedDocument else {
+            showReadingContextSidebar.toggle()
+            return
+        }
+        NotificationCenter.default.post(
+            name: .saveReadingPositionNow,
+            object: nil,
+            userInfo: ["filePath": doc.filePath]
+        )
+        DispatchQueue.main.async {
+            let page = appState.currentPageIndex
+            let offset = appState.currentScrollOffset
+            showReadingContextSidebar.toggle()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                NotificationCenter.default.post(
+                    name: .restoreReadingViewport,
+                    object: nil,
+                    userInfo: [
+                        "filePath": doc.filePath,
+                        "pageIndex": page,
+                        "scrollOffset": offset
+                    ]
+                )
+            }
+        }
+    }
+
 }
 
 // MARK: - Library Picker Popover

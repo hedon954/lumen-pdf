@@ -408,4 +408,6 @@ private struct VocabularyEditSheet: View {
 
 extension Notification.Name {
     static let jumpToPage = Notification.Name("jumpToPage")
+    static let jumpToSelectionBounds = Notification.Name("jumpToSelectionBounds")
+    static let restoreReadingViewport = Notification.Name("restoreReadingViewport")
 }
