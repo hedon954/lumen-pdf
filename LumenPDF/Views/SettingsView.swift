@@ -16,6 +16,7 @@ struct SettingsView: View {
     @AppStorage("explanation_system_prompt") private var explanationSystemPrompt = PromptTemplateDefaults.explanationSystem
     @State private var apiKey = ""
     @State private var showSavedBadge = false
+    @State private var saveErrorMessage: String?
     @State private var loadedPromptLanguage = "简体中文"
 
     var body: some View {
@@ -23,13 +24,16 @@ struct SettingsView: View {
             Section("LLM 配置") {
                 TextField("例：https://api.openai.com/v1", text: $baseURL)
                     .textFieldStyle(.roundedBorder)
+                    .onSubmit { saveSettings() }
 
                 SecureField("API Key", text: $apiKey)
                     .textFieldStyle(.roundedBorder)
                     .onAppear { apiKey = KeychainService.load(key: "llm_api_key") ?? "" }
+                    .onSubmit { saveSettings() }
 
                 TextField("例：gpt-4o-mini", text: $model)
                     .textFieldStyle(.roundedBorder)
+                    .onSubmit { saveSettings() }
             }
 
             Section("翻译设置") {
@@ -96,6 +100,10 @@ struct SettingsView: View {
                     Label("已保存", systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
                 }
+                if let saveErrorMessage {
+                    Label(saveErrorMessage, systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                }
 
                 // Extra button shown in setup-sheet mode
                 if let dismiss = onDismiss {
@@ -122,7 +130,7 @@ struct SettingsView: View {
             persistPromptTemplates(for: loadedPromptLanguage)
             loadPromptTemplates(for: newLanguage, replacingLegacyDefaults: false)
             loadedPromptLanguage = newLanguage
-            syncRuntimeConfig()
+            applyRuntimeConfig()
         }
         .frame(width: 760, height: 860)
     }
@@ -226,10 +234,14 @@ struct SettingsView: View {
         .padding(.vertical, 6)
     }
 
-    private func syncRuntimeConfig() {
+    private func syncRuntimeConfig() throws {
         persistPromptTemplates(for: targetLanguage)
-        BridgeService.shared.updateConfig(
-            baseURL: baseURL,
+        let normalizedBaseURL = BridgeService.normalizedLLMBaseURL(baseURL)
+        if normalizedBaseURL != baseURL {
+            baseURL = normalizedBaseURL
+        }
+        try BridgeService.shared.updateConfig(
+            baseURL: normalizedBaseURL,
             apiKey: apiKey,
             model: model,
             targetLanguage: targetLanguage,
@@ -244,11 +256,22 @@ struct SettingsView: View {
 
     private func saveSettings() {
         KeychainService.save(key: "llm_api_key", value: apiKey)
-        // Hot-swap config in the running Rust backend — takes effect immediately.
-        syncRuntimeConfig()
-        withAnimation { showSavedBadge = true }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-            withAnimation { showSavedBadge = false }
+        applyRuntimeConfig()
+    }
+
+    private func applyRuntimeConfig() {
+        do {
+            try syncRuntimeConfig()
+            saveErrorMessage = nil
+            appState.showToast("LLM 配置已生效")
+            withAnimation { showSavedBadge = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                withAnimation { showSavedBadge = false }
+            }
+        } catch {
+            showSavedBadge = false
+            saveErrorMessage = "保存失败"
+            appState.showToast(TranslationErrorFormatter.userMessage(from: error))
         }
     }
 }
