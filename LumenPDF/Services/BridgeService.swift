@@ -236,7 +236,7 @@ final class BridgeService {
             pdfName: pdfName,
             pageIndex: pageIndex,
             content: normalizedContent,
-            note: note,
+            note: NoteTextList.storageString(from: note),
             boundsStr: boundsStr
         ))
     }
@@ -255,11 +255,33 @@ final class BridgeService {
 
     @discardableResult
     func updateNote(id: String, note: String) throws -> NoteEntry {
-        try _updateNote(UpdateNoteRequest(id: id, note: note))
+        try _updateNote(UpdateNoteRequest(id: id, note: NoteTextList.storageString(from: note)))
     }
 
     func exportNotesMarkdown(pdfPath: String? = nil) -> String {
-        (try? _exportNotesMarkdown(pdfPath)) ?? "# 笔记导出\n\n暂无笔记。"
+        let notes: [NoteEntry]
+        if let pdfPath {
+            notes = (try? _listNotesByPdf(pdfPath)) ?? []
+        } else {
+            notes = (try? _listNotes()) ?? []
+        }
+        guard !notes.isEmpty else { return "# 笔记导出\n\n暂无笔记。" }
+
+        var markdown = "# 笔记导出 - LumenPDF\n\n"
+        let grouped = Dictionary(grouping: notes) { $0.pdfName }
+        for pdfName in grouped.keys.sorted() {
+            markdown += "## 📄 \(pdfName)\n\n"
+            for note in (grouped[pdfName] ?? []).sorted(by: { $0.pageIndex < $1.pageIndex }) {
+                markdown += "### Page \(note.pageIndex + 1)\n\n"
+                markdown += "> \(note.content)\n\n"
+                let noteMarkdown = NoteTextList.markdown(note.note)
+                if !noteMarkdown.isEmpty {
+                    markdown += "**笔记：**\n\n\(noteMarkdown)\n\n"
+                }
+                markdown += "---\n\n"
+            }
+        }
+        return markdown
     }
 }
 

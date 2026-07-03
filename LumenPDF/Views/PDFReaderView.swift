@@ -4,6 +4,22 @@ import AppKit
 
 // MARK: - Selection info for the action menu
 
+private extension CGRect {
+    var area: CGFloat {
+        max(0, width) * max(0, height)
+    }
+
+    var expandedForComparison: CGRect {
+        insetBy(dx: -1, dy: -1)
+    }
+
+    func isSameTextLine(as other: CGRect) -> Bool {
+        let verticalOverlap = min(maxY, other.maxY) - max(minY, other.minY)
+        return verticalOverlap > min(height, other.height) * 0.4
+            || abs(midY - other.midY) <= max(height, other.height) * 0.5
+    }
+}
+
 struct SelectionInfo: Equatable {
     let word: String
     let sentence: String
@@ -23,6 +39,84 @@ struct SelectionInfo: Equatable {
     }
 }
 
+struct UnderlineNoteDraft: Equatable {
+    let word: String
+    let boundsStr: String
+    let page: Int
+    let anchor: CGPoint
+    let appendingNoteId: String?
+    let existingNoteText: String
+}
+
+private struct UnderlineNoteDraftView: View {
+    let draft: UnderlineNoteDraft
+    let onCancel: () -> Void
+    let onSave: (String) -> Void
+
+    @State private var noteText = ""
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "note.text")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(draft.appendingNoteId == nil ? "添加笔记" : "追加笔记")
+                    .font(.headline)
+                Spacer()
+                Button(action: onCancel) {
+                    Image(systemName: "xmark")
+                        .font(.callout.weight(.medium))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+
+            Text(ContextSentenceFormatting.displayParagraph(draft.word))
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            TextEditor(text: $noteText)
+                .font(.body)
+                .scrollContentBackground(.hidden)
+                .padding(8)
+                .frame(height: 74)
+                .focused($isFocused)
+                .background(.background.opacity(0.72), in: RoundedRectangle(cornerRadius: 9))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 9)
+                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+                )
+
+            HStack(alignment: .center) {
+                Text(draft.appendingNoteId == nil ? "可留空；保存后会添加笔记划线" : "会追加到现有笔记")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                Spacer()
+                Button("取消", action: onCancel)
+                    .buttonStyle(.borderless)
+                Button("保存") {
+                    onSave(noteText.trimmingCharacters(in: .whitespacesAndNewlines))
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(16)
+        .frame(width: 380)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+        )
+        .shadow(color: .black.opacity(0.12), radius: 18, x: 0, y: 8)
+        .onAppear { isFocused = true }
+    }
+}
+
 struct PDFReaderView: View {
     let document: PdfDocument
     @EnvironmentObject private var appState: AppState
@@ -31,6 +125,7 @@ struct PDFReaderView: View {
     @State private var translationRequest: TranslationBubbleRequest?
     @State private var isTranslating = false
     @State private var pendingSelection: SelectionInfo?
+    @State private var underlineDraft: UnderlineNoteDraft?
     // totalPages is kept as a local state for the initial load callback,
     // then written to appState so ContentView can display it in the toolbar.
 
@@ -59,7 +154,7 @@ struct PDFReaderView: View {
                     )
                 },
                 onClearSelection: {
-                    if translationRequest == nil { pendingSelection = nil }
+                    if translationRequest == nil && underlineDraft == nil { pendingSelection = nil }
                 },
                 onDocumentLoaded: { total in
                     handleDocumentLoaded(totalPages: total)
@@ -67,10 +162,37 @@ struct PDFReaderView: View {
             )
 
             // Selection action menu — positioned near the selection
-            if let sel = pendingSelection, translationRequest == nil {
+            if let sel = pendingSelection, translationRequest == nil && underlineDraft == nil {
                 selectionActionBar(sel)
                     .transition(.opacity.combined(with: .scale(scale: 0.88)))
                     .animation(.spring(duration: 0.18), value: pendingSelection)
+            }
+
+            if let draft = underlineDraft {
+                UnderlineNoteDraftView(
+                    draft: draft,
+                    onCancel: {
+                        underlineDraft = nil
+                        pendingSelection = nil
+                    },
+                    onSave: { noteText in
+                        if let noteId = draft.appendingNoteId {
+                            appendUnderlineNoteText(noteId: noteId, existingNoteText: draft.existingNoteText, noteText: noteText)
+                        } else {
+                            saveUnderlineNote(
+                                word: draft.word,
+                                noteText: noteText,
+                                boundsStr: draft.boundsStr,
+                                page: draft.page
+                            )
+                        }
+                        underlineDraft = nil
+                        pendingSelection = nil
+                    }
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                .position(x: draft.anchor.x, y: draft.anchor.y + 72)
+                .zIndex(2)
             }
 
             // Translation bubble
@@ -110,6 +232,9 @@ struct PDFReaderView: View {
                         )
                             appState.refreshVocabulary()
                             appState.refreshNotes()
+                        },
+                        onSaveExplanationMessage: { message in
+                            saveExplanationMessageToNote(message: message, request: req)
                         },
                         onAskExplanation: { focus in
                             requestExplanation(selection: req.word, context: req.sentence,
@@ -171,9 +296,38 @@ struct PDFReaderView: View {
                 pendingSelection = nil
             }
             Divider().frame(height: 26)
-            actionBarBtn(icon: "note.text", label: "划线") {
-                saveUnderlineNote(word: sel.word, boundsStr: sel.boundsStr, page: sel.page)
+            actionBarBtn(icon: "underline", label: "划线") {
+                postFreeAnnotation(type: "underline", boundsStr: sel.boundsStr, page: sel.page)
                 pendingSelection = nil
+            }
+            Divider().frame(height: 26)
+            if let existingNote = exactUnderlineNote(boundsStr: sel.boundsStr, page: sel.page) {
+                actionBarBtn(icon: "plus.bubble", label: "添加笔记") {
+                    underlineDraft = UnderlineNoteDraft(
+                        word: sel.word,
+                        boundsStr: sel.boundsStr,
+                        page: sel.page,
+                        anchor: sel.menuAnchor,
+                        appendingNoteId: existingNote.id,
+                        existingNoteText: existingNote.note
+                    )
+                }
+                Divider().frame(height: 26)
+                actionBarBtn(icon: "note.text", label: "取消笔记") {
+                    saveUnderlineNote(word: sel.word, noteText: "", boundsStr: sel.boundsStr, page: sel.page)
+                    pendingSelection = nil
+                }
+            } else {
+                actionBarBtn(icon: "note.text", label: "笔记") {
+                    underlineDraft = UnderlineNoteDraft(
+                        word: sel.word,
+                        boundsStr: sel.boundsStr,
+                        page: sel.page,
+                        anchor: sel.menuAnchor,
+                        appendingNoteId: nil,
+                        existingNoteText: ""
+                    )
+                }
             }
             Divider().frame(height: 26)
             actionBarBtn(icon: "xmark", label: "") {
@@ -217,26 +371,48 @@ struct PDFReaderView: View {
         )
     }
 
-    /// 划线并自动保存为笔记（支持 toggle 和合并重叠笔记）
-    private func saveUnderlineNote(word: String, boundsStr: String, page: Int) {
+    private func exactUnderlineNote(boundsStr: String, page: Int) -> NoteEntry? {
+        guard let existingNotes = try? BridgeService.shared.listNotesByPdf(pdfPath: document.filePath) else {
+            return nil
+        }
+        return existingNotes.first { note in
+            note.pageIndex == UInt32(page) && note.boundsStr == boundsStr
+        }
+    }
+
+    private func appendUnderlineNoteText(noteId: String, existingNoteText: String, noteText: String) {
+        let trimmed = noteText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            appState.showToast("请输入笔记内容")
+            return
+        }
+        _ = try? BridgeService.shared.updateNote(
+            id: noteId,
+            note: NoteTextList.appending(trimmed, to: existingNoteText)
+        )
+        appState.refreshNotes()
+        appState.showToast("已追加笔记")
+    }
+
+    /// 创建笔记并添加关联下划线：相同选区 toggle，子区域不变，部分重叠则扩展/合并。
+    private func saveUnderlineNote(word: String, noteText: String, boundsStr: String, page: Int) {
         BridgeService.shared.initializeIfNeeded()
 
-        // 解析新选区的 rects
         let newRects = Self.parseAnnotationRectsStatic(boundsStr)
-        let newUnion = newRects.dropFirst().reduce(newRects.first ?? .zero) { $0.union($1) }
+        guard !newRects.isEmpty else {
+            appState.showToast("保存笔记失败")
+            return
+        }
 
-        // 获取当前 PDF 的所有笔记
         guard let existingNotes = try? BridgeService.shared.listNotesByPdf(pdfPath: document.filePath) else {
             appState.showToast("保存笔记失败")
             return
         }
 
-        // 检查是否已存在完全相同的笔记（toggle 逻辑）
-        let exactMatch = existingNotes.first { note in
-            note.pageIndex == UInt32(page) && note.boundsStr == boundsStr
-        }
-        if let match = exactMatch {
-            // 已存在相同选区 → 删除笔记和划线
+        let samePageNotes = existingNotes.filter { $0.pageIndex == UInt32(page) }
+
+        // Same selection keeps the toggle behavior: tap/draw the exact same underline again to remove it.
+        if let match = samePageNotes.first(where: { $0.boundsStr == boundsStr }) {
             try? BridgeService.shared.deleteNote(id: match.id)
             NotificationCenter.default.post(
                 name: .removeUnderlineNote,
@@ -252,18 +428,39 @@ struct PDFReaderView: View {
             return
         }
 
-        // 检查是否有重叠的笔记（合并逻辑）
-        let samePageNotes = existingNotes.filter { $0.pageIndex == UInt32(page) }
-        var overlappingNotes: [NoteEntry] = []
-        for note in samePageNotes {
-            let noteRects = Self.parseAnnotationRectsStatic(note.boundsStr)
-            let noteUnion = noteRects.dropFirst().reduce(noteRects.first ?? .zero) { $0.union($1) }
-            if newUnion.intersects(noteUnion) || newUnion.contains(noteUnion) || noteUnion.contains(newUnion) {
-                overlappingNotes.append(note)
-            }
+        // If the new selection is entirely inside an existing note, keep the existing note unchanged.
+        if samePageNotes.contains(where: { note in
+            Self.rects(newRects, areCoveredBy: Self.parseAnnotationRectsStatic(note.boundsStr))
+        }) {
+            appState.showToast("已在现有笔记范围内")
+            return
         }
 
-        // 保存被删除笔记的信息（用于撤销恢复）
+        let overlappingNotes = samePageNotes.filter { note in
+            Self.rects(newRects, overlap: Self.parseAnnotationRectsStatic(note.boundsStr))
+        }
+
+        if !overlappingNotes.isEmpty {
+            mergeUnderlineNote(
+                word: word,
+                noteText: noteText,
+                page: page,
+                newRects: newRects,
+                overlappingNotes: overlappingNotes
+            )
+            return
+        }
+
+        createUnderlineNote(word: word, noteText: noteText, boundsStr: boundsStr, page: page, deletedNotesInfo: [])
+    }
+
+    private func mergeUnderlineNote(
+        word: String,
+        noteText: String,
+        page: Int,
+        newRects: [CGRect],
+        overlappingNotes: [NoteEntry]
+    ) {
         let deletedNotesInfo = overlappingNotes.map { note in
             NoteUndoInfo(
                 id: note.id,
@@ -275,22 +472,29 @@ struct PDFReaderView: View {
                 boundsStr: note.boundsStr
             )
         }
+        let oldRects = overlappingNotes.flatMap { Self.parseAnnotationRectsStatic($0.boundsStr) }
+        let mergedBoundsStr = Self.annotationBoundsString(from: Self.mergeAnnotationRects(oldRects + newRects))
+        let mergedContent = Self.mergedNoteContent(
+            existing: overlappingNotes.map(\.content),
+            new: word
+        )
+        let mergedNoteText = Self.mergedNoteText(
+            existing: overlappingNotes.map(\.note),
+            new: noteText
+        )
 
-        // 删除重叠的旧笔记
         for note in overlappingNotes {
             try? BridgeService.shared.deleteNote(id: note.id)
         }
 
-        // 创建新笔记
-        guard let noteEntry = try? BridgeService.shared.saveNote(
-            pdfPath: document.filePath,
-            pdfName: document.fileName,
-            pageIndex: UInt32(page),
-            content: word,
-            note: "",
-            boundsStr: boundsStr
-        ) else {
-            // 恢复被删除的笔记
+        guard createUnderlineNote(
+            word: mergedContent,
+            noteText: mergedNoteText,
+            boundsStr: mergedBoundsStr,
+            page: page,
+            deletedNotesInfo: deletedNotesInfo,
+            toastMessage: "已扩展笔记"
+        ) != nil else {
             for info in deletedNotesInfo {
                 _ = try? BridgeService.shared.saveNote(
                     pdfPath: info.pdfPath,
@@ -301,11 +505,31 @@ struct PDFReaderView: View {
                     boundsStr: info.boundsStr
                 )
             }
-            appState.showToast("保存笔记失败")
             return
         }
+    }
 
-        // 发送通知添加划线，包含需要删除的旧划线 ID 和撤销信息
+    @discardableResult
+    private func createUnderlineNote(
+        word: String,
+        noteText: String,
+        boundsStr: String,
+        page: Int,
+        deletedNotesInfo: [NoteUndoInfo],
+        toastMessage: String = "已添加笔记"
+    ) -> NoteEntry? {
+        guard let noteEntry = try? BridgeService.shared.saveNote(
+            pdfPath: document.filePath,
+            pdfName: document.fileName,
+            pageIndex: UInt32(page),
+            content: word,
+            note: noteText,
+            boundsStr: boundsStr
+        ) else {
+            appState.showToast("保存笔记失败")
+            return nil
+        }
+
         NotificationCenter.default.post(
             name: .addUnderlineNote,
             object: nil,
@@ -314,7 +538,7 @@ struct PDFReaderView: View {
                 "pageIndex": page,
                 "boundsStr": boundsStr,
                 "filePath": document.filePath,
-                "deletedNoteIds": overlappingNotes.map { $0.id },
+                "deletedNoteIds": deletedNotesInfo.map { $0.id },
                 "deletedNotesInfo": deletedNotesInfo,
                 "newNoteInfo": NoteUndoInfo(
                     id: noteEntry.id,
@@ -322,14 +546,15 @@ struct PDFReaderView: View {
                     pdfName: document.fileName,
                     pageIndex: UInt32(page),
                     content: word,
-                    note: "",
+                    note: noteText,
                     boundsStr: boundsStr
                 )
             ]
         )
 
         appState.refreshNotes()
-        appState.showToast(overlappingNotes.isEmpty ? "已添加笔记" : "已合并 \(overlappingNotes.count + 1) 个笔记")
+        appState.showToast(toastMessage)
+        return noteEntry
     }
 
     /// 静态方法解析 boundsStr，供多处使用
@@ -337,6 +562,66 @@ struct PDFReaderView: View {
         boundsStr.components(separatedBy: "|").compactMap { part -> CGRect? in
             let r = NSRectFromString(part)
             return r.isEmpty ? nil : r
+        }
+    }
+
+    private static func annotationBoundsString(from rects: [CGRect]) -> String {
+        rects.map { NSStringFromRect($0) }.joined(separator: "|")
+    }
+
+    private static func rects(_ candidates: [CGRect], areCoveredBy existing: [CGRect]) -> Bool {
+        !candidates.isEmpty && candidates.allSatisfy { candidate in
+            existing.contains { existingRect in
+                existingRect.expandedForComparison.contains(candidate)
+            }
+        }
+    }
+
+    private static func rects(_ lhs: [CGRect], overlap rhs: [CGRect]) -> Bool {
+        lhs.contains { left in
+            rhs.contains { right in
+                left.intersection(right).area > 1.0
+            }
+        }
+    }
+
+    private static func mergedNoteContent(existing: [String], new: String) -> String {
+        let normalizedNew = ContextSentenceFormatting.displayParagraph(new)
+        let existingParagraphs = existing.map(ContextSentenceFormatting.displayParagraph)
+        if existingParagraphs.contains(where: { normalizedNew.contains($0) }) {
+            return normalizedNew
+        }
+        if let containingExisting = existingParagraphs.first(where: { $0.contains(normalizedNew) }) {
+            return containingExisting
+        }
+        return (existingParagraphs + [normalizedNew])
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .joined(separator: " ")
+    }
+
+    private static func mergedNoteText(existing: [String], new: String) -> String {
+        (existing + [new])
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n\n")
+    }
+
+    private static func mergeAnnotationRects(_ rects: [CGRect]) -> [CGRect] {
+        let sortedRects = rects
+            .filter { !$0.isEmpty && $0 != .zero }
+            .sorted { lhs, rhs in
+                if abs(lhs.midY - rhs.midY) > max(lhs.height, rhs.height) * 0.6 {
+                    return lhs.midY > rhs.midY
+                }
+                return lhs.minX < rhs.minX
+            }
+
+        return sortedRects.reduce(into: [CGRect]()) { merged, rect in
+            guard let index = merged.firstIndex(where: { $0.isSameTextLine(as: rect) && $0.expandedForComparison.intersects(rect.expandedForComparison) }) else {
+                merged.append(rect)
+                return
+            }
+            merged[index] = merged[index].union(rect)
         }
     }
 
@@ -460,13 +745,36 @@ struct PDFReaderView: View {
                                     focus: String?) {
         BridgeService.shared.initializeIfNeeded()
 
+        let priorRequest = translationRequest
+        let priorMessages = priorRequest?.explanationMessages ?? []
+        let trimmedFocus = focus?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let compressedContext = Self.compressedExplanationContext(
+            summary: priorRequest?.explanationSummary ?? "",
+            messages: priorMessages
+        )
+        let focusWithContext = Self.explanationFocusPrompt(
+            userQuestion: trimmedFocus,
+            compressedContext: compressedContext,
+            originalSelection: selection,
+            originalContext: context
+        )
+        let userMessage = ExplanationMessage(
+            role: .user,
+            content: trimmedFocus.isEmpty ? "直接解释" : trimmedFocus
+        )
+        let assistantMessage = ExplanationMessage(role: .assistant, content: "")
+        let pendingMessages = priorMessages + [userMessage, assistantMessage]
+
         translationRequest = TranslationBubbleRequest(
+            id: priorRequest?.id ?? UUID(),
             word: selection, sentence: context,
             bounds: bounds, boundsStr: boundsStr,
             page: page, result: nil, translationError: nil,
             existingEntryId: nil,
             isSentenceMode: true,
-            isExplanationMode: true
+            isExplanationMode: true,
+            explanationMessages: pendingMessages,
+            explanationSummary: compressedContext
         )
         isTranslating = true
 
@@ -476,6 +784,10 @@ struct PDFReaderView: View {
             @MainActor func applyPartial(_ partial: TranslationResult) {
                 guard var req = translationRequest, req.id == requestId else { return }
                 req.result = partial
+                req.explanationMessages = Self.updatingLastAssistantMessage(
+                    in: req.explanationMessages,
+                    content: partial.contextExplanation
+                )
                 req.translationError = nil
                 translationRequest = req
             }
@@ -484,13 +796,17 @@ struct PDFReaderView: View {
                 let result = try await BridgeService.shared.explainSelectionStreaming(
                     selection: selection,
                     context: context,
-                    focus: focus ?? "",
+                    focus: focusWithContext,
                     onPartial: { partial in applyPartial(partial) }
                 )
 
                 await MainActor.run {
                     guard var req = translationRequest, req.id == requestId else { return }
                     req.result = result
+                    req.explanationMessages = Self.updatingLastAssistantMessage(
+                        in: req.explanationMessages,
+                        content: result.contextExplanation
+                    )
                     req.translationError = nil
                     translationRequest = req
                     isTranslating = false
@@ -508,6 +824,84 @@ struct PDFReaderView: View {
                 }
             }
         }
+    }
+
+    private static func updatingLastAssistantMessage(
+        in messages: [ExplanationMessage],
+        content: String
+    ) -> [ExplanationMessage] {
+        guard let lastAssistantIndex = messages.lastIndex(where: { $0.role == .assistant }) else {
+            return messages
+        }
+        var updated = messages
+        updated[lastAssistantIndex].content = content
+        return updated
+    }
+
+    private static func compressedExplanationContext(
+        summary: String,
+        messages: [ExplanationMessage]
+    ) -> String {
+        let compactSummary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        let completedMessages = messages.filter { !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let recentMessages = completedMessages.suffix(20).map { message in
+            let role = message.role == .user ? "User" : "Assistant"
+            return "\(role): \(truncated(message.content, limit: message.role == .user ? 220 : 620))"
+        }.joined(separator: "\n---\n")
+
+        let olderCount = max(0, completedMessages.count - 20)
+        var sections: [String] = []
+        if !compactSummary.isEmpty {
+            sections.append("Existing compressed context:\n\(truncated(compactSummary, limit: 700))")
+        }
+        if olderCount > 0 {
+            let olderDigest = completedMessages.prefix(olderCount).map { message in
+                let role = message.role == .user ? "User" : "Assistant"
+                return "- \(role): \(truncated(message.content, limit: 180))"
+            }.joined(separator: "\n")
+            sections.append("Older messages digest:\n\(olderDigest)")
+        }
+        if !recentMessages.isEmpty {
+            sections.append("Recent messages:\n\(recentMessages)")
+        }
+        return truncated(sections.joined(separator: "\n\n"), limit: 3_600)
+    }
+
+
+    private static func explanationFocusPrompt(
+        userQuestion: String,
+        compressedContext: String,
+        originalSelection: String,
+        originalContext: String
+    ) -> String {
+        var parts: [String] = []
+        parts.append("Original selected text / 原始选中文案（不要压缩或改写，以此为准）:\n\(originalSelection)")
+        if !originalContext.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           originalContext != originalSelection {
+            parts.append("Original surrounding context / 原始上下文（不要压缩或改写）:\n\(originalContext)")
+        }
+        let question = userQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !question.isEmpty {
+            parts.append("Current user question / 当前用户问题:\n\(question)")
+        }
+        let context = compressedContext.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !context.isEmpty {
+            parts.append("Conversation context summary / 对话上下文摘要（用于多轮追问，必要时纠正或延续前文）:\n\(context)")
+        }
+        parts.append("""
+        Conversation style / 对话衔接要求:
+        - Continue the same reading conversation instead of restarting the explanation.
+        - Answer the newest user question directly; avoid meta-openers such as “你刚才问的是” or “根据上下文” unless they are needed for clarity.
+        - Ground every answer in the original selected text; use previous messages only to keep continuity.
+        - Prefer concise paragraphs or short bullets over repeating the full prior explanation.
+        """)
+        return parts.joined(separator: "\n\n")
+    }
+
+    private static func truncated(_ text: String, limit: Int) -> String {
+        guard text.count > limit else { return text }
+        let index = text.index(text.startIndex, offsetBy: max(0, limit))
+        return String(text[..<index]) + "…"
     }
 
     // MARK: - Save to vocabulary
@@ -583,6 +977,41 @@ struct PDFReaderView: View {
         appState.showToast(request.isExplanationMode ? "解释已保存到笔记" : "已保存到笔记")
         return noteEntry.id
     }
+
+    @discardableResult
+    private func saveExplanationMessageToNote(message: String, request: TranslationBubbleRequest) -> String? {
+        BridgeService.shared.initializeIfNeeded()
+
+        let noteText = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !noteText.isEmpty else { return nil }
+
+        guard let noteEntry = try? BridgeService.shared.saveNote(
+            pdfPath: document.filePath,
+            pdfName: document.fileName,
+            pageIndex: UInt32(request.page),
+            content: request.word,
+            note: noteText,
+            boundsStr: request.boundsStr
+        ) else {
+            appState.showToast("保存笔记失败")
+            return nil
+        }
+
+        NotificationCenter.default.post(
+            name: .addUnderlineNote,
+            object: nil,
+            userInfo: [
+                "noteId": noteEntry.id,
+                "pageIndex": request.page,
+                "boundsStr": request.boundsStr,
+                "filePath": document.filePath
+            ]
+        )
+
+        appState.refreshNotes()
+        appState.showToast("AI 回复已保存到笔记")
+        return noteEntry.id
+    }
 }
 
 // MARK: - PDFKit NSViewRepresentable
@@ -614,6 +1043,10 @@ struct PDFKitView: NSViewRepresentable {
                        name: .outlineNavigate, object: nil)
         nc.addObserver(context.coordinator, selector: #selector(Coordinator.jumpToPage(_:)),
                        name: .jumpToPage, object: nil)
+        nc.addObserver(context.coordinator, selector: #selector(Coordinator.jumpToSelectionBounds(_:)),
+                       name: .jumpToSelectionBounds, object: nil)
+        nc.addObserver(context.coordinator, selector: #selector(Coordinator.restoreReadingViewport(_:)),
+                       name: .restoreReadingViewport, object: nil)
         nc.addObserver(context.coordinator, selector: #selector(Coordinator.addHighlight(_:)),
                        name: .addHighlight, object: nil)
         nc.addObserver(context.coordinator, selector: #selector(Coordinator.removeHighlight(_:)),
@@ -1080,7 +1513,7 @@ struct PDFKitView: NSViewRepresentable {
 
         // MARK: Underline note (划线 + 笔记)
 
-        /// 添加划线笔记（划线 + 自动保存到笔记，支持合并和撤销）
+        /// 添加划线笔记（划线 + 自动保存到笔记，支持撤销）
         @objc func addUnderlineNote(_ notification: Notification) {
             guard let noteId     = notification.userInfo?["noteId"]     as? String,
                   let pageIndex  = notification.userInfo?["pageIndex"]  as? Int,
@@ -1094,7 +1527,7 @@ struct PDFKitView: NSViewRepresentable {
             let lineRects = Self.parseAnnotationRects(boundsStr)
             guard !lineRects.isEmpty else { return }
 
-            // 获取需要删除的旧划线标注的 noteId 列表
+            // Merge payload: partial-overlap saves delete old notes and recreate one expanded note.
             let deletedNoteIds = notification.userInfo?["deletedNoteIds"] as? [String] ?? []
             let deletedNotesInfo = notification.userInfo?["deletedNotesInfo"] as? [NoteUndoInfo] ?? []
             let newNoteInfo = notification.userInfo?["newNoteInfo"] as? NoteUndoInfo
@@ -1374,6 +1807,94 @@ struct PDFKitView: NSViewRepresentable {
             pdfView.go(to: page)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
                 self?.isJumping = false
+            }
+        }
+
+        @objc func restoreReadingViewport(_ notification: Notification) {
+            guard let pageIndex = notification.userInfo?["pageIndex"] as? Int,
+                  let scrollOffset = notification.userInfo?["scrollOffset"] as? Double,
+                  let filePath = notification.userInfo?["filePath"] as? String,
+                  filePath == currentFilePath,
+                  let pdfView,
+                  let page = pdfView.document?.page(at: pageIndex)
+            else { return }
+            pendingRestoreTargetPage = nil
+            pendingRestoreTimeoutWorkItem?.cancel()
+            isJumping = true
+            pdfView.go(to: page)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak pdfView] in
+                guard let pdfView else { return }
+                Self.applyNormalizedScrollOffset(scrollOffset, to: pdfView)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
+                self?.isJumping = false
+            }
+        }
+
+        @objc func jumpToSelectionBounds(_ notification: Notification) {
+            guard let pageIndex = notification.userInfo?["pageIndex"] as? Int,
+                  let filePath = notification.userInfo?["filePath"] as? String,
+                  filePath == currentFilePath,
+                  let pdfView,
+                  let page = pdfView.document?.page(at: pageIndex)
+            else { return }
+
+            let boundsStr = notification.userInfo?["boundsStr"] as? String ?? ""
+            pendingRestoreTargetPage = nil
+            pendingRestoreTimeoutWorkItem?.cancel()
+            isJumping = true
+            pdfView.go(to: page)
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self, weak pdfView, weak page] in
+                guard let self, let pdfView, let page else { return }
+                self.focusSelection(boundsStr: boundsStr, on: page, in: pdfView)
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                self?.isJumping = false
+            }
+        }
+
+        private func focusSelection(boundsStr: String, on page: PDFPage, in pdfView: PDFView) {
+            let rects = Self.parseAnnotationRects(boundsStr)
+            guard !rects.isEmpty else { return }
+            let union = rects.reduce(CGRect.null) { partial, rect in
+                partial.isNull ? rect : partial.union(rect)
+            }
+            guard !union.isNull, !union.isEmpty else { return }
+
+            center(rect: union, on: page, in: pdfView)
+            flashFocus(rects: rects, on: page)
+        }
+
+        private func center(rect: CGRect, on page: PDFPage, in pdfView: PDFView) {
+            guard let scrollView = pdfView.enclosingScrollView,
+                  let documentView = scrollView.documentView else { return }
+            let rectInPDFView = pdfView.convert(rect, from: page)
+            let targetInDocument = pdfView.convert(rectInPDFView, to: documentView)
+            let visibleSize = scrollView.contentView.bounds.size
+            let targetOrigin = NSPoint(
+                x: max(0, targetInDocument.midX - visibleSize.width / 2),
+                y: max(0, targetInDocument.midY - visibleSize.height / 2)
+            )
+            scrollView.contentView.animator().scroll(to: targetOrigin)
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+        }
+
+        private func flashFocus(rects: [CGRect], on page: PDFPage) {
+            let annotations = rects.compactMap { rect -> PDFAnnotation? in
+                guard !rect.isEmpty, rect != .zero else { return nil }
+                let ann = PDFAnnotation(bounds: rect.insetBy(dx: -2, dy: -2), forType: .highlight, withProperties: nil)
+                ann.color = NSColor.controlAccentColor.withAlphaComponent(0.28)
+                ann.userName = "__focus"
+                ann.contents = "focus:reading-context"
+                page.addAnnotation(ann)
+                return ann
+            }
+            guard !annotations.isEmpty else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { [weak page] in
+                guard let page else { return }
+                annotations.forEach { page.removeAnnotation($0) }
             }
         }
 
@@ -1749,8 +2270,25 @@ extension Notification.Name {
 
 // MARK: - Supporting types
 
+enum ExplanationMessageRole: String, Equatable {
+    case user
+    case assistant
+}
+
+struct ExplanationMessage: Identifiable, Equatable {
+    let id: String
+    let role: ExplanationMessageRole
+    var content: String
+
+    init(id: String = UUID().uuidString, role: ExplanationMessageRole, content: String) {
+        self.id = id
+        self.role = role
+        self.content = content
+    }
+}
+
 struct TranslationBubbleRequest: Identifiable, Equatable {
-    let id = UUID()
+    let id: UUID
     let word: String
     let sentence: String
     let bounds: CGRect
@@ -1764,6 +2302,41 @@ struct TranslationBubbleRequest: Identifiable, Equatable {
     let isSentenceMode: Bool
     /// When true, the bubble shows an AI reading explanation instead of a translation.
     let isExplanationMode: Bool
+    /// Chat-style explanation messages retained for the in-bubble follow-up chat.
+    var explanationMessages: [ExplanationMessage] = []
+    /// Deterministically compressed conversation context passed into follow-up prompts.
+    var explanationSummary: String = ""
+
+    init(
+        id: UUID = UUID(),
+        word: String,
+        sentence: String,
+        bounds: CGRect,
+        boundsStr: String,
+        page: Int,
+        result: TranslationResult?,
+        translationError: String?,
+        existingEntryId: String?,
+        isSentenceMode: Bool,
+        isExplanationMode: Bool,
+        explanationMessages: [ExplanationMessage] = [],
+        explanationSummary: String = ""
+    ) {
+        self.id = id
+        self.word = word
+        self.sentence = sentence
+        self.bounds = bounds
+        self.boundsStr = boundsStr
+        self.page = page
+        self.result = result
+        self.translationError = translationError
+        self.existingEntryId = existingEntryId
+        self.isSentenceMode = isSentenceMode
+        self.isExplanationMode = isExplanationMode
+        self.explanationMessages = explanationMessages
+        self.explanationSummary = explanationSummary
+    }
+
     /// Must compare all fields that affect the bubble UI. Comparing only `id` made SwiftUI
     /// treat success/error updates as «unchanged» and skip redrawing — users saw「翻译未完成」
     /// with an empty detail area even when `translationError` was set.
@@ -1779,6 +2352,8 @@ struct TranslationBubbleRequest: Identifiable, Equatable {
             && lhs.existingEntryId == rhs.existingEntryId
             && lhs.isSentenceMode == rhs.isSentenceMode
             && lhs.isExplanationMode == rhs.isExplanationMode
+            && lhs.explanationMessages == rhs.explanationMessages
+            && lhs.explanationSummary == rhs.explanationSummary
     }
 }
 

@@ -41,6 +41,35 @@ make dmg
 - User-facing release labels, tags, DMG filenames, and docs should normally use only the short version (`1.0.9`). Include the build number only when debugging or explicitly discussing build metadata.
 - When asked to commit, push, and tag a release, commit the code/docs/version changes, push the branch, create an annotated `vX.Y.Z` tag, and push the tag; leave `CHANGELOG.md` unchanged.
 
+
+## Git Commit Message Convention
+
+All new commits must use Conventional Commits so release notes, history, and GitHub views stay readable.
+
+Format:
+
+```text
+<type>(<scope>): <summary>
+```
+
+Rules:
+
+- Use lowercase `type`. Allowed types: `feat`, `fix`, `docs`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `style`, `revert`.
+- Use a short lowercase scope when it clarifies the affected area, for example `reader`, `notes`, `sidebar`, `bridge`, `core`, `release`, or `docs`.
+- Write the summary in imperative mood, without a trailing period, and keep the first line under 72 characters when practical.
+- Use a body for motivation, behavior changes, migration notes, or testing details when the change is non-trivial.
+- Mark breaking changes with `!` after the type/scope and include a `BREAKING CHANGE:` footer.
+- Agent-authored commits should keep the Codex git identity (`Codex <codex@openai.com>`) unless the user explicitly requests another author.
+
+Examples:
+
+```text
+feat(reader): add reading context sidebar
+fix(notes): preserve underline note append order
+docs(readme): document Gatekeeper workaround
+chore(release): update version to 1.0.12
+```
+
 ## Pre-commit Checks
 
 Before every git commit, these checks run automatically via `.pre-commit-config.yaml`:
