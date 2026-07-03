@@ -233,6 +233,9 @@ struct PDFReaderView: View {
                             appState.refreshVocabulary()
                             appState.refreshNotes()
                         },
+                        onSaveExplanationMessage: { message in
+                            saveExplanationMessageToNote(message: message, request: req)
+                        },
                         onAskExplanation: { focus in
                             requestExplanation(selection: req.word, context: req.sentence,
                                                bounds: req.bounds, boundsStr: req.boundsStr,
@@ -972,6 +975,41 @@ struct PDFReaderView: View {
 
         appState.refreshNotes()
         appState.showToast(request.isExplanationMode ? "解释已保存到笔记" : "已保存到笔记")
+        return noteEntry.id
+    }
+
+    @discardableResult
+    private func saveExplanationMessageToNote(message: String, request: TranslationBubbleRequest) -> String? {
+        BridgeService.shared.initializeIfNeeded()
+
+        let noteText = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !noteText.isEmpty else { return nil }
+
+        guard let noteEntry = try? BridgeService.shared.saveNote(
+            pdfPath: document.filePath,
+            pdfName: document.fileName,
+            pageIndex: UInt32(request.page),
+            content: request.word,
+            note: noteText,
+            boundsStr: request.boundsStr
+        ) else {
+            appState.showToast("保存笔记失败")
+            return nil
+        }
+
+        NotificationCenter.default.post(
+            name: .addUnderlineNote,
+            object: nil,
+            userInfo: [
+                "noteId": noteEntry.id,
+                "pageIndex": request.page,
+                "boundsStr": request.boundsStr,
+                "filePath": document.filePath
+            ]
+        )
+
+        appState.refreshNotes()
+        appState.showToast("AI 回复已保存到笔记")
         return noteEntry.id
     }
 }
