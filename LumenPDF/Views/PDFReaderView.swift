@@ -751,7 +751,9 @@ struct PDFReaderView: View {
         )
         let focusWithContext = Self.explanationFocusPrompt(
             userQuestion: trimmedFocus,
-            compressedContext: compressedContext
+            compressedContext: compressedContext,
+            originalSelection: selection,
+            originalContext: context
         )
 
         translationRequest = TranslationBubbleRequest(
@@ -822,13 +824,13 @@ struct PDFReaderView: View {
 
     private static func compressedExplanationContext(summary: String, turns: [ExplanationTurn]) -> String {
         let compactSummary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
-        let recentTurns = turns.suffix(4).map { turn in
+        let recentTurns = turns.suffix(10).map { turn in
             let question = truncated(turn.question.isEmpty ? "通用解释" : turn.question, limit: 180)
             let answer = truncated(turn.answer, limit: 520)
             return "Q: \(question)\nA: \(answer)"
         }.joined(separator: "\n---\n")
 
-        let olderCount = max(0, turns.count - 4)
+        let olderCount = max(0, turns.count - 10)
         var sections: [String] = []
         if !compactSummary.isEmpty {
             sections.append("Existing compressed context:\n\(truncated(compactSummary, limit: 700))")
@@ -846,8 +848,18 @@ struct PDFReaderView: View {
         return truncated(sections.joined(separator: "\n\n"), limit: 2_400)
     }
 
-    private static func explanationFocusPrompt(userQuestion: String, compressedContext: String) -> String {
+    private static func explanationFocusPrompt(
+        userQuestion: String,
+        compressedContext: String,
+        originalSelection: String,
+        originalContext: String
+    ) -> String {
         var parts: [String] = []
+        parts.append("Original selected text / 原始选中文案（不要压缩或改写，以此为准）:\n\(originalSelection)")
+        if !originalContext.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           originalContext != originalSelection {
+            parts.append("Original surrounding context / 原始上下文（不要压缩或改写）:\n\(originalContext)")
+        }
         let question = userQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
         if !question.isEmpty {
             parts.append("Current user question / 当前用户问题:\n\(question)")
@@ -856,8 +868,7 @@ struct PDFReaderView: View {
         if !context.isEmpty {
             parts.append("Conversation context summary / 对话上下文摘要（用于多轮追问，必要时纠正或延续前文）:\n\(context)")
         }
-        if parts.isEmpty { return "" }
-        parts.append("Please answer the current question first, and use the conversation context only when it helps continuity. 请先回答当前问题；仅在有助于承接上下文时使用前文摘要。")
+        parts.append("Please answer the current question first. Always ground the answer in the original selected text, and use the conversation context only when it helps continuity. 请先回答当前问题；始终以原始选中文案为准，仅在有助于承接上下文时使用前文摘要。")
         return parts.joined(separator: "\n\n")
     }
 
