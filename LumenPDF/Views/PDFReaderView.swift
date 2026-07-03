@@ -62,7 +62,7 @@ private struct UnderlineNoteDraftView: View {
                 Image(systemName: "note.text")
                     .font(.callout.weight(.semibold))
                     .foregroundStyle(.secondary)
-                Text(draft.appendingNoteId == nil ? "添加划线笔记" : "追加笔记")
+                Text(draft.appendingNoteId == nil ? "添加笔记" : "追加笔记")
                     .font(.headline)
                 Spacer()
                 Button(action: onCancel) {
@@ -92,7 +92,7 @@ private struct UnderlineNoteDraftView: View {
                 )
 
             HStack(alignment: .center) {
-                Text(draft.appendingNoteId == nil ? "可留空，仅保存划线" : "会追加到现有笔记")
+                Text(draft.appendingNoteId == nil ? "可留空；保存后会添加笔记划线" : "会追加到现有笔记")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
                 Spacer()
@@ -293,6 +293,11 @@ struct PDFReaderView: View {
                 pendingSelection = nil
             }
             Divider().frame(height: 26)
+            actionBarBtn(icon: "underline", label: "划线") {
+                postFreeAnnotation(type: "underline", boundsStr: sel.boundsStr, page: sel.page)
+                pendingSelection = nil
+            }
+            Divider().frame(height: 26)
             if let existingNote = exactUnderlineNote(boundsStr: sel.boundsStr, page: sel.page) {
                 actionBarBtn(icon: "plus.bubble", label: "添加笔记") {
                     underlineDraft = UnderlineNoteDraft(
@@ -305,12 +310,12 @@ struct PDFReaderView: View {
                     )
                 }
                 Divider().frame(height: 26)
-                actionBarBtn(icon: "note.text", label: "取消划线") {
+                actionBarBtn(icon: "note.text", label: "取消笔记") {
                     saveUnderlineNote(word: sel.word, noteText: "", boundsStr: sel.boundsStr, page: sel.page)
                     pendingSelection = nil
                 }
             } else {
-                actionBarBtn(icon: "note.text", label: "划线") {
+                actionBarBtn(icon: "note.text", label: "笔记") {
                     underlineDraft = UnderlineNoteDraft(
                         word: sel.word,
                         boundsStr: sel.boundsStr,
@@ -386,7 +391,7 @@ struct PDFReaderView: View {
         appState.showToast("已追加笔记")
     }
 
-    /// 划线并自动保存为笔记：相同选区 toggle，子区域不变，部分重叠则扩展/合并。
+    /// 创建笔记并添加关联下划线：相同选区 toggle，子区域不变，部分重叠则扩展/合并。
     private func saveUnderlineNote(word: String, noteText: String, boundsStr: String, page: Int) {
         BridgeService.shared.initializeIfNeeded()
 
