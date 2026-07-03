@@ -49,14 +49,10 @@ struct ReadingWorkspaceView: View {
         let page = appState.currentPageIndex
         let offset = appState.currentScrollOffset
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-            NotificationCenter.default.post(
-                name: .restoreReadingViewport,
-                object: nil,
-                userInfo: [
-                    "filePath": document.filePath,
-                    "pageIndex": page,
-                    "scrollOffset": offset
-                ]
+            ReaderEventBus.shared.postRestoreReadingViewport(
+                filePath: document.filePath,
+                page: page,
+                scrollOffset: offset
             )
         }
     }

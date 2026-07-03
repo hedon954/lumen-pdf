@@ -51,12 +51,12 @@ struct ReadingInspectorView: View {
     @ViewBuilder
     private var content: some View {
         switch model.mode {
-        case .context:
-            ReadingContextPanel()
-        case .guide:
-            ReadingGuidePanel(model: model)
+        case .words:
+            ReadingWordsPanel()
         case .notes:
             ReadingNotesPanel()
+        case .ai:
+            ReadingGuidePanel(model: model)
         }
     }
 }

@@ -55,16 +55,12 @@ struct ReadingNotesPanel: View {
     }
 
     private func jump(to group: ReadingInspectorNoteGroup) {
-        NotificationCenter.default.post(
-            name: .jumpToSelectionBounds,
-            object: nil,
-            userInfo: [
-                "pageIndex": Int(group.pageIndex),
-                "filePath": group.pdfPath,
-                "boundsStr": group.boundsStr,
-                "itemId": group.sourceId,
-                "kind": "note"
-            ]
+        ReaderEventBus.shared.postJumpToSelectionBounds(
+            page: Int(group.pageIndex),
+            filePath: group.pdfPath,
+            boundsStr: group.boundsStr,
+            itemId: group.sourceId,
+            kind: "note"
         )
         appState.showToast("已定位到 P\(group.pageIndex + 1)")
     }

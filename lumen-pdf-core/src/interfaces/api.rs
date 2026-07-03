@@ -5,6 +5,7 @@ use crate::application::vocabulary::use_case::VocabularyUseCase;
 use crate::domain::note::entity::{NoteEntry, SaveNoteRequest, UpdateNoteRequest};
 use crate::domain::pdf_document::entity::{PdfDocument, UpsertPdfRequest};
 use crate::domain::translation::entity::{TranslationRequest, TranslationResult};
+use crate::domain::translation::repository::StreamProgress;
 use crate::domain::vocabulary::entity::{
     SaveVocabularyRequest, UpdateVocabularyRequest, VocabularyEntry,
 };
@@ -92,6 +93,48 @@ fn llm_config() -> Result<LlmConfig, LumenError> {
         .ok_or(LumenError::ConfigNotInitialized)
 }
 
+fn translation_use_case(config: &LlmConfig) -> Result<TranslationUseCase, LumenError> {
+    let pool = pool()?;
+    let cache = Arc::new(SqliteTranslationCacheRepo::new(pool.clone()));
+    let llm = Arc::new(LlmTranslator::new(config.clone()));
+    let fallback = Arc::new(FallbackTranslator::new(config.target_language.clone()));
+    let phonetic = Arc::new(DictionaryApiPhoneticProvider::new());
+
+    Ok(TranslationUseCase::with_phonetic_for_language(
+        cache,
+        llm,
+        fallback,
+        phonetic,
+        config.target_language.clone(),
+    ))
+}
+
+fn llm_translator() -> Result<LlmTranslator, LumenError> {
+    Ok(LlmTranslator::new(llm_config()?))
+}
+
+fn stream_progress(callback: Arc<dyn TranslationStreamCallback>) -> StreamProgress {
+    Box::new(move |partial| callback.on_progress(partial))
+}
+
+fn vocabulary_use_case() -> Result<VocabularyUseCase, LumenError> {
+    Ok(VocabularyUseCase::new(Arc::new(SqliteVocabularyRepo::new(
+        pool()?.clone(),
+    ))))
+}
+
+fn pdf_document_use_case() -> Result<PdfDocumentUseCase, LumenError> {
+    Ok(PdfDocumentUseCase::new(Arc::new(
+        SqlitePdfDocumentRepo::new(pool()?.clone()),
+    )))
+}
+
+fn note_use_case() -> Result<NoteUseCase, LumenError> {
+    Ok(NoteUseCase::new(Arc::new(SqliteNoteRepo::new(
+        pool()?.clone(),
+    ))))
+}
+
 // ── Config type ─────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -112,23 +155,8 @@ pub struct AppConfig {
 
 #[uniffi::export(async_runtime = "tokio")]
 pub async fn translate(request: TranslationRequest) -> Result<TranslationResult, LumenError> {
-    let pool = pool()?;
     let config = llm_config()?;
-
-    let cache = Arc::new(SqliteTranslationCacheRepo::new(pool.clone()));
-    let llm = Arc::new(LlmTranslator::new(config.clone()));
-    let fallback = Arc::new(FallbackTranslator::new(config.target_language.clone()));
-    let phonetic = Arc::new(DictionaryApiPhoneticProvider::new());
-
-    TranslationUseCase::with_phonetic_for_language(
-        cache,
-        llm,
-        fallback,
-        phonetic,
-        config.target_language.clone(),
-    )
-    .translate(request)
-    .await
+    translation_use_case(&config)?.translate(request).await
 }
 
 /// Foreign-implemented callback used by streaming translation APIs to publish
@@ -149,28 +177,10 @@ pub async fn translate_streaming(
     request: TranslationRequest,
     callback: Arc<dyn TranslationStreamCallback>,
 ) -> Result<TranslationResult, LumenError> {
-    let pool = pool()?;
     let config = llm_config()?;
-
-    let cache = Arc::new(SqliteTranslationCacheRepo::new(pool.clone()));
-    let llm = Arc::new(LlmTranslator::new(config.clone()));
-    let fallback = Arc::new(FallbackTranslator::new(config.target_language.clone()));
-    let phonetic = Arc::new(DictionaryApiPhoneticProvider::new());
-
-    let on_progress: crate::domain::translation::repository::StreamProgress = {
-        let cb = callback.clone();
-        Box::new(move |partial| cb.on_progress(partial))
-    };
-
-    TranslationUseCase::with_phonetic_for_language(
-        cache,
-        llm,
-        fallback,
-        phonetic,
-        config.target_language.clone(),
-    )
-    .translate_streaming(request, on_progress)
-    .await
+    translation_use_case(&config)?
+        .translate_streaming(request, stream_progress(callback))
+        .await
 }
 
 /// Translate a full sentence without word-level analysis.
@@ -178,9 +188,7 @@ pub async fn translate_streaming(
 /// Long / complex sentences also come back with a `sentence_breakdown`.
 #[uniffi::export(async_runtime = "tokio")]
 pub async fn translate_sentence(sentence: String) -> Result<TranslationResult, LumenError> {
-    let config = llm_config()?;
-    let llm = LlmTranslator::new(config.clone());
-    llm.translate_sentence(&sentence).await
+    llm_translator()?.translate_sentence(&sentence).await
 }
 
 /// Streaming sentence translation. The callback fires repeatedly with partial
@@ -192,15 +200,8 @@ pub async fn translate_sentence_streaming(
     sentence: String,
     callback: Arc<dyn TranslationStreamCallback>,
 ) -> Result<TranslationResult, LumenError> {
-    let config = llm_config()?;
-    let llm = LlmTranslator::new(config.clone());
-
-    let on_progress: crate::domain::translation::repository::StreamProgress = {
-        let cb = callback.clone();
-        Box::new(move |partial| cb.on_progress(partial))
-    };
-
-    llm.translate_sentence_streaming(&sentence, on_progress)
+    llm_translator()?
+        .translate_sentence_streaming(&sentence, stream_progress(callback))
         .await
 }
 
@@ -215,15 +216,8 @@ pub async fn explain_selection_streaming(
     focus: String,
     callback: Arc<dyn TranslationStreamCallback>,
 ) -> Result<TranslationResult, LumenError> {
-    let config = llm_config()?;
-    let llm = LlmTranslator::new(config.clone());
-
-    let on_progress: crate::domain::translation::repository::StreamProgress = {
-        let cb = callback.clone();
-        Box::new(move |partial| cb.on_progress(partial))
-    };
-
-    llm.explain_selection_streaming(&selection, &context, &focus, on_progress)
+    llm_translator()?
+        .explain_selection_streaming(&selection, &context, &focus, stream_progress(callback))
         .await
 }
 
@@ -231,12 +225,12 @@ pub async fn explain_selection_streaming(
 
 #[uniffi::export]
 pub fn save_vocabulary(req: SaveVocabularyRequest) -> Result<VocabularyEntry, LumenError> {
-    VocabularyUseCase::new(Arc::new(SqliteVocabularyRepo::new(pool()?.clone()))).save(req)
+    vocabulary_use_case()?.save(req)
 }
 
 #[uniffi::export]
 pub fn get_vocabulary_entry(id: String) -> Result<Option<VocabularyEntry>, LumenError> {
-    VocabularyUseCase::new(Arc::new(SqliteVocabularyRepo::new(pool()?.clone()))).get_by_id(&id)
+    vocabulary_use_case()?.get_by_id(&id)
 }
 
 #[uniffi::export]
@@ -244,42 +238,39 @@ pub fn get_vocabulary_by_word_and_hash(
     word: String,
     sentence_hash: String,
 ) -> Result<Option<VocabularyEntry>, LumenError> {
-    VocabularyUseCase::new(Arc::new(SqliteVocabularyRepo::new(pool()?.clone())))
-        .get_by_word_and_hash(&word, &sentence_hash)
+    vocabulary_use_case()?.get_by_word_and_hash(&word, &sentence_hash)
 }
 
 #[uniffi::export]
 pub fn list_vocabulary() -> Result<Vec<VocabularyEntry>, LumenError> {
-    VocabularyUseCase::new(Arc::new(SqliteVocabularyRepo::new(pool()?.clone()))).list()
+    vocabulary_use_case()?.list()
 }
 
 #[uniffi::export]
 pub fn delete_vocabulary(id: String) -> Result<(), LumenError> {
-    VocabularyUseCase::new(Arc::new(SqliteVocabularyRepo::new(pool()?.clone()))).delete(&id)
+    vocabulary_use_case()?.delete(&id)
 }
 
 #[uniffi::export]
 pub fn update_vocabulary_annotation(id: String, annotation_id: String) -> Result<(), LumenError> {
-    VocabularyUseCase::new(Arc::new(SqliteVocabularyRepo::new(pool()?.clone())))
-        .update_annotation_id(&id, &annotation_id)
+    vocabulary_use_case()?.update_annotation_id(&id, &annotation_id)
 }
 
 #[uniffi::export]
 pub fn increment_vocabulary_query_count(id: String) -> Result<(), LumenError> {
-    VocabularyUseCase::new(Arc::new(SqliteVocabularyRepo::new(pool()?.clone())))
-        .increment_query_count(&id)
+    vocabulary_use_case()?.increment_query_count(&id)
 }
 
 #[uniffi::export]
 pub fn update_vocabulary(req: UpdateVocabularyRequest) -> Result<VocabularyEntry, LumenError> {
-    VocabularyUseCase::new(Arc::new(SqliteVocabularyRepo::new(pool()?.clone()))).update(req)
+    vocabulary_use_case()?.update(req)
 }
 
 // ── PDF Document API ─────────────────────────────────────────────────────────
 
 #[uniffi::export]
 pub fn upsert_pdf_document(req: UpsertPdfRequest) -> Result<PdfDocument, LumenError> {
-    PdfDocumentUseCase::new(Arc::new(SqlitePdfDocumentRepo::new(pool()?.clone()))).upsert(req)
+    pdf_document_use_case()?.upsert(req)
 }
 
 #[uniffi::export]
@@ -288,50 +279,47 @@ pub fn save_reading_position(
     page: u32,
     scroll_offset: f64,
 ) -> Result<(), LumenError> {
-    PdfDocumentUseCase::new(Arc::new(SqlitePdfDocumentRepo::new(pool()?.clone())))
-        .save_reading_position(&file_path, page, scroll_offset)
+    pdf_document_use_case()?.save_reading_position(&file_path, page, scroll_offset)
 }
 
 #[uniffi::export]
 pub fn list_pdf_documents() -> Result<Vec<PdfDocument>, LumenError> {
-    PdfDocumentUseCase::new(Arc::new(SqlitePdfDocumentRepo::new(pool()?.clone()))).list()
+    pdf_document_use_case()?.list()
 }
 
 #[uniffi::export]
 pub fn delete_pdf_document(file_path: String) -> Result<(), LumenError> {
-    PdfDocumentUseCase::new(Arc::new(SqlitePdfDocumentRepo::new(pool()?.clone())))
-        .delete(&file_path)
+    pdf_document_use_case()?.delete(&file_path)
 }
 
 // ── Note API ───────────────────────────────────────────────────────────────
 
 #[uniffi::export]
 pub fn save_note(req: SaveNoteRequest) -> Result<NoteEntry, LumenError> {
-    NoteUseCase::new(Arc::new(SqliteNoteRepo::new(pool()?.clone()))).save(req)
+    note_use_case()?.save(req)
 }
 
 #[uniffi::export]
 pub fn list_notes() -> Result<Vec<NoteEntry>, LumenError> {
-    NoteUseCase::new(Arc::new(SqliteNoteRepo::new(pool()?.clone()))).list()
+    note_use_case()?.list()
 }
 
 #[uniffi::export]
 pub fn list_notes_by_pdf(pdf_path: String) -> Result<Vec<NoteEntry>, LumenError> {
-    NoteUseCase::new(Arc::new(SqliteNoteRepo::new(pool()?.clone()))).list_by_pdf(&pdf_path)
+    note_use_case()?.list_by_pdf(&pdf_path)
 }
 
 #[uniffi::export]
 pub fn delete_note(id: String) -> Result<(), LumenError> {
-    NoteUseCase::new(Arc::new(SqliteNoteRepo::new(pool()?.clone()))).delete(&id)
+    note_use_case()?.delete(&id)
 }
 
 #[uniffi::export]
 pub fn update_note(req: UpdateNoteRequest) -> Result<NoteEntry, LumenError> {
-    NoteUseCase::new(Arc::new(SqliteNoteRepo::new(pool()?.clone()))).update(req)
+    note_use_case()?.update(req)
 }
 
 #[uniffi::export]
 pub fn export_notes_markdown(pdf_path: Option<String>) -> Result<String, LumenError> {
-    NoteUseCase::new(Arc::new(SqliteNoteRepo::new(pool()?.clone())))
-        .export_markdown(pdf_path.as_deref())
+    note_use_case()?.export_markdown(pdf_path.as_deref())
 }

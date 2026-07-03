@@ -98,14 +98,11 @@ struct VocabularyListView: View {
     }
 
     private func delete(_ entry: VocabularyEntry) {
-        try? BridgeService.shared.deleteVocabulary(id: entry.id)
-        NotificationCenter.default.post(
-            name: .removeHighlight, object: nil,
-            userInfo: [
-                "entryId": entry.id,
-                "pageIndex": Int(entry.pageIndex),
-                "filePath": entry.pdfPath
-            ]
+        try? ReaderPersistence.shared.deleteVocabulary(id: entry.id)
+        ReaderEventBus.shared.postRemoveHighlight(
+            entryId: entry.id,
+            page: Int(entry.pageIndex),
+            filePath: entry.pdfPath
         )
         appState.refreshVocabulary()
     }
@@ -115,9 +112,9 @@ struct VocabularyListView: View {
             appState.selectedDocument = doc
             appState.activeTab = .reader
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                NotificationCenter.default.post(
-                    name: .jumpToPage, object: nil,
-                    userInfo: ["pageIndex": Int(entry.pageIndex), "filePath": entry.pdfPath]
+                ReaderEventBus.shared.postJumpToPage(
+                    page: Int(entry.pageIndex),
+                    filePath: entry.pdfPath
                 )
             }
         }
@@ -373,7 +370,7 @@ private struct VocabularyEditSheet: View {
                 Button("取消") { dismiss() }
                 Spacer()
                 Button("保存") {
-                    try? BridgeService.shared.updateVocabulary(
+                    try? ReaderPersistence.shared.updateVocabulary(
                         id: entry.id, phonetic: phonetic, partOfSpeech: partOfSpeech,
                         contextTranslation: contextTranslation,
                         contextExplanation: contextExplanation,
@@ -404,10 +401,4 @@ private struct VocabularyEditSheet: View {
                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(.separator))
         }
     }
-}
-
-extension Notification.Name {
-    static let jumpToPage = Notification.Name("jumpToPage")
-    static let jumpToSelectionBounds = Notification.Name("jumpToSelectionBounds")
-    static let restoreReadingViewport = Notification.Name("restoreReadingViewport")
 }

@@ -167,22 +167,19 @@ Cache writes only on LLM success; fallback results are not cached.
 All database schema changes must follow these rules:
 
 1. **Forward Compatibility**: New columns must have default values or allow NULL
-2. **Use `sqlx` migrations**: Use `sqlx migrate add <name>` to create migration scripts
-3. **Migration location**: `lumen-pdf-core/migrations/`
+2. **Use current rusqlite migrations**: Keep migration logic in `lumen-pdf-core/src/infrastructure/db/migration.rs`
+3. **Idempotent migration**: Guard every `ALTER TABLE`, table rebuild, and backfill so existing installs can launch repeatedly without data loss
 4. **Breaking changes**: If you must drop columns or change types, provide data migration logic to prevent data loss
-5. **Testing**: Verify migration scripts in a test environment before deployment
+5. **Testing**: Verify migrations against a copy of an existing SQLite DB before deployment
 
 ### Migration Commands
 
 ```bash
-# Create a new migration
-cd lumen-pdf-core && sqlx migrate add <migration_name>
+# Run the migration path through tests
+cd lumen-pdf-core && cargo test migration
 
-# Run migrations
-cd lumen-pdf-core && sqlx migrate run
-
-# Revert migration
-cd lumen-pdf-core && sqlx migrate revert
+# Run all DB/domain checks before release
+cd lumen-pdf-core && cargo test
 ```
 
 ### Migration Script Example

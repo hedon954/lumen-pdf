@@ -236,11 +236,11 @@ struct SettingsView: View {
 
     private func syncRuntimeConfig() throws {
         persistPromptTemplates(for: targetLanguage)
-        let normalizedBaseURL = BridgeService.normalizedLLMBaseURL(baseURL)
+        let normalizedBaseURL = SettingsRuntimeService.shared.normalizedLLMBaseURL(baseURL)
         if normalizedBaseURL != baseURL {
             baseURL = normalizedBaseURL
         }
-        try BridgeService.shared.updateConfig(
+        try SettingsRuntimeService.shared.updateConfig(
             baseURL: normalizedBaseURL,
             apiKey: apiKey,
             model: model,

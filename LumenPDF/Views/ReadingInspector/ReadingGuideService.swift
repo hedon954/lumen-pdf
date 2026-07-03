@@ -98,15 +98,11 @@ final class ReadingGuideService {
             return nil
         }
 
-        NotificationCenter.default.post(
-            name: .addUnderlineNote,
-            object: nil,
-            userInfo: [
-                "noteId": noteEntry.id,
-                "pageIndex": session.selection.pageIndex,
-                "boundsStr": session.selection.boundsStr,
-                "filePath": session.selection.pdfPath
-            ]
+        ReaderEventBus.shared.postAddUnderlineNote(
+            noteId: noteEntry.id,
+            page: session.selection.pageIndex,
+            boundsStr: session.selection.boundsStr,
+            filePath: session.selection.pdfPath
         )
         return noteEntry.id
     }
@@ -114,14 +110,10 @@ final class ReadingGuideService {
     func deleteSavedMessages(in session: ExplanationSession) {
         for noteId in session.savedNoteIdsByMessageId.values {
             try? bridge.deleteNote(id: noteId)
-            NotificationCenter.default.post(
-                name: .removeUnderlineNote,
-                object: nil,
-                userInfo: [
-                    "noteId": noteId,
-                    "pageIndex": session.selection.pageIndex,
-                    "filePath": session.selection.pdfPath
-                ]
+            ReaderEventBus.shared.postRemoveUnderlineNote(
+                noteId: noteId,
+                page: session.selection.pageIndex,
+                filePath: session.selection.pdfPath
             )
         }
     }
@@ -143,10 +135,10 @@ final class ReadingGuideService {
 
     private static func guideErrorMessage(from error: Error) -> String {
         let detail = TranslationErrorFormatter.userMessage(from: error)
-            .replacingOccurrences(of: "翻译失败：", with: "导读调用失败：")
+            .replacingOccurrences(of: "翻译失败：", with: "AI 调用失败：")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         if detail.isEmpty {
-            return "导读调用失败：请检查 LLM 设置后重试。"
+            return "AI 调用失败：请检查 LLM 设置后重试。"
         }
         return detail
     }
