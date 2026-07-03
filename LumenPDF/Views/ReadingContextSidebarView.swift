@@ -240,6 +240,7 @@ private struct ReadingContextItem: Identifiable {
     let title: String
     let subtitle: String
     let detail: String
+    let noteMarkdownItems: [String]
     let createdAt: Int64
 
     static func vocabulary(_ entry: VocabularyEntry) -> ReadingContextItem {
@@ -252,20 +253,23 @@ private struct ReadingContextItem: Identifiable {
             title: entry.word,
             subtitle: entry.contextTranslation,
             detail: ContextSentenceFormatting.displayParagraph(entry.sentence),
+            noteMarkdownItems: [],
             createdAt: entry.createdAt
         )
     }
 
     static func note(_ note: NoteEntry) -> ReadingContextItem {
-        ReadingContextItem(
+        let noteItems = NoteTextList.decode(note.note)
+        return ReadingContextItem(
             id: note.id,
             kind: .note,
             pageIndex: note.pageIndex,
             pdfPath: note.pdfPath,
             boundsStr: note.boundsStr,
             title: ContextSentenceFormatting.displayParagraph(note.content),
-            subtitle: NoteTextList.plainSummary(note.note),
+            subtitle: noteItems.joined(separator: "\n"),
             detail: "",
+            noteMarkdownItems: noteItems,
             createdAt: note.createdAt
         )
     }
@@ -275,60 +279,126 @@ private struct ReadingContextCard: View {
     let item: ReadingContextItem
     let onJump: () -> Void
 
+    @State private var isExpanded = false
+
+    private var isNote: Bool {
+        item.kind == .note
+    }
+
+    private var titleLineLimit: Int? {
+        guard isNote else { return 3 }
+        return isExpanded ? nil : 4
+    }
+
+    private var subtitleLineLimit: Int? {
+        guard isNote else { return 4 }
+        return isExpanded ? nil : 6
+    }
+
+    private var expandsFullText: Bool {
+        isNote && isExpanded
+    }
+
     var body: some View {
-        Button(action: onJump) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 6) {
-                    Label(item.kind.title, systemImage: item.kind.systemImage)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Text("P\(item.pageIndex + 1)")
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.tertiary)
-                }
+        VStack(alignment: .leading, spacing: 8) {
+            Button(action: onJump) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 6) {
+                        Label(item.kind.title, systemImage: item.kind.systemImage)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text("P\(item.pageIndex + 1)")
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.tertiary)
+                    }
 
-                Text(item.title)
-                    .font(item.kind == .vocabulary ? .headline : .callout.weight(.medium))
-                    .foregroundStyle(.primary)
-                    .lineLimit(3)
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                if !item.subtitle.isEmpty {
-                    Text(item.subtitle)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(4)
+                    Text(item.title)
+                        .font(item.kind == .vocabulary ? .headline : .callout.weight(.medium))
+                        .foregroundStyle(.primary)
+                        .lineLimit(titleLineLimit)
+                        .fixedSize(horizontal: false, vertical: expandsFullText)
                         .multilineTextAlignment(.leading)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                }
 
-                if !item.detail.isEmpty {
-                    Text("“\(item.detail)”")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(3)
-                        .multilineTextAlignment(.leading)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if isNote {
+                        noteMarkdownContent
+                    } else if !item.subtitle.isEmpty {
+                        Text(item.subtitle)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(subtitleLineLimit)
+                            .multilineTextAlignment(.leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    if !item.detail.isEmpty {
+                        Text("“\(item.detail)”")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(3)
+                            .multilineTextAlignment(.leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(11)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color.primary.opacity(0.035))
-            )
-            .overlay(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(item.kind.tint.opacity(item.kind == .vocabulary ? 0.75 : 0.55))
-                    .frame(width: 3)
-                    .padding(.vertical, 10)
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: 12)
-                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+            .buttonStyle(.plain)
+
+            if isNote {
+                disclosureButton
             }
         }
-        .buttonStyle(.plain)
+        .padding(11)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.primary.opacity(0.035))
+        )
+        .overlay(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(item.kind.tint.opacity(item.kind == .vocabulary ? 0.75 : 0.55))
+                .frame(width: 3)
+                .padding(.vertical, 10)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+        }
+    }
+
+    @ViewBuilder
+    private var noteMarkdownContent: some View {
+        if !item.noteMarkdownItems.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(Array(item.noteMarkdownItems.enumerated()), id: \.offset) { _, markdown in
+                    MarkdownText(markdown: markdown)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(subtitleLineLimit)
+                        .fixedSize(horizontal: false, vertical: expandsFullText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .frame(maxHeight: isExpanded ? nil : 180, alignment: .top)
+            .clipped()
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var disclosureButton: some View {
+        HStack {
+            Spacer()
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                Label(isExpanded ? "收起" : "展开", systemImage: isExpanded ? "chevron.up" : "chevron.down")
+                    .font(.caption.weight(.medium))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help(isExpanded ? "收起笔记预览" : "展开完整笔记")
+        }
     }
 }
