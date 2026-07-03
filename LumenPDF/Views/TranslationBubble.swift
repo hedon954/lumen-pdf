@@ -25,6 +25,7 @@ struct TranslationBubble: View {
     @State private var explanationHasOverflow = false
     @State private var explanationQuestion: String = ""
     @State private var requestAnchorKey: String = ""
+    @FocusState private var isExplanationQuestionFocused: Bool
 
     private static let explanationBottomID = "explanation-bottom"
 
@@ -42,6 +43,7 @@ struct TranslationBubble: View {
             .onAppear {
                 requestAnchorKey = stableRequestAnchorKey
                 syncSavedState()
+                focusExplanationQuestionIfAvailable()
             }
             // The bubble is reused in place when the user selects a different word without first
             // dismissing it. `onAppear` won't fire again, so re-sync on request identity changes —
@@ -58,6 +60,12 @@ struct TranslationBubble: View {
                     explanationHasOverflow = false
                     offset = .zero
                     requestAnchorKey = newAnchorKey
+                }
+                focusExplanationQuestionIfAvailable()
+            }
+            .onChange(of: isLoading) { _, loading in
+                if !loading {
+                    focusExplanationQuestionIfAvailable()
                 }
             }
     }
@@ -647,6 +655,12 @@ struct TranslationBubble: View {
                     .id(Self.explanationBottomID)
             }
             .scrollIndicators(.visible)
+            .onAppear {
+                if explanationShouldFollowStream, currentConversationCanAnchorToBottom {
+                    scrollExplanationToBottom(proxy, animated: false)
+                }
+                focusExplanationQuestionIfAvailable()
+            }
             .onChange(of: request.explanationMessages.count) { _, count in
                 guard count > 2 else { return }
                 scrollExplanationIfFollowing(proxy, animated: true)
@@ -659,6 +673,7 @@ struct TranslationBubble: View {
             }
             .onChange(of: isLoading) { _, _ in
                 scrollExplanationIfFollowing(proxy, animated: true)
+                focusExplanationQuestionIfAvailable()
             }
             .onChange(of: explanationHasOverflow) { _, hasOverflow in
                 if hasOverflow {
@@ -682,16 +697,21 @@ struct TranslationBubble: View {
     private func scrollExplanationIfFollowing(_ proxy: ScrollViewProxy, animated: Bool = true) {
         guard explanationShouldFollowStream,
               explanationHasOverflow,
-              currentAssistantHasStarted
+              currentConversationCanAnchorToBottom
         else { return }
         scrollExplanationToBottom(proxy, animated: animated)
     }
 
-    private var currentAssistantHasStarted: Bool {
-        guard request.explanationMessages.last?.role == .assistant else { return false }
-        return request.explanationMessages.last?.content
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .isEmpty == false
+    private var currentConversationCanAnchorToBottom: Bool {
+        guard let lastMessage = request.explanationMessages.last else { return false }
+        switch lastMessage.role {
+        case .user:
+            return true
+        case .assistant:
+            return isLoading || !lastMessage.content
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .isEmpty
+        }
     }
 
     private func scrollExplanationToBottom(_ proxy: ScrollViewProxy, animated: Bool = true) {
@@ -838,7 +858,18 @@ struct TranslationBubble: View {
         guard !isLoading else { return }
         let question = trimmedExplanationQuestion
         explanationQuestion = ""
+        explanationShouldFollowStream = true
         onAskExplanation(question)
+    }
+
+    private func focusExplanationQuestionIfAvailable() {
+        guard request.isExplanationMode, !isLoading else { return }
+        DispatchQueue.main.async {
+            isExplanationQuestionFocused = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            isExplanationQuestionFocused = true
+        }
     }
 
     private func explanationQuestionBar(defaultSubmitOnReturn: Bool, isFollowUp: Bool = false) -> some View {
@@ -858,18 +889,31 @@ struct TranslationBubble: View {
                 .textFieldStyle(.plain)
                 .font(.callout)
                 .foregroundStyle(.primary)
+                .focused($isExplanationQuestionFocused)
                 .submitLabel(.send)
                 .onSubmit { submitExplanationQuestion() }
                 .disabled(isLoading)
+                .onAppear { focusExplanationQuestionIfAvailable() }
 
             explanationSubmitButton(defaultSubmitOnReturn: defaultSubmitOnReturn)
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .padding(.vertical, 7)
+        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.16), lineWidth: 0.8)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(
+                    isExplanationQuestionFocused
+                        ? Color.accentColor.opacity(0.42)
+                        : Color.primary.opacity(0.18),
+                    lineWidth: isExplanationQuestionFocused ? 1.1 : 0.8
+                )
+        )
+        .shadow(
+            color: isExplanationQuestionFocused ? Color.accentColor.opacity(0.08) : Color.black.opacity(0.035),
+            radius: isExplanationQuestionFocused ? 4 : 2,
+            x: 0,
+            y: 1
         )
     }
 
