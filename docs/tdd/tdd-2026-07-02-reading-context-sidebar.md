@@ -187,7 +187,29 @@ extension Notification.Name {
 
 合并 rects 时只合并同一文本行上相交/相邻的矩形，跨行选区仍保持 pipe-separated per-line bounds，避免把行间空白也画成下划线区域。
 
-## 9. 线程与架构约束
+
+## 9. AI 解释多轮追问
+
+解释气泡复用 `TranslationBubbleRequest` 承载临时对话状态：
+
+- `explanationTurns`: 已完成的问答轮次，用于 UI 展示「前文追问」。
+- `activeExplanationQuestion`: 当前正在生成 / 已生成答案对应的问题。
+- `explanationSummary`: 传给后续 LLM 请求的本地压缩上下文。
+
+`TranslationBubble` 在解释结果下方展示 follow-up 输入框；用户继续追问时调用原有 `onAskExplanation` 回调，不关闭气泡、不要求重新选择 PDF 原文。
+
+`PDFReaderView.requestExplanation` 在发起下一轮前读取当前 `translationRequest`：
+
+1. 将当前已完成回答追加到 `explanationTurns`。
+2. 保留最近 4 轮完整问答。
+3. 将更早轮次压缩为短 digest，并把总上下文截断到固定长度。
+4. 把「当前问题 + 压缩上下文」拼入现有 `focus` 参数，复用 `BridgeService.explainSelectionStreaming` / Rust UniFFI 接口。
+
+该实现不新增数据库表，不持久化聊天记录；关闭气泡后上下文释放。
+
+---
+
+## 10. 线程与架构约束
 
 - 新增右栏 View 不直接调用 `BridgeService`。
 - 数据读取走 `AppState.vocabulary` / `AppState.notes`。
@@ -197,9 +219,9 @@ extension Notification.Name {
 
 ---
 
-## 10. 测试策略
+## 11. 测试策略
 
-### 10.1 手动验证
+### 11.1 手动验证
 
 1. 打开含单词和笔记的 PDF。
 2. 确认右侧栏展示当前 PDF 的条目。
@@ -213,8 +235,10 @@ extension Notification.Name {
 10. 点击单词卡片，确认 PDF 跳转到对应页并尽量定位到高亮附近。
 11. 点击笔记卡片，确认 PDF 跳转到对应页并尽量定位到下划线附近。
 12. 点击工具栏按钮隐藏 / 显示右栏。
+13. 点击「解释」并完成首轮生成后，在解释下方继续追问，确认前文问答仍展示且新回答能承接上下文。
+14. 连续追问 5 轮以上，确认较早上下文被压缩，不会无限增长。
 
-### 10.2 程序检查
+### 11.2 程序检查
 
 - `swiftc` 不直接适用完整 App，因为项目依赖 Xcode / PDFKit / UniFFI 生成物。
 - 优先运行 Xcode build 或 `xcodebuild`。
@@ -222,7 +246,7 @@ extension Notification.Name {
 
 ---
 
-## 11. 后续优化
+## 12. 后续优化
 
 1. 加 `list_vocabulary_by_pdf` UniFFI API，避免全量加载词库。
 2. 添加右栏卡片选中态，并在定位后保持当前选中项。

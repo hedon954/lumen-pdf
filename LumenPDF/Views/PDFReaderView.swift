@@ -742,13 +742,28 @@ struct PDFReaderView: View {
                                     focus: String?) {
         BridgeService.shared.initializeIfNeeded()
 
+        let priorRequest = translationRequest
+        let conversation = Self.nextExplanationConversation(from: priorRequest)
+        let trimmedFocus = focus?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let compressedContext = Self.compressedExplanationContext(
+            summary: priorRequest?.explanationSummary ?? "",
+            turns: conversation
+        )
+        let focusWithContext = Self.explanationFocusPrompt(
+            userQuestion: trimmedFocus,
+            compressedContext: compressedContext
+        )
+
         translationRequest = TranslationBubbleRequest(
             word: selection, sentence: context,
             bounds: bounds, boundsStr: boundsStr,
             page: page, result: nil, translationError: nil,
             existingEntryId: nil,
             isSentenceMode: true,
-            isExplanationMode: true
+            isExplanationMode: true,
+            explanationTurns: conversation,
+            explanationSummary: compressedContext,
+            activeExplanationQuestion: trimmedFocus
         )
         isTranslating = true
 
@@ -766,7 +781,7 @@ struct PDFReaderView: View {
                 let result = try await BridgeService.shared.explainSelectionStreaming(
                     selection: selection,
                     context: context,
-                    focus: focus ?? "",
+                    focus: focusWithContext,
                     onPartial: { partial in applyPartial(partial) }
                 )
 
@@ -790,6 +805,66 @@ struct PDFReaderView: View {
                 }
             }
         }
+    }
+
+    private static func nextExplanationConversation(from request: TranslationBubbleRequest?) -> [ExplanationTurn] {
+        guard let request, request.isExplanationMode else { return [] }
+        var turns = request.explanationTurns
+        let answer = request.result?.contextExplanation.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !answer.isEmpty {
+            turns.append(ExplanationTurn(
+                question: request.activeExplanationQuestion,
+                answer: answer
+            ))
+        }
+        return turns
+    }
+
+    private static func compressedExplanationContext(summary: String, turns: [ExplanationTurn]) -> String {
+        let compactSummary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        let recentTurns = turns.suffix(4).map { turn in
+            let question = truncated(turn.question.isEmpty ? "通用解释" : turn.question, limit: 180)
+            let answer = truncated(turn.answer, limit: 520)
+            return "Q: \(question)\nA: \(answer)"
+        }.joined(separator: "\n---\n")
+
+        let olderCount = max(0, turns.count - 4)
+        var sections: [String] = []
+        if !compactSummary.isEmpty {
+            sections.append("Existing compressed context:\n\(truncated(compactSummary, limit: 700))")
+        }
+        if olderCount > 0 {
+            let olderDigest = turns.prefix(olderCount).map { turn in
+                let question = turn.question.isEmpty ? "通用解释" : turn.question
+                return "- \(truncated(question, limit: 120)): \(truncated(turn.answer, limit: 180))"
+            }.joined(separator: "\n")
+            sections.append("Older turns digest:\n\(olderDigest)")
+        }
+        if !recentTurns.isEmpty {
+            sections.append("Recent turns:\n\(recentTurns)")
+        }
+        return truncated(sections.joined(separator: "\n\n"), limit: 2_400)
+    }
+
+    private static func explanationFocusPrompt(userQuestion: String, compressedContext: String) -> String {
+        var parts: [String] = []
+        let question = userQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !question.isEmpty {
+            parts.append("Current user question / 当前用户问题:\n\(question)")
+        }
+        let context = compressedContext.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !context.isEmpty {
+            parts.append("Conversation context summary / 对话上下文摘要（用于多轮追问，必要时纠正或延续前文）:\n\(context)")
+        }
+        if parts.isEmpty { return "" }
+        parts.append("Please answer the current question first, and use the conversation context only when it helps continuity. 请先回答当前问题；仅在有助于承接上下文时使用前文摘要。")
+        return parts.joined(separator: "\n\n")
+    }
+
+    private static func truncated(_ text: String, limit: Int) -> String {
+        guard text.count > limit else { return text }
+        let index = text.index(text.startIndex, offsetBy: max(0, limit))
+        return String(text[..<index]) + "…"
     }
 
     // MARK: - Save to vocabulary
@@ -2123,6 +2198,11 @@ extension Notification.Name {
 
 // MARK: - Supporting types
 
+struct ExplanationTurn: Equatable {
+    let question: String
+    let answer: String
+}
+
 struct TranslationBubbleRequest: Identifiable, Equatable {
     let id = UUID()
     let word: String
@@ -2138,6 +2218,12 @@ struct TranslationBubbleRequest: Identifiable, Equatable {
     let isSentenceMode: Bool
     /// When true, the bubble shows an AI reading explanation instead of a translation.
     let isExplanationMode: Bool
+    /// Completed explanation turns retained for the in-bubble follow-up chat.
+    var explanationTurns: [ExplanationTurn] = []
+    /// Deterministically compressed conversation context passed into follow-up prompts.
+    var explanationSummary: String = ""
+    /// The question that produced the currently streaming / displayed explanation.
+    var activeExplanationQuestion: String = ""
     /// Must compare all fields that affect the bubble UI. Comparing only `id` made SwiftUI
     /// treat success/error updates as «unchanged» and skip redrawing — users saw「翻译未完成」
     /// with an empty detail area even when `translationError` was set.
@@ -2153,6 +2239,9 @@ struct TranslationBubbleRequest: Identifiable, Equatable {
             && lhs.existingEntryId == rhs.existingEntryId
             && lhs.isSentenceMode == rhs.isSentenceMode
             && lhs.isExplanationMode == rhs.isExplanationMode
+            && lhs.explanationTurns == rhs.explanationTurns
+            && lhs.explanationSummary == rhs.explanationSummary
+            && lhs.activeExplanationQuestion == rhs.activeExplanationQuestion
     }
 }
 

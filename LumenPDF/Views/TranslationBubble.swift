@@ -43,6 +43,7 @@ struct TranslationBubble: View {
                 customCardSize = nil
                 measuredCardSize = .zero
                 measuredContentHeight = 0
+                explanationQuestion = ""
                 offset = .zero
             }
     }
@@ -403,8 +404,6 @@ struct TranslationBubble: View {
     private func contentBody(result: TranslationResult) -> some View {
         if request.isExplanationMode {
             VStack(alignment: .leading, spacing: 12) {
-                explanationQuestionBar(defaultSubmitOnReturn: false)
-
                 BubbleSection("原文") {
                     Text(ContextSentenceFormatting.displayParagraph(request.word))
                         .font(.body)
@@ -413,11 +412,24 @@ struct TranslationBubble: View {
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                if !request.explanationTurns.isEmpty {
+                    explanationHistorySection
+                }
+                if !request.activeExplanationQuestion.isEmpty {
+                    BubbleSection("本轮问题") {
+                        Text(request.activeExplanationQuestion)
+                            .font(.callout)
+                            .textSelection(.enabled)
+                    }
+                }
                 if !result.contextExplanation.isEmpty {
                     BubbleSection("解释") {
                         MarkdownText(markdown: result.contextExplanation)
                             .textSelection(.enabled)
                     }
+                }
+                if !isLoading {
+                    explanationQuestionBar(defaultSubmitOnReturn: false, isFollowUp: true)
                 }
             }
             .padding(14)
@@ -556,6 +568,27 @@ struct TranslationBubble: View {
     }
 
 
+    private var explanationHistorySection: some View {
+        BubbleSection("前文追问") {
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(Array(request.explanationTurns.enumerated()), id: \.offset) { index, turn in
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Q\(index + 1)：\(turn.question.isEmpty ? "通用解释" : turn.question)")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                        MarkdownText(markdown: turn.answer)
+                            .textSelection(.enabled)
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.quinary, in: RoundedRectangle(cornerRadius: 8))
+                }
+            }
+        }
+    }
+
+
     private var trimmedExplanationQuestion: String {
         explanationQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -565,13 +598,13 @@ struct TranslationBubble: View {
         onAskExplanation(trimmedExplanationQuestion)
     }
 
-    private func explanationQuestionBar(defaultSubmitOnReturn: Bool) -> some View {
+    private func explanationQuestionBar(defaultSubmitOnReturn: Bool, isFollowUp: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("快速解释会直接从第一性原理展开；也可以先输入你关心的问题，再围绕该关注点解释。")
+            Text(isFollowUp ? "继续追问会带上前面的解释上下文，并自动压缩较早对话。" : "快速解释会直接从第一性原理展开；也可以先输入你关心的问题，再围绕该关注点解释。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             HStack(spacing: 8) {
-                TextField("例如：这里为什么强调 CPU 时间？", text: $explanationQuestion)
+                TextField(isFollowUp ? "继续追问…" : "例如：这里为什么强调 CPU 时间？", text: $explanationQuestion)
                     .textFieldStyle(.roundedBorder)
                     .submitLabel(.send)
                     .onSubmit { submitExplanationQuestion() }
@@ -585,7 +618,8 @@ struct TranslationBubble: View {
 
     @ViewBuilder
     private func explanationSubmitButton(defaultSubmitOnReturn: Bool) -> some View {
-        let button = Button(trimmedExplanationQuestion.isEmpty ? "直接解释" : "解释") {
+        let title = trimmedExplanationQuestion.isEmpty ? (defaultSubmitOnReturn ? "直接解释" : "继续解释") : (defaultSubmitOnReturn ? "解释" : "继续追问")
+        let button = Button(title) {
             submitExplanationQuestion()
         }
         .buttonStyle(.borderedProminent)
