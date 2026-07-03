@@ -18,7 +18,7 @@ struct ReadingContextSidebarView: View {
         case .note:
             source = appState.notes
                 .filter { $0.pdfPath == currentPdfPath }
-                .map(ReadingContextItem.note)
+                .flatMap(ReadingContextItem.notes)
         }
         return source.sorted { lhs, rhs in
             if lhs.pageIndex != rhs.pageIndex { return lhs.pageIndex < rhs.pageIndex }
@@ -169,7 +169,7 @@ struct ReadingContextSidebarView: View {
                 "pageIndex": Int(item.pageIndex),
                 "filePath": item.pdfPath,
                 "boundsStr": item.boundsStr,
-                "itemId": item.id,
+                "itemId": item.sourceId,
                 "kind": item.kind.rawValue
             ]
         )
@@ -233,6 +233,7 @@ private struct ReadingContextItem: Identifiable {
     }
 
     let id: String
+    let sourceId: String
     let kind: Kind
     let pageIndex: UInt32
     let pdfPath: String
@@ -246,6 +247,7 @@ private struct ReadingContextItem: Identifiable {
     static func vocabulary(_ entry: VocabularyEntry) -> ReadingContextItem {
         ReadingContextItem(
             id: entry.id,
+            sourceId: entry.id,
             kind: .vocabulary,
             pageIndex: entry.pageIndex,
             pdfPath: entry.pdfPath,
@@ -258,20 +260,24 @@ private struct ReadingContextItem: Identifiable {
         )
     }
 
-    static func note(_ note: NoteEntry) -> ReadingContextItem {
+    static func notes(_ note: NoteEntry) -> [ReadingContextItem] {
         let noteItems = NoteTextList.decode(note.note)
-        return ReadingContextItem(
-            id: note.id,
-            kind: .note,
-            pageIndex: note.pageIndex,
-            pdfPath: note.pdfPath,
-            boundsStr: note.boundsStr,
-            title: ContextSentenceFormatting.displayParagraph(note.content),
-            subtitle: noteItems.joined(separator: "\n"),
-            detail: "",
-            noteMarkdownItems: noteItems,
-            createdAt: note.createdAt
-        )
+        let title = ContextSentenceFormatting.displayParagraph(note.content)
+        return noteItems.enumerated().map { index, item in
+            ReadingContextItem(
+                id: noteItems.count == 1 ? note.id : "\(note.id)#\(index)",
+                sourceId: note.id,
+                kind: .note,
+                pageIndex: note.pageIndex,
+                pdfPath: note.pdfPath,
+                boundsStr: note.boundsStr,
+                title: title,
+                subtitle: item,
+                detail: "",
+                noteMarkdownItems: [item],
+                createdAt: note.createdAt
+            )
+        }
     }
 }
 
@@ -299,6 +305,46 @@ private struct ReadingContextCard: View {
         isNote && isExpanded
     }
 
+    private var createdAtDate: Date? {
+        guard item.createdAt > 0 else { return nil }
+        let rawSeconds = Double(item.createdAt)
+        let seconds = item.createdAt > 10_000_000_000 ? rawSeconds / 1_000 : rawSeconds
+        return Date(timeIntervalSince1970: seconds)
+    }
+
+    private var createdAtText: String? {
+        guard let date = createdAtDate else { return nil }
+        let calendar = Calendar.autoupdatingCurrent
+        if calendar.isDateInToday(date) {
+            return Self.timeFormatter.string(from: date)
+        }
+        if calendar.component(.year, from: date) == calendar.component(.year, from: Date()) {
+            return Self.monthDayTimeFormatter.string(from: date)
+        }
+        return Self.dateTimeFormatter.string(from: date)
+    }
+
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = .autoupdatingCurrent
+        formatter.dateFormat = "HH:mm"
+        return formatter
+    }()
+
+    private static let monthDayTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = .autoupdatingCurrent
+        formatter.dateFormat = "M/d HH:mm"
+        return formatter
+    }()
+
+    private static let dateTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = .autoupdatingCurrent
+        formatter.dateFormat = "yyyy/M/d HH:mm"
+        return formatter
+    }()
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button(action: onJump) {
@@ -308,6 +354,11 @@ private struct ReadingContextCard: View {
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.secondary)
                         Spacer()
+                        if isNote, let createdAtText {
+                            Text(createdAtText)
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(.tertiary)
+                        }
                         Text("P\(item.pageIndex + 1)")
                             .font(.caption2.monospacedDigit())
                             .foregroundStyle(.tertiary)

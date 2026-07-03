@@ -2,13 +2,24 @@ import Foundation
 
 enum NoteTextList {
     static func decode(_ raw: String) -> [String] {
+        decode(raw, depth: 0)
+    }
+
+    private static func decode(_ raw: String, depth: Int) -> [String] {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
-        if let data = trimmed.data(using: .utf8),
-           let decoded = try? JSONDecoder().decode([String].self, from: data) {
-            return decoded
+        guard let data = trimmed.data(using: .utf8) else { return [trimmed] }
+        if let decoded = try? JSONDecoder().decode([String].self, from: data) {
+            let cleaned = decoded
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty }
+            guard depth < 2 else { return cleaned }
+            return cleaned.flatMap { decode($0, depth: depth + 1) }
+        }
+        if depth < 2,
+           let decoded = try? JSONDecoder().decode(String.self, from: data),
+           decoded != trimmed {
+            return decode(decoded, depth: depth + 1)
         }
         return [trimmed]
     }
