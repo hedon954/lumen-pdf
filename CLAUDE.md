@@ -34,17 +34,19 @@ make dmg
 
 ## Release Process Notes
 
-- Do not manually edit `CHANGELOG.md` for releases. It is generated automatically from commits/tags by the release workflow.
+- Use `$lumenpdf-release-wrapup` for release closeout work: version bumps, AI-authored changelog entries with commit URLs, release commits, annotated tags, and post-tag checks.
+- `CHANGELOG.md` is maintained before tagging. The release workflow reads the matching version section as the GitHub Release body; it must not generate or commit changelog content.
+- Write changelog entries in Chinese and include GitHub commit URLs for the concrete changes covered by each version.
 - Version bumps live in `LumenPDF/Info.plist`:
   - `CFBundleShortVersionString` is the public version, for example `1.0.9`.
   - `CFBundleVersion` is the internal build number, for example `9`.
 - User-facing release labels, tags, DMG filenames, and docs should normally use only the short version (`1.0.9`). Include the build number only when debugging or explicitly discussing build metadata.
-- When asked to commit, push, and tag a release, commit the code/docs/version changes, push the branch, create an annotated `vX.Y.Z` tag, and push the tag; leave `CHANGELOG.md` unchanged.
+- When asked to commit, push, and tag a release, commit the code/docs/version/changelog changes, push the branch, create an annotated `vX.Y.Z` tag, and push the tag.
 
 
 ## Git Commit Message Convention
 
-All new commits must use Conventional Commits so release notes, history, and GitHub views stay readable.
+All new commits must use Conventional Commits so release notes, history, and GitHub views stay readable. Keep the `type(scope):` prefix in English, and write the summary after the colon in Chinese.
 
 Format:
 
@@ -56,7 +58,7 @@ Rules:
 
 - Use lowercase `type`. Allowed types: `feat`, `fix`, `docs`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `style`, `revert`.
 - Use a short lowercase scope when it clarifies the affected area, for example `reader`, `notes`, `sidebar`, `bridge`, `core`, `release`, or `docs`.
-- Write the summary in imperative mood, without a trailing period, and keep the first line under 72 characters when practical.
+- Write the summary in Chinese, without a trailing period, and keep the first line under 72 characters when practical.
 - Use a body for motivation, behavior changes, migration notes, or testing details when the change is non-trivial.
 - Mark breaking changes with `!` after the type/scope and include a `BREAKING CHANGE:` footer.
 - Agent-authored commits should keep the Codex git identity (`Codex <codex@openai.com>`) unless the user explicitly requests another author.
@@ -64,10 +66,10 @@ Rules:
 Examples:
 
 ```text
-feat(reader): add reading context sidebar
-fix(notes): preserve underline note append order
-docs(readme): document Gatekeeper workaround
-chore(release): update version to 1.0.12
+feat(reader): 增加阅读上下文侧栏
+fix(notes): 保留划线笔记追加顺序
+docs(readme): 说明 Gatekeeper 处理方式
+chore(release): 更新版本到 1.0.12
 ```
 
 ## Pre-commit Checks

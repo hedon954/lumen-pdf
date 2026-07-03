@@ -39,57 +39,40 @@ jobs:
       - name: Build DMG
         run: VERSION=${GITHUB_REF_NAME#v} make dmg
 
-      # ── 生成 Changelog ──────────────────────────────────────────────────────
-      - name: Generate changelog with git-cliff
-        id: git-cliff
-        uses: orhun/git-cliff-action@v4
-        with:
-          config: cliff.toml
-          args: -vv --latest --strip header
-        env:
-          OUTPUT: NEW_CHANGELOG.md
-
-      - name: Debug changelog output
+      # ── 从手写 CHANGELOG 读取 Release Notes ─────────────────────────────────
+      - name: Extract release notes from CHANGELOG.md
         run: |
-          echo "=== git-cliff output ==="
-          echo "content length: $(wc -c < NEW_CHANGELOG.md 2>/dev/null || echo '0')"
-          echo "=== NEW_CHANGELOG.md content ==="
-          cat NEW_CHANGELOG.md || echo "(file not found)"
-          echo "=== steps.git-cliff.outputs.content ==="
-          echo "${{ steps.git-cliff.outputs.content }}"
+          python3 - <<'PY'
+          import os
+          import re
+          import sys
+
+          version = os.environ["GITHUB_REF_NAME"].removeprefix("v")
+          changelog_path = "CHANGELOG.md"
+          text = open(changelog_path, encoding="utf-8").read()
+
+          heading = re.compile(rf"^## \[{re.escape(version)}\].*$", re.MULTILINE)
+          match = heading.search(text)
+          if not match:
+              print(f"CHANGELOG.md does not contain a section for {version}", file=sys.stderr)
+              sys.exit(1)
+
+          rest = text[match.start():]
+          next_section = re.search(r"\n---\s*\n## \[", rest)
+          section = rest[: next_section.start()].strip() if next_section else rest.strip()
+          if not section:
+              print(f"CHANGELOG.md section for {version} is empty", file=sys.stderr)
+              sys.exit(1)
+
+          with open("RELEASE_NOTES.md", "w", encoding="utf-8") as output:
+              output.write(section + "\n")
+          PY
 
       # ── 发布 GitHub Release ─────────────────────────────────────────────────
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: build/LumenPDF-*.dmg
-          body: ${{ steps.git-cliff.outputs.content }}
+          body_path: RELEASE_NOTES.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # ── 更新 CHANGELOG.md 并推送 ─────────────────────────────────────────────
-      - name: Update CHANGELOG.md
-        run: |
-          if [ ! -f "NEW_CHANGELOG.md" ] || [ ! -s "NEW_CHANGELOG.md" ]; then
-            echo "NEW_CHANGELOG.md is empty or missing, skipping update"
-            exit 0
-          fi
-
-          cat NEW_CHANGELOG.md
-          git fetch origin main:main
-          git checkout main
-          if [ -f "CHANGELOG.md" ]; then
-            head -n 1 CHANGELOG.md > TEMP_CHANGELOG.md
-            echo "" >> TEMP_CHANGELOG.md
-            cat NEW_CHANGELOG.md >> TEMP_CHANGELOG.md
-            tail -n +2 CHANGELOG.md >> TEMP_CHANGELOG.md
-            mv TEMP_CHANGELOG.md CHANGELOG.md
-          else
-            mv NEW_CHANGELOG.md CHANGELOG.md
-          fi
-          rm -f NEW_CHANGELOG.md
-          git config --global user.name 'GitHub Actions'
-          git config --global user.email 'actions@github.com'
-          git add CHANGELOG.md
-          git commit -m "chore(release): update CHANGELOG.md for ${{ github.ref_name }}"
-          git push origin main
