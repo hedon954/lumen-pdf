@@ -196,7 +196,7 @@ extension Notification.Name {
 - `activeExplanationQuestion`: 当前正在生成 / 已生成答案对应的问题。
 - `explanationSummary`: 传给后续 LLM 请求的本地压缩上下文。
 
-`TranslationBubble` 在解释结果下方展示 follow-up 输入框；用户继续追问时调用原有 `onAskExplanation` 回调，不关闭气泡、不要求重新选择 PDF 原文。
+`TranslationBubble` 使用 chatbot 式消息流展示解释：前文 user / assistant 气泡稳定保留，新问题和流式回答向下追加；follow-up 输入框固定在消息流底部。用户继续追问时调用原有 `onAskExplanation` 回调，不关闭气泡、不要求重新选择 PDF 原文。
 
 `PDFReaderView.requestExplanation` 在发起下一轮前读取当前 `translationRequest`：
 
@@ -235,7 +235,7 @@ extension Notification.Name {
 10. 点击单词卡片，确认 PDF 跳转到对应页并尽量定位到高亮附近。
 11. 点击笔记卡片，确认 PDF 跳转到对应页并尽量定位到下划线附近。
 12. 点击工具栏按钮隐藏 / 显示右栏。
-13. 点击「解释」并完成首轮生成后，在解释下方继续追问，确认前文问答仍展示且新回答能承接上下文。
+13. 点击「解释」并完成首轮生成后，在解释下方继续追问，确认消息像 chatbot 一样向下追加，前文问答不闪烁、不重置位置，且新回答能承接上下文。
 14. 连续追问 5 轮以上，确认较早上下文被压缩，不会无限增长。
 
 ### 11.2 程序检查

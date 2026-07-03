@@ -22,6 +22,7 @@ struct TranslationBubble: View {
     @State private var measuredCardSize: CGSize = .zero
     @State private var measuredContentHeight: CGFloat = 0
     @State private var explanationQuestion: String = ""
+    @State private var requestAnchorKey: String = ""
 
     var body: some View {
         card
@@ -34,17 +35,24 @@ struct TranslationBubble: View {
                     .contentShape(Rectangle())
                     .onTapGesture { onDismiss() }
             )
-            .onAppear { syncSavedState() }
+            .onAppear {
+                requestAnchorKey = stableRequestAnchorKey
+                syncSavedState()
+            }
             // The bubble is reused in place when the user selects a different word without first
             // dismissing it. `onAppear` won't fire again, so re-sync on request identity changes —
             // otherwise it would keep showing the previous word's saved/unsaved state.
             .onChange(of: request.id) { _ in
                 syncSavedState()
-                customCardSize = nil
-                measuredCardSize = .zero
-                measuredContentHeight = 0
                 explanationQuestion = ""
-                offset = .zero
+                let newAnchorKey = stableRequestAnchorKey
+                if requestAnchorKey != newAnchorKey {
+                    customCardSize = nil
+                    measuredCardSize = .zero
+                    measuredContentHeight = 0
+                    offset = .zero
+                    requestAnchorKey = newAnchorKey
+                }
             }
     }
 
@@ -74,6 +82,10 @@ struct TranslationBubble: View {
 
     private var effectiveAvailableSize: CGSize {
         CGSize(width: max(availableSize.width, 900), height: max(availableSize.height, 600))
+    }
+
+    private var stableRequestAnchorKey: String {
+        "\(request.isExplanationMode)-\(request.page)-\(request.boundsStr)-\(request.word)"
     }
 
     private var cardWidth: CGFloat {
@@ -254,9 +266,23 @@ struct TranslationBubble: View {
     @ViewBuilder
     private func adaptiveContent(result: TranslationResult) -> some View {
         if request.isExplanationMode {
-            ScrollView {
-                contentBody(result: result)
-                    .onHeightChange { measuredContentHeight = $0 }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    contentBody(result: result)
+                        .onHeightChange { measuredContentHeight = $0 }
+                    Color.clear
+                        .frame(height: 1)
+                        .id("explanation-bottom")
+                }
+                .onChange(of: request.explanationTurns.count) { _, _ in
+                    scrollExplanationToBottom(proxy)
+                }
+                .onChange(of: request.result?.contextExplanation ?? "") { _, _ in
+                    scrollExplanationToBottom(proxy)
+                }
+                .onChange(of: isLoading) { _, _ in
+                    scrollExplanationToBottom(proxy)
+                }
             }
             .frame(maxWidth: .infinity)
             .frame(height: customCardSize == nil ? maximumAutomaticContentHeight : nil)
@@ -403,36 +429,8 @@ struct TranslationBubble: View {
     @ViewBuilder
     private func contentBody(result: TranslationResult) -> some View {
         if request.isExplanationMode {
-            VStack(alignment: .leading, spacing: 12) {
-                BubbleSection("原文") {
-                    Text(ContextSentenceFormatting.displayParagraph(request.word))
-                        .font(.body)
-                        .textSelection(.enabled)
-                        .foregroundStyle(.primary)
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                if !request.explanationTurns.isEmpty {
-                    explanationHistorySection
-                }
-                if !request.activeExplanationQuestion.isEmpty {
-                    BubbleSection("本轮问题") {
-                        Text(request.activeExplanationQuestion)
-                            .font(.callout)
-                            .textSelection(.enabled)
-                    }
-                }
-                if !result.contextExplanation.isEmpty {
-                    BubbleSection("解释") {
-                        MarkdownText(markdown: result.contextExplanation)
-                            .textSelection(.enabled)
-                    }
-                }
-                if !isLoading {
-                    explanationQuestionBar(defaultSubmitOnReturn: false, isFollowUp: true)
-                }
-            }
-            .padding(14)
+            explanationChatContent(result: result)
+                .padding(14)
         } else if request.isSentenceMode
             && result.contextTranslation.isEmpty
             && result.generalDefinition.isEmpty
@@ -568,26 +566,122 @@ struct TranslationBubble: View {
     }
 
 
-    private var explanationHistorySection: some View {
-        BubbleSection("前文追问") {
-            VStack(alignment: .leading, spacing: 10) {
-                ForEach(Array(request.explanationTurns.enumerated()), id: \.offset) { index, turn in
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("Q\(index + 1)：\(turn.question.isEmpty ? "通用解释" : turn.question)")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                        MarkdownText(markdown: turn.answer)
-                            .textSelection(.enabled)
-                    }
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.quinary, in: RoundedRectangle(cornerRadius: 8))
-                }
+    private func scrollExplanationToBottom(_ proxy: ScrollViewProxy) {
+        DispatchQueue.main.async {
+            withAnimation(.easeOut(duration: 0.18)) {
+                proxy.scrollTo("explanation-bottom", anchor: .bottom)
             }
         }
     }
 
+    private func explanationChatContent(result: TranslationResult) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            originalSelectionCard
+
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(Array(request.explanationTurns.enumerated()), id: \.offset) { index, turn in
+                    explanationChatTurn(index: index, turn: turn)
+                }
+
+                if !request.activeExplanationQuestion.isEmpty {
+                    userMessageBubble(request.activeExplanationQuestion)
+                }
+
+                if !result.contextExplanation.isEmpty {
+                    assistantMessageBubble(result.contextExplanation, isStreaming: isLoading)
+                } else if isLoading {
+                    assistantThinkingBubble
+                }
+            }
+
+            if !isLoading {
+                explanationQuestionBar(defaultSubmitOnReturn: false, isFollowUp: true)
+            }
+        }
+    }
+
+    private var originalSelectionCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("原文", systemImage: "doc.text.magnifyingglass")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(ContextSentenceFormatting.displayParagraph(request.word))
+                .font(.callout)
+                .textSelection(.enabled)
+                .foregroundStyle(.primary)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quinary, in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func explanationChatTurn(index: Int, turn: ExplanationTurn) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            userMessageBubble(turn.question.isEmpty ? "直接解释" : turn.question)
+            assistantMessageBubble(turn.answer, isStreaming: false)
+        }
+        .id("turn-\(index)")
+    }
+
+    private func userMessageBubble(_ text: String) -> some View {
+        HStack(alignment: .top) {
+            Spacer(minLength: 32)
+            Text(text)
+                .font(.callout)
+                .textSelection(.enabled)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .foregroundStyle(.white)
+                .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+    }
+
+    private func assistantMessageBubble(_ markdown: String, isStreaming: Bool) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: isStreaming ? "ellipsis.bubble" : "sparkles")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 20, height: 20)
+            VStack(alignment: .leading, spacing: 6) {
+                if isStreaming {
+                    Label("正在生成", systemImage: "dot.radiowaves.left.and.right")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                MarkdownText(markdown: markdown)
+                    .textSelection(.enabled)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.background.opacity(0.72), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+            )
+        }
+        .id("assistant-current-\(request.id)")
+    }
+
+    private var assistantThinkingBubble: some View {
+        HStack(alignment: .center, spacing: 8) {
+            Image(systemName: "sparkles")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 20, height: 20)
+            HStack(spacing: 8) {
+                SpinnerView()
+                Text("正在思考…")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(.background.opacity(0.72), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+    }
 
     private var trimmedExplanationQuestion: String {
         explanationQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
