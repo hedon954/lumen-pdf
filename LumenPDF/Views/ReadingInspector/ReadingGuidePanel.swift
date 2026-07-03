@@ -64,13 +64,7 @@ struct ReadingGuidePanel: View {
                         }
 
                         if let error = session.errorMessage, !error.isEmpty {
-                            Text(error)
-                                .font(.caption)
-                                .foregroundStyle(.primary)
-                                .textSelection(.enabled)
-                                .padding(10)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                            assistantFailureMessage(error)
                         }
 
                         Color.clear
@@ -150,8 +144,12 @@ struct ReadingGuidePanel: View {
                     }
             }
         case .assistant:
-            if message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if message.isError {
+                assistantFailureMessage(message.content)
+            } else if message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && isStreaming {
                 assistantThinking
+            } else if message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                EmptyView()
             } else {
                 assistantMessage(message, isStreaming: isStreaming)
             }
@@ -217,6 +215,32 @@ struct ReadingGuidePanel: View {
         .padding(.vertical, 9)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func assistantFailureMessage(_ text: String) -> some View {
+        HStack(alignment: .top, spacing: 0) {
+            RoundedRectangle(cornerRadius: 1)
+                .fill(Color.red.opacity(0.55))
+                .frame(width: 3)
+            VStack(alignment: .leading, spacing: 7) {
+                Label("导读调用失败", systemImage: "exclamationmark.triangle")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.red)
+                Text(text)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 11)
+            .padding(.vertical, 9)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .background(Color.red.opacity(0.055), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Color.red.opacity(0.16), lineWidth: 0.5)
+        }
     }
 
     private func footer(_ session: ExplanationSession) -> some View {
