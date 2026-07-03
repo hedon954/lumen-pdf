@@ -16,9 +16,9 @@ struct ReadingContextSidebarView: View {
                 .filter { $0.pdfPath == currentPdfPath }
                 .map(ReadingContextItem.vocabulary)
         case .note:
-            source = appState.notes
-                .filter { $0.pdfPath == currentPdfPath }
-                .flatMap(ReadingContextItem.notes)
+            source = ReadingContextItem.notes(
+                appState.notes.filter { $0.pdfPath == currentPdfPath }
+            )
         }
         return source.sorted { lhs, rhs in
             if lhs.pageIndex != rhs.pageIndex { return lhs.pageIndex < rhs.pageIndex }
@@ -241,7 +241,7 @@ private struct ReadingContextItem: Identifiable {
     let title: String
     let subtitle: String
     let detail: String
-    let noteMarkdownItems: [String]
+    let noteMarkdownItems: [ReadingContextNoteItem]
     let createdAt: Int64
 
     static func vocabulary(_ entry: VocabularyEntry) -> ReadingContextItem {
@@ -260,25 +260,69 @@ private struct ReadingContextItem: Identifiable {
         )
     }
 
-    static func notes(_ note: NoteEntry) -> [ReadingContextItem] {
-        let noteItems = NoteTextList.decode(note.note)
-        let title = ContextSentenceFormatting.displayParagraph(note.content)
-        return noteItems.enumerated().map { index, item in
-            ReadingContextItem(
-                id: noteItems.count == 1 ? note.id : "\(note.id)#\(index)",
-                sourceId: note.id,
+    static func notes(_ notes: [NoteEntry]) -> [ReadingContextItem] {
+        let groups = Dictionary(grouping: notes, by: NoteSelectionKey.init)
+        return groups.values.compactMap { entries in
+            let sortedEntries = entries.enumerated()
+                .sorted { lhs, rhs in
+                    if lhs.element.createdAt != rhs.element.createdAt {
+                        return lhs.element.createdAt > rhs.element.createdAt
+                    }
+                    return lhs.offset < rhs.offset
+                }
+                .map(\.element)
+            guard let representative = sortedEntries.first else { return nil }
+            let noteItems = sortedEntries.flatMap { note in
+                let decoded = NoteTextList.decode(note.note)
+                return decoded.enumerated().map { index, item in
+                    ReadingContextNoteItem(
+                        id: decoded.count == 1 ? note.id : "\(note.id)#\(index)",
+                        markdown: item,
+                        createdAt: note.createdAt
+                    )
+                }
+            }
+            guard !noteItems.isEmpty else { return nil }
+            let title = ContextSentenceFormatting.displayParagraph(representative.content)
+            return ReadingContextItem(
+                id: NoteSelectionKey(representative).stableId,
+                sourceId: representative.id,
                 kind: .note,
-                pageIndex: note.pageIndex,
-                pdfPath: note.pdfPath,
-                boundsStr: note.boundsStr,
+                pageIndex: representative.pageIndex,
+                pdfPath: representative.pdfPath,
+                boundsStr: representative.boundsStr,
                 title: title,
-                subtitle: item,
+                subtitle: noteItems.map(\.markdown).joined(separator: "\n"),
                 detail: "",
-                noteMarkdownItems: [item],
-                createdAt: note.createdAt
+                noteMarkdownItems: noteItems,
+                createdAt: representative.createdAt
             )
         }
     }
+}
+
+private struct NoteSelectionKey: Hashable {
+    let pdfPath: String
+    let pageIndex: UInt32
+    let boundsStr: String
+    let content: String
+
+    init(_ note: NoteEntry) {
+        pdfPath = note.pdfPath
+        pageIndex = note.pageIndex
+        boundsStr = note.boundsStr
+        content = ContextSentenceFormatting.displayParagraph(note.content)
+    }
+
+    var stableId: String {
+        "note|\(pdfPath)|\(pageIndex)|\(boundsStr)|\(content)"
+    }
+}
+
+private struct ReadingContextNoteItem: Identifiable {
+    let id: String
+    let markdown: String
+    let createdAt: Int64
 }
 
 private struct ReadingContextCard: View {
@@ -305,15 +349,11 @@ private struct ReadingContextCard: View {
         isNote && isExpanded
     }
 
-    private var createdAtDate: Date? {
-        guard item.createdAt > 0 else { return nil }
-        let rawSeconds = Double(item.createdAt)
-        let seconds = item.createdAt > 10_000_000_000 ? rawSeconds / 1_000 : rawSeconds
-        return Date(timeIntervalSince1970: seconds)
-    }
-
-    private var createdAtText: String? {
-        guard let date = createdAtDate else { return nil }
+    private static func timestampText(for createdAt: Int64) -> String? {
+        guard createdAt > 0 else { return nil }
+        let rawSeconds = Double(createdAt)
+        let seconds = createdAt > 10_000_000_000 ? rawSeconds / 1_000 : rawSeconds
+        let date = Date(timeIntervalSince1970: seconds)
         let calendar = Calendar.autoupdatingCurrent
         if calendar.isDateInToday(date) {
             return Self.timeFormatter.string(from: date)
@@ -354,8 +394,8 @@ private struct ReadingContextCard: View {
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.secondary)
                         Spacer()
-                        if isNote, let createdAtText {
-                            Text(createdAtText)
+                        if isNote, item.noteMarkdownItems.count > 1 {
+                            Text("\(item.noteMarkdownItems.count)条")
                                 .font(.caption2.monospacedDigit())
                                 .foregroundStyle(.tertiary)
                         }
@@ -421,13 +461,24 @@ private struct ReadingContextCard: View {
     private var noteMarkdownContent: some View {
         if !item.noteMarkdownItems.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
-                ForEach(Array(item.noteMarkdownItems.enumerated()), id: \.offset) { _, markdown in
-                    MarkdownText(markdown: markdown)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(subtitleLineLimit)
-                        .fixedSize(horizontal: false, vertical: expandsFullText)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                ForEach(Array(item.noteMarkdownItems.enumerated()), id: \.element.id) { index, note in
+                    if index > 0 {
+                        Divider()
+                            .opacity(0.55)
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        if let createdAtText = Self.timestampText(for: note.createdAt) {
+                            Text(createdAtText)
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(.tertiary)
+                        }
+                        MarkdownText(markdown: note.markdown)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(subtitleLineLimit)
+                            .fixedSize(horizontal: false, vertical: expandsFullText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
             }
             .frame(maxHeight: isExpanded ? nil : 180, alignment: .top)
