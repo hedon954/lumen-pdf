@@ -1,37 +1,10 @@
 import SwiftUI
 
-struct ReadingContextPanel: View {
+struct ReadingWordsPanel: View {
     @EnvironmentObject private var appState: AppState
 
-    private enum ContextKind: String {
-        case vocabulary
-        case note
-
-        var title: String {
-            switch self {
-            case .vocabulary: return "单词"
-            case .note: return "笔记"
-            }
-        }
-
-        var systemImage: String {
-            switch self {
-            case .vocabulary: return "book.closed"
-            case .note: return "note.text"
-            }
-        }
-
-        var tint: Color {
-            switch self {
-            case .vocabulary: return .yellow
-            case .note: return .red
-            }
-        }
-    }
-
-    private struct ContextItem: Identifiable {
+    private struct WordItem: Identifiable {
         let id: String
-        let kind: ContextKind
         let pageIndex: UInt32
         let pdfPath: String
         let boundsStr: String
@@ -43,14 +16,13 @@ struct ReadingContextPanel: View {
 
     private var currentPdfPath: String? { appState.selectedDocument?.filePath }
 
-    private var items: [ContextItem] {
+    private var items: [WordItem] {
         guard let currentPdfPath else { return [] }
-        let vocabularyItems = appState.vocabulary
+        return appState.vocabulary
             .filter { $0.pdfPath == currentPdfPath }
             .map {
-                ContextItem(
+                WordItem(
                     id: $0.id,
-                    kind: .vocabulary,
                     pageIndex: $0.pageIndex,
                     pdfPath: $0.pdfPath,
                     boundsStr: $0.selectionBounds,
@@ -60,24 +32,6 @@ struct ReadingContextPanel: View {
                     createdAt: $0.createdAt
                 )
             }
-
-        let noteItems = ReadingInspectorNoteGroup
-            .groups(from: appState.notes.filter { $0.pdfPath == currentPdfPath })
-            .map {
-                ContextItem(
-                    id: $0.id,
-                    kind: .note,
-                    pageIndex: $0.pageIndex,
-                    pdfPath: $0.pdfPath,
-                    boundsStr: $0.boundsStr,
-                    title: $0.title,
-                    subtitle: $0.notes.first?.markdown ?? "",
-                    detail: $0.notes.count > 1 ? "\($0.notes.count) 条笔记" : "",
-                    createdAt: $0.createdAt
-                )
-            }
-
-        return (vocabularyItems + noteItems)
             .sorted { lhs, rhs in
                 let current = UInt32(max(0, appState.currentPageIndex))
                 let lhsDistance = abs(Int(lhs.pageIndex) - Int(current))
@@ -96,8 +50,8 @@ struct ReadingContextPanel: View {
             if items.isEmpty {
                 ReadingInspectorEmptyState(
                     systemImage: "text.magnifyingglass",
-                    title: "暂无上下文",
-                    message: "保存单词或笔记后会显示在这里"
+                    title: "暂无单词",
+                    message: "保存单词后会显示在这里"
                 )
             } else {
                 ScrollView {
@@ -112,17 +66,16 @@ struct ReadingContextPanel: View {
         }
         .onAppear {
             appState.refreshVocabulary()
-            appState.refreshNotes()
         }
     }
 
-    private func contextCard(_ item: ContextItem) -> some View {
+    private func contextCard(_ item: WordItem) -> some View {
         Button {
             jump(to: item)
         } label: {
             VStack(alignment: .leading, spacing: 7) {
                 HStack(spacing: 6) {
-                    Label(item.kind.title, systemImage: item.kind.systemImage)
+                    Label("单词", systemImage: "book.closed")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -132,7 +85,7 @@ struct ReadingContextPanel: View {
                 }
 
                 Text(item.title)
-                    .font(item.kind == .vocabulary ? .headline : .callout.weight(.medium))
+                    .font(.headline)
                     .foregroundStyle(.primary)
                     .lineLimit(3)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -158,7 +111,7 @@ struct ReadingContextPanel: View {
             .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .overlay(alignment: .leading) {
                 RoundedRectangle(cornerRadius: 1.5)
-                    .fill(item.kind.tint.opacity(0.62))
+                    .fill(Color.yellow.opacity(0.62))
                     .frame(width: 3)
                     .padding(.vertical, 9)
             }
@@ -170,17 +123,13 @@ struct ReadingContextPanel: View {
         .buttonStyle(.plain)
     }
 
-    private func jump(to item: ContextItem) {
-        NotificationCenter.default.post(
-            name: .jumpToSelectionBounds,
-            object: nil,
-            userInfo: [
-                "pageIndex": Int(item.pageIndex),
-                "filePath": item.pdfPath,
-                "boundsStr": item.boundsStr,
-                "itemId": item.id,
-                "kind": item.kind.rawValue
-            ]
+    private func jump(to item: WordItem) {
+        ReaderEventBus.shared.postJumpToSelectionBounds(
+            page: Int(item.pageIndex),
+            filePath: item.pdfPath,
+            boundsStr: item.boundsStr,
+            itemId: item.id,
+            kind: "vocabulary"
         )
         appState.showToast("已定位到 P\(item.pageIndex + 1)")
     }

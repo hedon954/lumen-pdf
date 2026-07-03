@@ -176,14 +176,9 @@ private struct OutlineRow: View {
         guard let page = item.destination?.page else { return }
         let pageIndex = doc.index(for: page)
         guard pageIndex != NSNotFound else { return }
-        NotificationCenter.default.post(
-            name: .outlineNavigate,
-            object: nil,
-            userInfo: ["pageIndex": pageIndex, "filePath": doc.documentURL?.path ?? ""]
+        ReaderEventBus.shared.postOutlineNavigate(
+            page: pageIndex,
+            filePath: doc.documentURL?.path ?? ""
         )
     }
-}
-
-extension Notification.Name {
-    static let outlineNavigate = Notification.Name("outlineNavigate")
 }

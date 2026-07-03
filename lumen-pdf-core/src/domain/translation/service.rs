@@ -79,6 +79,78 @@ impl TranslationDomainService {
             .filter(|p| !p.is_empty())
     }
 
+    async fn cached_result(
+        &self,
+        request: &TranslationRequest,
+        word_lower: &str,
+        hash: &str,
+    ) -> Result<Option<TranslationResult>, LumenError> {
+        let Some(mut cached) = self
+            .cache
+            .get(word_lower, hash, &self.cache_target_language)?
+        else {
+            return Ok(None);
+        };
+
+        cached.source = TranslationSource::Cache.to_string();
+        if cached.phonetic.trim().is_empty() {
+            if let Some(p) = self.fetch_phonetic_override(&request.word).await {
+                cached.phonetic = p;
+            }
+        }
+        Ok(Some(cached))
+    }
+
+    fn apply_phonetic_override(result: &mut TranslationResult, phonetic: &Option<String>) {
+        if let Some(p) = phonetic {
+            result.phonetic = p.clone();
+        }
+    }
+
+    fn complete_llm_result(
+        &self,
+        mut result: TranslationResult,
+        phonetic: &Option<String>,
+        word_lower: &str,
+        hash: &str,
+    ) -> TranslationResult {
+        result.source = TranslationSource::Llm.to_string();
+        result.llm_error_message = String::new();
+        Self::apply_phonetic_override(&mut result, phonetic);
+        let _ = self
+            .cache
+            .set(word_lower, hash, &self.cache_target_language, &result);
+        result
+    }
+
+    fn complete_fallback_result(
+        mut result: TranslationResult,
+        llm_failure_note: Option<String>,
+        phonetic: &Option<String>,
+    ) -> TranslationResult {
+        result.source = TranslationSource::Fallback.to_string();
+        result.llm_error_message = llm_failure_note.unwrap_or_default();
+        result.fallback_error_message = String::new();
+        result.is_complete_failure = false;
+        Self::apply_phonetic_override(&mut result, phonetic);
+        result
+    }
+
+    fn complete_failure_result(
+        request: &TranslationRequest,
+        llm_failure_note: Option<String>,
+        fallback_err: LumenError,
+    ) -> TranslationResult {
+        TranslationResult {
+            word: request.word.clone(),
+            source: "failed".to_string(),
+            llm_error_message: llm_failure_note.unwrap_or_default(),
+            fallback_error_message: fallback_err.user_hint_zh(),
+            is_complete_failure: true,
+            ..Default::default()
+        }
+    }
+
     pub async fn translate(
         &self,
         request: TranslationRequest,
@@ -86,19 +158,7 @@ impl TranslationDomainService {
         let word_lower = request.word.to_lowercase();
         let hash = Self::sentence_hash(&request.sentence);
 
-        // Level 1: local cache
-        if let Some(mut cached) = self
-            .cache
-            .get(&word_lower, &hash, &self.cache_target_language)?
-        {
-            cached.source = TranslationSource::Cache.to_string();
-            // Backfill an authoritative phonetic for older cache entries that
-            // were stored before a provider was available (empty phonetic).
-            if cached.phonetic.trim().is_empty() {
-                if let Some(p) = self.fetch_phonetic_override(&request.word).await {
-                    cached.phonetic = p;
-                }
-            }
+        if let Some(cached) = self.cached_result(&request, &word_lower, &hash).await? {
             return Ok(cached);
         }
 
@@ -109,16 +169,8 @@ impl TranslationDomainService {
             self.fetch_phonetic_override(&request.word),
         );
         let llm_failure_note: Option<String> = match llm_res {
-            Ok(mut result) => {
-                result.source = TranslationSource::Llm.to_string();
-                result.llm_error_message = String::new();
-                if let Some(p) = &phonetic {
-                    result.phonetic = p.clone();
-                }
-                let _ = self
-                    .cache
-                    .set(&word_lower, &hash, &self.cache_target_language, &result);
-                return Ok(result);
+            Ok(result) => {
+                return Ok(self.complete_llm_result(result, &phonetic, &word_lower, &hash))
             }
             Err(e) => Some(e.user_hint_zh()),
         };
@@ -129,27 +181,16 @@ impl TranslationDomainService {
             .translate(&request.word, &request.sentence)
             .await
         {
-            Ok(mut result) => {
-                result.source = TranslationSource::Fallback.to_string();
-                result.llm_error_message = llm_failure_note.unwrap_or_default();
-                result.fallback_error_message = String::new();
-                result.is_complete_failure = false;
-                if let Some(p) = &phonetic {
-                    result.phonetic = p.clone();
-                }
-                Ok(result)
-            }
-            Err(fallback_err) => {
-                // Both LLM and Fallback failed - return error info instead of throwing
-                Ok(TranslationResult {
-                    word: request.word.clone(),
-                    source: "failed".to_string(),
-                    llm_error_message: llm_failure_note.unwrap_or_default(),
-                    fallback_error_message: fallback_err.user_hint_zh(),
-                    is_complete_failure: true,
-                    ..Default::default()
-                })
-            }
+            Ok(result) => Ok(Self::complete_fallback_result(
+                result,
+                llm_failure_note,
+                &phonetic,
+            )),
+            Err(fallback_err) => Ok(Self::complete_failure_result(
+                &request,
+                llm_failure_note,
+                fallback_err,
+            )),
         }
     }
 
@@ -178,17 +219,7 @@ impl TranslationDomainService {
             }
         };
 
-        // Level 1: local cache
-        if let Some(mut cached) = self
-            .cache
-            .get(&word_lower, &hash, &self.cache_target_language)?
-        {
-            cached.source = TranslationSource::Cache.to_string();
-            if cached.phonetic.trim().is_empty() {
-                if let Some(p) = self.fetch_phonetic_override(&request.word).await {
-                    cached.phonetic = p;
-                }
-            }
+        if let Some(cached) = self.cached_result(&request, &word_lower, &hash).await? {
             emit(cached.clone());
             return Ok(cached);
         }
@@ -212,15 +243,8 @@ impl TranslationDomainService {
             self.fetch_phonetic_override(&request.word),
         );
         let llm_failure_note: Option<String> = match llm_res {
-            Ok(mut result) => {
-                result.source = TranslationSource::Llm.to_string();
-                result.llm_error_message = String::new();
-                if let Some(p) = &phonetic {
-                    result.phonetic = p.clone();
-                }
-                let _ = self
-                    .cache
-                    .set(&word_lower, &hash, &self.cache_target_language, &result);
+            Ok(result) => {
+                let result = self.complete_llm_result(result, &phonetic, &word_lower, &hash);
                 emit(result.clone());
                 return Ok(result);
             }
@@ -233,26 +257,14 @@ impl TranslationDomainService {
             .translate(&request.word, &request.sentence)
             .await
         {
-            Ok(mut result) => {
-                result.source = TranslationSource::Fallback.to_string();
-                result.llm_error_message = llm_failure_note.unwrap_or_default();
-                result.fallback_error_message = String::new();
-                result.is_complete_failure = false;
-                if let Some(p) = &phonetic {
-                    result.phonetic = p.clone();
-                }
+            Ok(result) => {
+                let result = Self::complete_fallback_result(result, llm_failure_note, &phonetic);
                 emit(result.clone());
                 Ok(result)
             }
             Err(fallback_err) => {
-                let result = TranslationResult {
-                    word: request.word.clone(),
-                    source: "failed".to_string(),
-                    llm_error_message: llm_failure_note.unwrap_or_default(),
-                    fallback_error_message: fallback_err.user_hint_zh(),
-                    is_complete_failure: true,
-                    ..Default::default()
-                };
+                let result =
+                    Self::complete_failure_result(&request, llm_failure_note, fallback_err);
                 emit(result.clone());
                 Ok(result)
             }
@@ -303,8 +315,6 @@ mod tests {
         }
     }
 
-    /// Phonetic provider that returns a fixed IPA and records every word it
-    /// was queried with (so tests can assert it was / wasn't called).
     struct FakePhonetic {
         value: Option<String>,
         queried: Mutex<Vec<String>>,
@@ -446,7 +456,6 @@ mod tests {
         assert_eq!(result.source, "llm");
         assert_eq!(result.general_definition, "llm def");
 
-        // Verify it was written to cache
         let hash = TranslationDomainService::sentence_hash("the quick brown fox");
         let cached = cache.get("run", &hash, "").unwrap();
         assert!(cached.is_some());
@@ -512,14 +521,11 @@ mod tests {
             result.llm_error_message
         );
 
-        // Fallback result must not be cached
         let hash = TranslationDomainService::sentence_hash("the quick brown fox");
         let cached = cache.get("run", &hash, "").unwrap();
         assert!(cached.is_none());
     }
 
-    /// Streaming-aware fake LLM that emits N partial results before returning
-    /// the final one. Used to verify the domain service forwards every emit.
     struct StreamingFakeLlm {
         partials: Vec<TranslationResult>,
         final_result: TranslationResult,
@@ -634,11 +640,9 @@ mod tests {
         assert_eq!(final_result.context_sentence_translation, "他在跑步");
 
         let emitted = emitted.lock().unwrap();
-        // 2 partials forwarded by the LLM + 1 final emit from the service.
         assert_eq!(emitted.len(), 3);
         assert!(emitted.iter().all(|r| r.source == "llm"));
 
-        // Cached after success
         let hash = TranslationDomainService::sentence_hash("He is running");
         assert!(cache.get("run", &hash, "").unwrap().is_some());
     }
@@ -674,7 +678,6 @@ mod tests {
         assert_eq!(emitted[0].source, "fallback");
         assert!(emitted[0].llm_error_message.contains("LLM"));
 
-        // Fallback result must NOT be cached
         let hash = TranslationDomainService::sentence_hash("He is running");
         assert!(cache.get("run", &hash, "").unwrap().is_none());
     }
@@ -702,7 +705,6 @@ mod tests {
         assert_eq!(result.source, "failed");
     }
 
-    /// LLM with a (possibly wrong) phonetic that the provider should override.
     struct PhoneticLlm {
         phonetic: &'static str,
     }
@@ -745,7 +747,6 @@ mod tests {
         assert_eq!(result.phonetic, "həˈloʊ");
         assert_eq!(phonetic.queried.lock().unwrap().as_slice(), &["hello"]);
 
-        // The corrected phonetic is what gets cached.
         let hash = TranslationDomainService::sentence_hash("hello world");
         let cached = cache.get("hello", &hash, "").unwrap().unwrap();
         assert_eq!(cached.phonetic, "həˈloʊ");
@@ -772,8 +773,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Multi-word selection: provider must not be queried and the LLM's own
-        // phonetic is preserved.
         assert!(phonetic.queried.lock().unwrap().is_empty());
         assert_eq!(result.phonetic, "llm-phonetic");
     }

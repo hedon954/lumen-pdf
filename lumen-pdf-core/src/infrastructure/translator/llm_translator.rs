@@ -257,36 +257,7 @@ impl LlmTranslator {
         sentence: &str,
     ) -> Result<TranslationResult, LumenError> {
         let body = self.build_sentence_request(sentence, false);
-        let url = self.completions_url();
-
-        let resp = shared_client()
-            .post(&url)
-            .bearer_auth(&self.config.api_key)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| LumenError::LlmApiError {
-                message: e.to_string(),
-            })?;
-
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let text = resp.text().await.unwrap_or_default();
-            return Err(LumenError::LlmApiError {
-                message: format!("HTTP {status}: {text}"),
-            });
-        }
-
-        let chat: ChatResponse = resp.json().await.map_err(|e| LumenError::LlmApiError {
-            message: e.to_string(),
-        })?;
-
-        let content = chat
-            .choices
-            .into_iter()
-            .next()
-            .map(|c| c.message.content)
-            .unwrap_or_default();
+        let content = self.send_chat_request(&body).await?;
 
         let parsed: SentencePromptJson =
             serde_json::from_str(&content).map_err(|e| LumenError::SerializationError {
@@ -399,6 +370,59 @@ impl LlmTranslator {
             }),
             max_tokens: Some(DEFAULT_MAX_TOKENS),
         }
+    }
+
+    fn build_word_request(&self, word: &str, sentence: &str, stream: bool) -> ChatRequest {
+        ChatRequest {
+            model: self.config.model.clone(),
+            stream,
+            messages: vec![
+                Message {
+                    role: "system".into(),
+                    content: self.word_system_prompt(),
+                },
+                Message {
+                    role: "user".into(),
+                    content: self.build_prompt(word, sentence),
+                },
+            ],
+            response_format: Some(ResponseFormat {
+                kind: "json_object".into(),
+            }),
+            max_tokens: Some(DEFAULT_MAX_TOKENS),
+        }
+    }
+
+    async fn send_chat_request(&self, body: &ChatRequest) -> Result<String, LumenError> {
+        let url = self.completions_url();
+        let resp = shared_client()
+            .post(&url)
+            .bearer_auth(&self.config.api_key)
+            .json(body)
+            .send()
+            .await
+            .map_err(|e| LumenError::LlmApiError {
+                message: e.to_string(),
+            })?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(LumenError::LlmApiError {
+                message: format!("HTTP {status}: {text}"),
+            });
+        }
+
+        let chat: ChatResponse = resp.json().await.map_err(|e| LumenError::LlmApiError {
+            message: e.to_string(),
+        })?;
+
+        Ok(chat
+            .choices
+            .into_iter()
+            .next()
+            .map(|c| c.message.content)
+            .unwrap_or_default())
     }
 
     /// Drive an OpenAI-compatible streaming completion: fire the request,
@@ -557,6 +581,25 @@ struct LlmTranslationJson {
     context_sentence_translation: Option<String>,
 }
 
+impl LlmTranslationJson {
+    fn into_result(self, fallback_word: &str) -> TranslationResult {
+        TranslationResult {
+            word: self.word.unwrap_or_else(|| fallback_word.to_string()),
+            phonetic: self.phonetic.unwrap_or_default(),
+            part_of_speech: self.part_of_speech.unwrap_or_default(),
+            context_translation: self.context_translation.unwrap_or_default(),
+            context_explanation: self.context_explanation.unwrap_or_default(),
+            general_definition: self.general_definition.unwrap_or_default(),
+            context_sentence_translation: self.context_sentence_translation.unwrap_or_default(),
+            source: "llm".to_string(),
+            llm_error_message: String::new(),
+            fallback_error_message: String::new(),
+            is_complete_failure: false,
+            sentence_breakdown: Vec::new(),
+        }
+    }
+}
+
 /// Wire format the LLM produces in sentence mode: a translation plus an
 /// optional breakdown array for long / complex sentences.
 #[derive(Deserialize)]
@@ -607,74 +650,15 @@ impl SentencePromptJson {
 #[async_trait::async_trait]
 impl Translator for LlmTranslator {
     async fn translate(&self, word: &str, sentence: &str) -> Result<TranslationResult, LumenError> {
-        let url = self.completions_url();
-        let body = ChatRequest {
-            model: self.config.model.clone(),
-            stream: false,
-            messages: vec![
-                Message {
-                    role: "system".into(),
-                    content: self.word_system_prompt(),
-                },
-                Message {
-                    role: "user".into(),
-                    content: self.build_prompt(word, sentence),
-                },
-            ],
-            response_format: Some(ResponseFormat {
-                kind: "json_object".into(),
-            }),
-            max_tokens: Some(DEFAULT_MAX_TOKENS),
-        };
-
-        let resp = shared_client()
-            .post(&url)
-            .bearer_auth(&self.config.api_key)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| LumenError::LlmApiError {
-                message: e.to_string(),
-            })?;
-
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let text = resp.text().await.unwrap_or_default();
-            return Err(LumenError::LlmApiError {
-                message: format!("HTTP {status}: {text}"),
-            });
-        }
-
-        let chat: ChatResponse = resp.json().await.map_err(|e| LumenError::LlmApiError {
-            message: e.to_string(),
-        })?;
-
-        let content = chat
-            .choices
-            .into_iter()
-            .next()
-            .map(|c| c.message.content)
-            .unwrap_or_default();
+        let body = self.build_word_request(word, sentence, false);
+        let content = self.send_chat_request(&body).await?;
 
         let parsed: LlmTranslationJson =
             serde_json::from_str(&content).map_err(|e| LumenError::SerializationError {
                 message: e.to_string(),
             })?;
 
-        Ok(TranslationResult {
-            word: parsed.word.unwrap_or_else(|| word.to_string()),
-            phonetic: parsed.phonetic.unwrap_or_default(),
-            part_of_speech: parsed.part_of_speech.unwrap_or_default(),
-            context_translation: parsed.context_translation.unwrap_or_default(),
-            context_explanation: parsed.context_explanation.unwrap_or_default(),
-            general_definition: parsed.general_definition.unwrap_or_default(),
-            context_sentence_translation: parsed.context_sentence_translation.unwrap_or_default(),
-            source: "llm".to_string(),
-            llm_error_message: String::new(),
-            fallback_error_message: String::new(),
-            is_complete_failure: false,
-            sentence_breakdown: Vec::new(),
-        })
+        Ok(parsed.into_result(word))
     }
 
     async fn translate_streaming(
@@ -684,24 +668,7 @@ impl Translator for LlmTranslator {
         mut on_progress: StreamProgress,
     ) -> Result<TranslationResult, LumenError> {
         let url = self.completions_url();
-        let body = ChatRequest {
-            model: self.config.model.clone(),
-            stream: true,
-            messages: vec![
-                Message {
-                    role: "system".into(),
-                    content: self.word_system_prompt(),
-                },
-                Message {
-                    role: "user".into(),
-                    content: self.build_prompt(word, sentence),
-                },
-            ],
-            response_format: Some(ResponseFormat {
-                kind: "json_object".into(),
-            }),
-            max_tokens: Some(DEFAULT_MAX_TOKENS),
-        };
+        let body = self.build_word_request(word, sentence, true);
 
         let mut last_keys: Vec<String> = Vec::new();
         let raw_buf = self
@@ -737,19 +704,6 @@ impl Translator for LlmTranslator {
             serde_json::from_str(&raw_buf).map_err(|e| LumenError::SerializationError {
                 message: e.to_string(),
             })?;
-        Ok(TranslationResult {
-            word: parsed.word.unwrap_or_else(|| word.to_string()),
-            phonetic: parsed.phonetic.unwrap_or_default(),
-            part_of_speech: parsed.part_of_speech.unwrap_or_default(),
-            context_translation: parsed.context_translation.unwrap_or_default(),
-            context_explanation: parsed.context_explanation.unwrap_or_default(),
-            general_definition: parsed.general_definition.unwrap_or_default(),
-            context_sentence_translation: parsed.context_sentence_translation.unwrap_or_default(),
-            source: "llm".to_string(),
-            llm_error_message: String::new(),
-            fallback_error_message: String::new(),
-            is_complete_failure: false,
-            sentence_breakdown: Vec::new(),
-        })
+        Ok(parsed.into_result(word))
     }
 }

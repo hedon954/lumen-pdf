@@ -50,6 +50,12 @@ final class AppState: ObservableObject {
         bridge.initializeIfNeeded()
         refreshLibrary()
         restoreLastDocument()
+        let args = ProcessInfo.processInfo.arguments
+        if args.contains("--uitesting-vocabulary") {
+            activeTab = .vocabulary
+        } else if args.contains("--uitesting-notes") {
+            activeTab = .notes
+        }
     }
 
     // MARK: - Library
