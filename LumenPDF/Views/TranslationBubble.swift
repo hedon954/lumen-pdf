@@ -21,8 +21,12 @@ struct TranslationBubble: View {
     @State private var customCardSize: CGSize?
     @State private var measuredCardSize: CGSize = .zero
     @State private var measuredContentHeight: CGFloat = 0
+    @State private var explanationShouldFollowStream = true
+    @State private var explanationHasOverflow = false
     @State private var explanationQuestion: String = ""
     @State private var requestAnchorKey: String = ""
+
+    private static let explanationBottomID = "explanation-bottom"
 
     var body: some View {
         card
@@ -50,6 +54,8 @@ struct TranslationBubble: View {
                     customCardSize = nil
                     measuredCardSize = .zero
                     measuredContentHeight = 0
+                    explanationShouldFollowStream = true
+                    explanationHasOverflow = false
                     offset = .zero
                     requestAnchorKey = newAnchorKey
                 }
@@ -71,10 +77,14 @@ struct TranslationBubble: View {
             Divider()
             content
         }
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(alignment: .bottomTrailing) { resizeHandle }
-        .shadow(color: .black.opacity(0.18), radius: 14, x: 0, y: 6)
+        .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.5)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(resizeHotZones)
+        .shadow(color: .black.opacity(0.16), radius: 18, x: 0, y: 8)
         .frame(width: cardWidth, height: customCardSize?.height)
         .frame(maxHeight: customCardSize == nil ? maximumAutomaticCardHeight : nil)
         .onSizeChange { measuredCardSize = $0 }
@@ -122,50 +132,124 @@ struct TranslationBubble: View {
         return request.isSentenceMode ? 560 : 520
     }
 
-    private var resizeHandle: some View {
-        Image(systemName: "arrow.down.right.and.arrow.up.left")
-            .font(.caption2)
-            .foregroundStyle(.tertiary)
-            .padding(8)
-            .background(
-                AppKitResizeCapture { delta in
-                    let current = customCardSize ?? CGSize(
-                        width: cardWidth,
-                        height: max(measuredCardSize.height, 240)
-                    )
-                    customCardSize = CGSize(
-                        width: min(max(current.width + delta.width, 340), max(340, effectiveAvailableSize.width * 0.86)),
-                        height: min(max(current.height + delta.height, 240), max(240, effectiveAvailableSize.height * 0.86))
-                    )
+    private enum ResizeEdge {
+        case trailing
+        case bottom
+        case corner
+
+        var cursor: NSCursor {
+            switch self {
+            case .trailing:
+                return .resizeLeftRight
+            case .bottom:
+                return .resizeUpDown
+            case .corner:
+                return .resizeDiagonal
+            }
+        }
+    }
+
+    private var resizeHotZones: some View {
+        ZStack(alignment: .bottomTrailing) {
+            HStack(spacing: 0) {
+                Spacer()
+                resizeZone(.trailing)
+                    .frame(width: 8)
+            }
+
+            VStack(spacing: 0) {
+                Spacer()
+                resizeZone(.bottom)
+                    .frame(height: 8)
+            }
+
+            resizeZone(.corner)
+                .frame(width: 24, height: 24)
+                .overlay(alignment: .bottomTrailing) {
+                    Image(systemName: "arrow.down.right.and.arrow.up.left")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                        .padding(5)
                 }
-            )
-            .cursor(.resizeDiagonal)
+        }
+        .allowsHitTesting(true)
+    }
+
+    private func resizeZone(_ edge: ResizeEdge) -> some View {
+        AppKitResizeCapture(cursor: edge.cursor) { delta in
+            resizeCard(by: delta, edge: edge)
+        }
+    }
+
+    private var minimumCardSize: CGSize {
+        request.isExplanationMode
+            ? CGSize(width: 500, height: 320)
+            : CGSize(width: 340, height: 240)
+    }
+
+    private var maximumCardSize: CGSize {
+        CGSize(
+            width: max(minimumCardSize.width, effectiveAvailableSize.width * 0.90),
+            height: max(minimumCardSize.height, effectiveAvailableSize.height * 0.90)
+        )
+    }
+
+    private func resizeCard(by delta: CGSize, edge: ResizeEdge) {
+        let current = customCardSize ?? CGSize(
+            width: cardWidth,
+            height: min(max(measuredCardSize.height, minimumCardSize.height), maximumCardSize.height)
+        )
+
+        var next = current
+        if edge == .trailing || edge == .corner {
+            next.width += delta.width
+        }
+        if edge == .bottom || edge == .corner {
+            next.height += delta.height
+        }
+
+        customCardSize = CGSize(
+            width: min(max(next.width, minimumCardSize.width), maximumCardSize.width),
+            height: min(max(next.height, minimumCardSize.height), maximumCardSize.height)
+        )
     }
 
     // MARK: - Header (AppKit drag handle)
 
     private var header: some View {
         HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 4) {
-                // 纵向排列：单词独占一行按词换行，避免与音标挤在同一行导致「拦腰断词」
-                Text(ContextSentenceFormatting.displayParagraph(request.result?.word ?? request.word))
-                    .font(.title2.bold())
-                    .multilineTextAlignment(.leading)
-                    .lineLimit(nil)
-                    .fixedSize(horizontal: false, vertical: true)
-                if let phonetic = request.result?.phonetic, !phonetic.isEmpty {
-                    Text("[\(phonetic)]")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-                if let src = request.result?.source, src == "fallback" {
-                    Label(
-                        (request.result?.llmErrorMessage.isEmpty == false)
-                            ? "基础翻译（LLM 未成功，见下方说明）"
-                            : "基础翻译",
-                        systemImage: "info.circle"
-                    )
-                    .font(.caption2).foregroundStyle(.orange)
+            Group {
+                if request.isExplanationMode {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Label("AI 导读", systemImage: "sparkles")
+                            .font(.headline)
+                        Text("围绕当前选区连续追问")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    VStack(alignment: .leading, spacing: 4) {
+                        // 纵向排列：单词独占一行按词换行，避免与音标挤在同一行导致「拦腰断词」
+                        Text(ContextSentenceFormatting.displayParagraph(request.result?.word ?? request.word))
+                            .font(.title2.bold())
+                            .multilineTextAlignment(.leading)
+                            .lineLimit(nil)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if let phonetic = request.result?.phonetic, !phonetic.isEmpty {
+                            Text("[\(phonetic)]")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                        }
+                        if let src = request.result?.source, src == "fallback" {
+                            Label(
+                                (request.result?.llmErrorMessage.isEmpty == false)
+                                    ? "基础翻译（LLM 未成功，见下方说明）"
+                                    : "基础翻译",
+                                systemImage: "info.circle"
+                            )
+                            .font(.caption2).foregroundStyle(.orange)
+                        }
+                    }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -175,7 +259,7 @@ struct TranslationBubble: View {
 
             HStack(spacing: 8) {
                 Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
-                    .font(.caption).foregroundStyle(.tertiary)
+                    .font(.caption2).foregroundStyle(.tertiary)
 
                 Button { audio.speak(request.result?.word ?? request.word) } label: {
                     Image(systemName: "speaker.wave.2")
@@ -188,7 +272,9 @@ struct TranslationBubble: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(14)
+        .padding(.horizontal, 14)
+        .padding(.vertical, request.isExplanationMode ? 10 : 14)
+        .background(Color(nsColor: .windowBackgroundColor).opacity(0.96))
         // AppKit-level drag capture sits behind the content; buttons on top still fire normally
         .background(
             AppKitDragCapture { delta in
@@ -551,21 +637,33 @@ struct TranslationBubble: View {
     private var explanationChatScrollContent: some View {
         ScrollViewReader { proxy in
             ScrollView {
+                explanationScrollObserver
+                    .frame(width: 0, height: 0)
                 explanationChatContent()
                     .padding(14)
                     .onHeightChange { measuredContentHeight = $0 }
                 Color.clear
                     .frame(height: 1)
-                    .id("explanation-bottom")
+                    .id(Self.explanationBottomID)
             }
-            .onChange(of: request.explanationMessages.count) { _, _ in
-                scrollExplanationToBottom(proxy)
+            .scrollIndicators(.visible)
+            .onChange(of: request.explanationMessages.count) { _, count in
+                guard count > 2 else { return }
+                scrollExplanationIfFollowing(proxy, animated: true)
             }
             .onChange(of: request.explanationMessages.last?.content ?? "") { _, _ in
-                scrollExplanationToBottom(proxy)
+                scrollExplanationIfFollowing(proxy, animated: false)
+            }
+            .onChange(of: measuredContentHeight) { _, _ in
+                scrollExplanationIfFollowing(proxy, animated: false)
             }
             .onChange(of: isLoading) { _, _ in
-                scrollExplanationToBottom(proxy)
+                scrollExplanationIfFollowing(proxy, animated: true)
+            }
+            .onChange(of: explanationHasOverflow) { _, hasOverflow in
+                if hasOverflow {
+                    scrollExplanationIfFollowing(proxy, animated: false)
+                }
             }
         }
         .frame(maxWidth: .infinity)
@@ -573,11 +671,45 @@ struct TranslationBubble: View {
         .frame(maxHeight: customCardSize == nil ? nil : .infinity)
     }
 
-    private func scrollExplanationToBottom(_ proxy: ScrollViewProxy) {
-        DispatchQueue.main.async {
-            withAnimation(.easeOut(duration: 0.18)) {
-                proxy.scrollTo("explanation-bottom", anchor: .bottom)
+    private var explanationScrollObserver: some View {
+        ExplanationScrollObserver { state, userScrolled in
+            explanationHasOverflow = state.hasOverflow
+            guard userScrolled else { return }
+            explanationShouldFollowStream = state.isNearBottom || !state.hasOverflow
+        }
+    }
+
+    private func scrollExplanationIfFollowing(_ proxy: ScrollViewProxy, animated: Bool = true) {
+        guard explanationShouldFollowStream,
+              explanationHasOverflow,
+              currentAssistantHasStarted
+        else { return }
+        scrollExplanationToBottom(proxy, animated: animated)
+    }
+
+    private var currentAssistantHasStarted: Bool {
+        guard request.explanationMessages.last?.role == .assistant else { return false }
+        return request.explanationMessages.last?.content
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .isEmpty == false
+    }
+
+    private func scrollExplanationToBottom(_ proxy: ScrollViewProxy, animated: Bool = true) {
+        func perform(animated: Bool) {
+            if animated {
+                withAnimation(.easeOut(duration: 0.14)) {
+                    proxy.scrollTo(Self.explanationBottomID, anchor: .bottom)
+                }
+            } else {
+                proxy.scrollTo(Self.explanationBottomID, anchor: .bottom)
             }
+        }
+
+        DispatchQueue.main.async {
+            perform(animated: animated)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            perform(animated: false)
         }
     }
 
@@ -599,8 +731,8 @@ struct TranslationBubble: View {
 
     private var originalSelectionCard: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Label("原文", systemImage: "doc.text.magnifyingglass")
-                .font(.caption.weight(.semibold))
+            Label("选中文本", systemImage: "text.viewfinder")
+                .font(.caption)
                 .foregroundStyle(.secondary)
             Text(ContextSentenceFormatting.displayParagraph(request.word))
                 .font(.callout)
@@ -611,7 +743,11 @@ struct TranslationBubble: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quinary, in: RoundedRectangle(cornerRadius: 10))
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5)
+        )
     }
 
     @ViewBuilder
@@ -639,17 +775,20 @@ struct TranslationBubble: View {
                 .textSelection(.enabled)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 9)
-                .foregroundStyle(.white)
-                .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .foregroundStyle(.primary)
+                .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(Color.accentColor.opacity(0.22), lineWidth: 0.5)
+                )
         }
     }
 
     private func assistantMessageBubble(_ markdown: String, isStreaming: Bool) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: isStreaming ? "ellipsis.bubble" : "sparkles")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: 20, height: 20)
+        HStack(alignment: .top, spacing: 10) {
+            RoundedRectangle(cornerRadius: 1)
+                .fill(Color.secondary.opacity(isStreaming ? 0.42 : 0.22))
+                .frame(width: 2)
             VStack(alignment: .leading, spacing: 6) {
                 if isStreaming {
                     Label("正在生成", systemImage: "dot.radiowaves.left.and.right")
@@ -659,24 +798,16 @@ struct TranslationBubble: View {
                 MarkdownText(markdown: markdown)
                     .textSelection(.enabled)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
+            .padding(.vertical, 2)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.background.opacity(0.72), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
-            )
         }
-        .id("assistant-current-\(request.id)")
     }
 
     private var assistantThinkingBubble: some View {
-        HStack(alignment: .center, spacing: 8) {
-            Image(systemName: "sparkles")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: 20, height: 20)
+        HStack(alignment: .center, spacing: 10) {
+            RoundedRectangle(cornerRadius: 1)
+                .fill(Color.secondary.opacity(0.28))
+                .frame(width: 2, height: 30)
             HStack(spacing: 8) {
                 SpinnerView()
                 Text("正在思考…")
@@ -685,7 +816,7 @@ struct TranslationBubble: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
-            .background(.background.opacity(0.72), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
     }
 
@@ -695,34 +826,50 @@ struct TranslationBubble: View {
 
     private func submitExplanationQuestion() {
         guard !isLoading else { return }
-        onAskExplanation(trimmedExplanationQuestion)
+        let question = trimmedExplanationQuestion
+        explanationQuestion = ""
+        onAskExplanation(question)
     }
 
     private func explanationQuestionBar(defaultSubmitOnReturn: Bool, isFollowUp: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(isFollowUp ? "继续追问会带上前面的解释上下文，并自动压缩较早对话。" : "快速解释会直接从第一性原理展开；也可以先输入你关心的问题，再围绕该关注点解释。")
-                .font(.caption)
+        HStack(spacing: 8) {
+            Image(systemName: isFollowUp ? "bubble.left.and.text.bubble.right" : "questionmark.bubble")
+                .font(.callout)
                 .foregroundStyle(.secondary)
-            HStack(spacing: 8) {
-                TextField(isFollowUp ? "继续追问…" : "例如：这里为什么强调 CPU 时间？", text: $explanationQuestion)
-                    .textFieldStyle(.roundedBorder)
-                    .submitLabel(.send)
-                    .onSubmit { submitExplanationQuestion() }
-                    .disabled(isLoading)
-                explanationSubmitButton(defaultSubmitOnReturn: defaultSubmitOnReturn)
-            }
+                .frame(width: 20)
+
+            TextField(isFollowUp ? "继续追问…" : "想先问什么？留空则直接解释", text: $explanationQuestion)
+                .textFieldStyle(.plain)
+                .submitLabel(.send)
+                .onSubmit { submitExplanationQuestion() }
+                .disabled(isLoading)
+
+            explanationSubmitButton(defaultSubmitOnReturn: defaultSubmitOnReturn)
         }
-        .padding(10)
-        .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+        )
     }
 
     @ViewBuilder
     private func explanationSubmitButton(defaultSubmitOnReturn: Bool) -> some View {
-        let title = trimmedExplanationQuestion.isEmpty ? (defaultSubmitOnReturn ? "直接解释" : "继续解释") : (defaultSubmitOnReturn ? "解释" : "继续追问")
-        let button = Button(title) {
+        let accessibilityTitle = trimmedExplanationQuestion.isEmpty
+            ? (defaultSubmitOnReturn ? "直接解释" : "继续解释")
+            : (defaultSubmitOnReturn ? "解释" : "继续追问")
+        let button = Button {
             submitExplanationQuestion()
+        } label: {
+            Image(systemName: "arrow.up.circle.fill")
+                .font(.title3)
+                .symbolRenderingMode(.hierarchical)
         }
-        .buttonStyle(.borderedProminent)
+        .buttonStyle(.plain)
+        .help(accessibilityTitle)
+        .accessibilityLabel(accessibilityTitle)
         .disabled(isLoading)
 
         if defaultSubmitOnReturn {
@@ -736,16 +883,8 @@ struct TranslationBubble: View {
     private var explanationPromptContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
+                originalSelectionCard
                 explanationQuestionBar(defaultSubmitOnReturn: true)
-
-                BubbleSection("原文") {
-                    Text(ContextSentenceFormatting.displayParagraph(request.word))
-                        .font(.body)
-                        .textSelection(.enabled)
-                        .foregroundStyle(.primary)
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
             }
             .padding(14)
             .onHeightChange { measuredContentHeight = $0 }
@@ -853,18 +992,25 @@ private struct AppKitDragCapture: NSViewRepresentable {
 // MARK: - AppKit resize capture
 
 private struct AppKitResizeCapture: NSViewRepresentable {
+    let cursor: NSCursor
     let onDelta: (CGSize) -> Void
 
-    func makeCoordinator() -> Coordinator { Coordinator(onDelta) }
+    func makeCoordinator() -> Coordinator { Coordinator(cursor: cursor, onDelta: onDelta) }
     func makeNSView(context: Context) -> NSView { context.coordinator.view }
     func updateNSView(_ nsView: NSView, context: Context) {
+        context.coordinator.cursor = cursor
         context.coordinator.onDelta = onDelta
+        nsView.window?.invalidateCursorRects(for: nsView)
     }
 
     final class Coordinator: NSObject {
+        var cursor: NSCursor
         var onDelta: (CGSize) -> Void
         lazy var view: CaptureView = CaptureView(coordinator: self)
-        init(_ cb: @escaping (CGSize) -> Void) { onDelta = cb }
+        init(cursor: NSCursor, onDelta: @escaping (CGSize) -> Void) {
+            self.cursor = cursor
+            self.onDelta = onDelta
+        }
     }
 
     final class CaptureView: NSView {
@@ -876,6 +1022,14 @@ private struct AppKitResizeCapture: NSViewRepresentable {
             super.init(frame: .zero)
         }
         required init?(coder: NSCoder) { fatalError() }
+
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            bounds.contains(point) ? self : nil
+        }
+
+        override func resetCursorRects() {
+            addCursorRect(bounds, cursor: coordinator?.cursor ?? .arrow)
+        }
 
         override func mouseDown(with event: NSEvent) {
             lastLoc = event.locationInWindow
@@ -894,6 +1048,121 @@ private struct AppKitResizeCapture: NSViewRepresentable {
         }
 
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    }
+}
+
+// MARK: - AppKit scroll observer
+
+private struct ExplanationScrollState: Equatable {
+    let isNearBottom: Bool
+    let hasOverflow: Bool
+}
+
+private struct ExplanationScrollObserver: NSViewRepresentable {
+    let onChange: (ExplanationScrollState, Bool) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(onChange: onChange) }
+    func makeNSView(context: Context) -> NSView { context.coordinator.view }
+    func updateNSView(_ nsView: NSView, context: Context) {
+        context.coordinator.onChange = onChange
+        context.coordinator.attachIfNeeded()
+        context.coordinator.report(userScrolled: false)
+    }
+
+    final class Coordinator: NSObject {
+        var onChange: (ExplanationScrollState, Bool) -> Void
+        lazy var view: ProbeView = ProbeView(coordinator: self)
+        private weak var scrollView: NSScrollView?
+        private var observedClipView: NSClipView?
+        private var lastState: ExplanationScrollState?
+
+        init(onChange: @escaping (ExplanationScrollState, Bool) -> Void) {
+            self.onChange = onChange
+        }
+
+        deinit {
+            if let observedClipView {
+                NotificationCenter.default.removeObserver(
+                    self,
+                    name: NSView.boundsDidChangeNotification,
+                    object: observedClipView
+                )
+            }
+        }
+
+        func attachIfNeeded() {
+            guard let found = view.enclosingScrollView else { return }
+            guard found !== scrollView else { return }
+
+            if let observedClipView {
+                NotificationCenter.default.removeObserver(
+                    self,
+                    name: NSView.boundsDidChangeNotification,
+                    object: observedClipView
+                )
+            }
+
+            scrollView = found
+            observedClipView = found.contentView
+            found.contentView.postsBoundsChangedNotifications = true
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(boundsDidChange),
+                name: NSView.boundsDidChangeNotification,
+                object: found.contentView
+            )
+        }
+
+        func report(userScrolled: Bool) {
+            attachIfNeeded()
+            guard let scrollView, let documentView = scrollView.documentView else { return }
+
+            let visible = scrollView.contentView.bounds
+            let documentBounds = documentView.bounds
+            let threshold: CGFloat = 28
+            let visibleHeight = visible.height
+            let documentHeight = documentBounds.height
+            let hasOverflow = documentHeight > visibleHeight + threshold
+
+            let isNearBottom: Bool
+            if !hasOverflow {
+                isNearBottom = true
+            } else if documentView.isFlipped {
+                isNearBottom = visible.maxY >= documentBounds.maxY - threshold
+            } else {
+                isNearBottom = visible.minY <= documentBounds.minY + threshold
+            }
+
+            let state = ExplanationScrollState(isNearBottom: isNearBottom, hasOverflow: hasOverflow)
+            if state != lastState || userScrolled {
+                lastState = state
+                DispatchQueue.main.async {
+                    self.onChange(state, userScrolled)
+                }
+            }
+        }
+
+        @objc private func boundsDidChange() {
+            report(userScrolled: true)
+        }
+    }
+
+    final class ProbeView: NSView {
+        weak var coordinator: Coordinator?
+
+        init(coordinator: Coordinator) {
+            self.coordinator = coordinator
+            super.init(frame: .zero)
+        }
+        required init?(coder: NSCoder) { fatalError() }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            DispatchQueue.main.async { [weak coordinator] in
+                coordinator?.attachIfNeeded()
+                coordinator?.report(userScrolled: false)
+            }
+        }
     }
 }
 
