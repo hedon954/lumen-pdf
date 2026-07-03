@@ -88,6 +88,8 @@ struct TranslationBubble: View {
             Divider()
             content
         }
+        .frame(width: cardWidth, height: customCardSize?.height)
+        .frame(maxHeight: customCardSize == nil ? maximumAutomaticCardHeight : nil)
         .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -96,8 +98,6 @@ struct TranslationBubble: View {
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(resizeHotZones)
         .shadow(color: .black.opacity(0.16), radius: 18, x: 0, y: 8)
-        .frame(width: cardWidth, height: customCardSize?.height)
-        .frame(maxHeight: customCardSize == nil ? maximumAutomaticCardHeight : nil)
         .onSizeChange { measuredCardSize = $0 }
     }
 
@@ -161,26 +161,33 @@ struct TranslationBubble: View {
     }
 
     private var resizeHotZones: some View {
-        ZStack(alignment: .bottomTrailing) {
+        let edgeThickness: CGFloat = 12
+        let cornerSize: CGFloat = 16
+        let footerControlClearance: CGFloat = 44
+
+        return ZStack(alignment: .bottomTrailing) {
             HStack(spacing: 0) {
                 Spacer()
                 resizeZone(.trailing)
-                    .frame(width: 8)
+                    .frame(width: edgeThickness)
+                    .padding(.bottom, footerControlClearance)
             }
 
             VStack(spacing: 0) {
                 Spacer()
                 resizeZone(.bottom)
-                    .frame(height: 8)
+                    .frame(height: edgeThickness)
+                    .padding(.trailing, footerControlClearance)
             }
 
             resizeZone(.corner)
-                .frame(width: 24, height: 24)
+                .frame(width: cornerSize, height: cornerSize)
                 .overlay(alignment: .bottomTrailing) {
                     Image(systemName: "arrow.down.right.and.arrow.up.left")
                         .font(.system(size: 8, weight: .semibold))
                         .foregroundStyle(.tertiary)
-                        .padding(5)
+                        .padding(4)
+                        .allowsHitTesting(false)
                 }
         }
         .allowsHitTesting(true)
@@ -190,6 +197,7 @@ struct TranslationBubble: View {
         AppKitResizeCapture(cursor: edge.cursor) { delta in
             resizeCard(by: delta, edge: edge)
         }
+        .contentShape(Rectangle())
     }
 
     private var minimumCardSize: CGSize {
@@ -1170,6 +1178,7 @@ private struct AppKitResizeCapture: NSViewRepresentable {
     final class CaptureView: NSView {
         weak var coordinator: Coordinator?
         private var lastLoc: CGPoint?
+        private var trackingArea: NSTrackingArea?
 
         init(coordinator: Coordinator) {
             self.coordinator = coordinator
@@ -1185,8 +1194,36 @@ private struct AppKitResizeCapture: NSViewRepresentable {
             addCursorRect(bounds, cursor: coordinator?.cursor ?? .arrow)
         }
 
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            if let trackingArea {
+                removeTrackingArea(trackingArea)
+            }
+            let area = NSTrackingArea(
+                rect: .zero,
+                options: [.activeAlways, .inVisibleRect, .mouseEnteredAndExited, .mouseMoved],
+                owner: self,
+                userInfo: nil
+            )
+            addTrackingArea(area)
+            trackingArea = area
+        }
+
+        override func mouseEntered(with event: NSEvent) {
+            coordinator?.cursor.set()
+        }
+
+        override func mouseMoved(with event: NSEvent) {
+            coordinator?.cursor.set()
+        }
+
+        override func mouseExited(with event: NSEvent) {
+            NSCursor.arrow.set()
+        }
+
         override func mouseDown(with event: NSEvent) {
             lastLoc = event.locationInWindow
+            coordinator?.cursor.set()
         }
 
         override func mouseDragged(with event: NSEvent) {
