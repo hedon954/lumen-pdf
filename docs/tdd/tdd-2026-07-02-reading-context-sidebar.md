@@ -1,68 +1,36 @@
-# LumenPDF — 阅读上下文右栏 TDD
+# LumenPDF — 阅读上下文与 AI 导读 TDD
 
-**版本**: v1.0.12 · **日期**: 2026-07-02
+**版本**: v1.0.12 · **日期**: 2026-07-03
 
 对应 PRD：`docs/prd/prd-2026-07-02-reading-context-sidebar.md`
 
----
+## 1. 技术结论
 
-## 1. 技术目标
+本次改动限定在 Swift / SwiftUI / PDFKit 层完成，不新增 Rust 数据结构和数据库迁移。右栏读取 `AppState` 中的全量单词与笔记后在本地过滤；笔记多条内容复用现有 `notes.note` TEXT 字段；AI 导读多轮状态只保存在当前 `TranslationBubbleRequest` 生命周期内。
 
-在不改 Rust 数据结构、不新增数据库迁移的前提下，在 SwiftUI 阅读页中加入右侧上下文栏，展示当前 PDF 的单词与笔记，并复用 / 扩展现有 PDFKit 定位能力。
+## 2. 变更模块
 
----
-
-## 2. 现有基础
-
-### 2.1 Swift AppState
-
-`AppState` 已维护：
-
-- `selectedDocument`
-- `vocabulary`
-- `notes`
-- `currentPageIndex`
-- `refreshVocabulary()`
-- `refreshNotes()`
-
-因此右栏可以作为只读视图消费 AppState 数据，不需要直接访问 Rust bridge。
-
-### 2.2 现有跳页能力
-
-`VocabularyListView` 和 `NoteListView` 已通过 `.jumpToPage` 通知实现来源页跳转。PDFReader Coordinator 已监听该通知，并调用 `PDFView.go(to:)`。
-
-### 2.3 现有位置数据
-
-- `VocabularyEntry.selectionBounds` 保存单词选区 bounds。
-- `NoteEntry.boundsStr` 保存笔记选区 bounds。
-- PDFReader 已使用这些 bounds 恢复高亮和下划线。
-
----
-
-## 3. 方案概览
-
-本迭代新增 / 修改：
-
-| 模块 | 变更 |
+| 模块 | 结论 |
 | --- | --- |
-| `docs/prd/prd-2026-07-02-reading-context-sidebar.md` | 新增需求文档 |
-| `docs/tdd/tdd-2026-07-02-reading-context-sidebar.md` | 新增技术文档 |
-| `LumenPDF/Views/ReadingContextSidebarView.swift` | 新增阅读上下文右栏 |
-| `LumenPDF/Views/ContentView.swift` | 阅读 Tab 中组合 PDFReader 与右栏；新增右栏显隐按钮 |
-| `LumenPDF/Views/PDFReaderView.swift` | 新增 bounds 级定位通知与处理逻辑 |
-| `LumenPDF/App/AppState.swift` | 切换文档时刷新单词 / 笔记数据 |
+| `ContentView.swift` | 在阅读页组合 PDFReader 和右栏，提供右栏显隐按钮，并在显隐切换时保留 PDF viewport。 |
+| `ReadingContextSidebarView.swift` | 新增当前 PDF 的单词 / 笔记右栏，支持页码分组、滚动联动、选区定位、笔记分组和展开收起。 |
+| `PDFReaderView.swift` | 拆分普通划线与笔记路径；支持笔记追加、选区合并、多轮解释、AI 回复保存为笔记、bounds 定位和 viewport 恢复。 |
+| `TranslationBubble.swift` | 提供 AI 导读聊天窗口、Markdown 渲染、流式滚动锚定、输入框自动聚焦、逐条保存、删除已保存回复、拖动和缩放。 |
+| `NoteTextList.swift` | 用 JSON `[String]` 兼容存储多条笔记，并兼容旧纯文本数据。 |
+| `NoteListView.swift` | 管理页按多条笔记渲染 Markdown，并用多段文本编辑。 |
+| `BridgeService.swift` | 包装 `listNotesByPdf` 等 UniFFI API。 |
+| `KeychainService.swift` | 使用重装稳定的 Keychain service 读取 / 迁移 API Key，避免本地重装后反复授权。 |
 
----
+## 3. 数据结构
 
-## 4. 数据模型
-
-Swift-only 聚合模型：
+### 3.1 右栏条目
 
 ```swift
 private struct ReadingContextItem: Identifiable {
     enum Kind { case vocabulary, note }
 
     let id: String
+    let sourceId: String
     let kind: Kind
     let pageIndex: UInt32
     let pdfPath: String
@@ -70,58 +38,44 @@ private struct ReadingContextItem: Identifiable {
     let title: String
     let subtitle: String
     let detail: String
+    let noteMarkdownItems: [ReadingContextNoteItem]
     let createdAt: Int64
 }
 ```
 
-转换规则：
+- 单词条目由 `VocabularyEntry` 映射，使用 `selectionBounds` 做定位。
+- 笔记条目由 `NoteEntry` 按 `pdfPath + pageIndex + boundsStr + content` 分组。
+- 分组后的笔记条目保留同一选区下的每条 markdown 内容和各自创建时间。
+- 排序规则：页码升序，同页内创建时间降序，再按稳定 ID 排序。
 
-- `VocabularyEntry` → `ReadingContextItem(kind: .vocabulary, boundsStr: selectionBounds)`
-- `NoteEntry` → `ReadingContextItem(kind: .note, boundsStr: boundsStr)`
+### 3.2 笔记内容
 
-排序：
+`NoteTextList` 负责所有笔记文本的读写：
 
-```swift
-items.sorted {
-    if $0.pageIndex != $1.pageIndex { return $0.pageIndex < $1.pageIndex }
-    return $0.createdAt > $1.createdAt
-}
-```
+- `decode(_:)` 兼容 JSON array、JSON string、旧纯文本和嵌套转义字符串。
+- `encode(_:)` 将非空内容写成 JSON `[String]`。
+- `appending(_:to:)` 用于向已有笔记追加内容。
+- `editText(_:)` 在编辑页把多条笔记展开为用空行分隔的文本。
+- `markdown(_:)` 用于多条笔记的 Markdown 展示。
 
----
+## 4. 阅读上下文右栏
 
-## 5. SwiftUI 布局
+`ReadingContextSidebarView` 直接消费 `AppState.vocabulary` 和 `AppState.notes`：
 
-`ContentView` 的 detail 区保持 PDFReader 保活策略，但在 reader 模式下将 PDFReader 包进 `HStack`：
+- `mode == .vocabulary` 时过滤当前 PDF 的单词。
+- `mode == .note` 时过滤当前 PDF 的笔记并按选区分组。
+- `ScrollViewReader` 根据 `appState.currentPageIndex` 自动滚动到当前页或之后最近页。
+- 页分组 `onAppear` 在用户手动滚动时发送 `.jumpToPage`，程序化滚动通过 `isProgrammaticScroll` 抑制反向跳转。
+- 点击卡片发送 `.jumpToSelectionBounds`，并附带 `pageIndex`、`filePath`、`boundsStr`、`itemId`、`kind`。
 
-```swift
-HStack(spacing: 0) {
-    PDFReaderView(document: doc)
-        .id(doc.id)
+右栏显隐由 `ContentView.toggleReadingContextSidebarPreservingViewport()` 处理：
 
-    if showReadingContextSidebar {
-        Divider()
-        ReadingContextSidebarView()
-            .frame(width: 320)
-    }
-}
-```
+1. 发送 `.saveReadingPositionNow`；
+2. 切换 `showReadingContextSidebar`；
+3. 发送 `.restoreReadingViewport`；
+4. PDFKit coordinator 在布局变化后恢复页码和 normalized offset。
 
-显示条件：
-
-- `activeTab == .reader`
-- `selectedDocument != nil`
-- `showReadingContextSidebar == true`
-
-右栏显隐状态用 `@AppStorage` 持久化。
-
-右栏不再提供全部 / 范围筛选：`ReadingContextMode` 只有 `.vocabulary` 和 `.note`，`onChange(appState.currentPageIndex)` 自动滚动到当前页或后续最近条目。用户手动滚动右栏时，页分组 `onAppear` 会发送 `.jumpToPage`，让 PDF 同步到右栏所在页；程序化滚动用 `isProgrammaticScroll` 抑制反向跳转，避免循环。
-
-右栏显隐通过 `toggleReadingContextSidebarPreservingViewport()` 完成：先发送 `.saveReadingPositionNow` 刷新 AppState 中的当前页和 normalized offset，再切换右栏，最后发送 `.restoreReadingViewport` 给 PDFKit coordinator，在布局变化后恢复页码和页内滚动位置。
-
----
-
-## 6. 定位通知
+## 5. PDF 选区定位
 
 新增通知：
 
@@ -131,125 +85,172 @@ extension Notification.Name {
 }
 ```
 
-`userInfo`：
+PDFKit coordinator 处理流程：
 
-| key | type | 说明 |
-| --- | --- | --- |
-| `pageIndex` | `Int` | 0-based 页码 |
-| `filePath` | `String` | PDF 路径 |
-| `boundsStr` | `String` | 选区矩形串 |
-| `itemId` | `String` | 单词 / 笔记 ID |
-| `kind` | `String` | `vocabulary` 或 `note` |
+1. 校验通知中的 `filePath` 是否为当前 PDF；
+2. 跳到 `pageIndex` 对应页面；
+3. 解析 `boundsStr`，计算选区 union rect；
+4. 将 PDF page rect 转换为 `PDFView` 坐标；
+5. 滚动 enclosing scroll view，使目标区域进入视口；
+6. 添加短暂 focus annotation；
+7. bounds 为空或解析失败时降级为纯跳页。
 
-处理流程：
+## 6. 划线与笔记
 
-1. 校验 `filePath == currentFilePath`；
-2. 找到目标 `PDFPage`；
-3. `pdfView.go(to: page)`；
-4. 如果 bounds 可解析，则计算 union rect；
-5. 用 `pdfView.convert(_:from:)` 转为 view 坐标；
-6. 通过 enclosing scroll view 滚动到目标区域；
-7. 临时添加半透明 focus annotation，短暂展示后移除。
+普通划线路径：
 
-如果 bounds 为空或解析失败，降级为纯跳页。
+- 选区菜单「划线」直接发送 `.addFreeAnnotation`。
+- 不创建 `UnderlineNoteDraft`。
+- 不写 `notes` 表。
 
----
+笔记路径：
 
+- 选区菜单「笔记」创建 `UnderlineNoteDraft`。
+- `UnderlineNoteDraftView` 展示选中文本和 `TextEditor`。
+- 保存时调用 `saveUnderlineNote(word:noteText:boundsStr:page:)`。
+- 完整选中已有笔记划线时，菜单提供「添加笔记」和「取消笔记」。
 
-## 7. 普通划线与笔记输入框
+合并规则：
 
-`PDFReaderView` 同时保留普通划线和笔记划线两条路径。用户点击选区菜单「划线」时，通过 `.addFreeAnnotation` 直接写入普通下划线，不创建 draft，也不调用 `BridgeService.saveNote`。用户点击「笔记」时，才创建 `UnderlineNoteDraft`，暂不立即保存。
+- 已有完全相同选区：追加笔记文本或删除该笔记，由菜单动作决定。
+- 新选区被已有笔记完全覆盖：不创建重复 note。
+- 新选区与已有笔记部分重叠：删除参与合并的旧 notes，创建包含旧 rects 和新 rects 的新 note。
+- 无重叠：创建独立 note。
+- 合并 rects 时只合并同一文本行上相交或相邻的矩形。
 
-`UnderlineNoteDraftView` 负责：
+PDF annotation 同步：
 
-- 展示选中文本预览；
-- 提供 `TextEditor` 输入用户自己的想法 / 理解；
-- 支持「取消」直接关闭；
-- 支持「保存」后把 trim 后的 note text 传回 `saveUnderlineNote(word:noteText:boundsStr:page:)`。
+- 新增笔记发送 `.addUnderlineNote`。
+- 删除笔记发送 `.removeUnderlineNote`。
+- 合并笔记通过 `.addUnderlineNote` 携带 `deletedNoteIds` 和 `deletedNotesInfo`，用于移除旧下划线和支持 undo。
 
-笔记文本使用 `NoteTextList` 以 JSON `[String]` 形式存入现有 `notes.note` TEXT 字段：
+## 7. AI 导读窗口
 
-- 旧纯文本 note 会按单元素 list 兼容读取；
-- 新建笔记把输入保存为一条 list item；
-- 合并旧笔记时把旧 list 与本次输入 append，避免丢失已有理解；
-- 展示、编辑、导出时再解码为多条笔记。
+### 7.1 对话状态
 
-保存路径继续复用原笔记合并算法。普通「划线」只影响自由下划线；「笔记」才写入 notes 表并添加 note-linked 下划线。完全相同选区不再只承担删除语义：选区菜单会显示「添加笔记」用于向现有 note list append 新条目，同时保留「取消笔记」用于删除该笔记及其关联下划线。
+`TranslationBubbleRequest` 新增：
 
-## 8. 笔记划线合并算法
+- `explanationMessages: [ExplanationMessage]`
+- `explanationSummary: String`
 
-`PDFReaderView.saveUnderlineNote` 在保存笔记前读取当前 PDF 的同页笔记，并按 bounds 关系分流：
+`PDFReaderView.requestExplanation` 在每轮提交时：
 
-1. `boundsStr` 完全一致：删除已有 note，并发送 `.removeUnderlineNote`。
-2. 新 rects 被任一已有 note 的 rects 完全覆盖：直接返回，不写 DB、不改 PDF annotation。
-3. 新 rects 与已有 note rects 有面积交集：删除参与合并的旧 notes，创建一条包含旧 rects + 新 rects 的新 note，并通过 `.addUnderlineNote` 的 `deletedNoteIds` / `deletedNotesInfo` 让 PDFKit 移除旧下划线、绘制扩展后的下划线；undo 使用这些 payload 恢复旧 notes。
-4. 无交集：创建独立 note。
+1. 读取当前 `translationRequest` 的历史消息。
+2. 追加 user message 和空 assistant message。
+3. 流式返回时只更新最后一条 assistant message。
+4. 保留最近 20 条完整消息。
+5. 将更早消息压缩为 digest，并把总上下文限制在固定长度。
+6. 原始选中文案和原始上下文始终单独传入，不参与压缩。
 
-合并 rects 时只合并同一文本行上相交/相邻的矩形，跨行选区仍保持 pipe-separated per-line bounds，避免把行间空白也画成下划线区域。
+### 7.2 滚动与焦点
 
+`TranslationBubble` 使用 `ScrollViewReader` 和 `ExplanationScrollObserver`：
 
-## 9. AI 解释多轮追问
+- `ExplanationScrollObserver` 读取底层 `NSScrollView` 的 `isNearBottom` 与 `hasOverflow`。
+- 用户位于底部或内容未溢出时，流式输出保持滚动到底部。
+- 用户向上滚动后，`explanationShouldFollowStream` 变为 false，后续 token 不强制滚动。
+- 新消息追加、内容高度变化、loading 结束时只在允许跟随时滚动。
+- 解释输入框在进入解释界面和回答完成后通过 `@FocusState` 自动聚焦。
 
-解释气泡复用 `TranslationBubbleRequest` 承载临时对话状态：
+### 7.3 拖动与缩放
 
-- `explanationMessages`: chatbot 式消息列表，按 user / assistant 顺序保存已完成消息和当前流式 assistant 占位。
-- `explanationSummary`: 传给后续 LLM 请求的本地压缩上下文。
+- `AppKitDragCapture` 负责窗口拖动。
+- `AppKitResizeCapture` 负责边缘和右下角缩放。
+- resize 热区覆盖在最终 card frame 上，避免和 SwiftUI frame 顺序错位。
+- 底部和右侧热区为 footer 控件留出空间，删除按钮不会被 resize layer 截获。
+- `NSTrackingArea` + cursor rect 共同保证 hover 时显示 resize cursor。
 
-`TranslationBubble` 使用 chatbot 式消息流展示解释：前文 user / assistant 气泡稳定保留，新问题和流式回答向下追加；follow-up 输入框固定在消息流底部。用户继续追问时调用原有 `onAskExplanation` 回调，不关闭气泡、不要求重新选择 PDF 原文。
+### 7.4 Markdown 渲染
 
-`PDFReaderView.requestExplanation` 在发起下一轮前读取当前 `translationRequest`：
+`MarkdownText` 使用 `StructuredText(markdown:)`：
 
-1. 在 `explanationMessages` 末尾追加最新 user message 和一个空 assistant message。
-2. assistant 流式返回时只更新最后一个 assistant message 的内容，避免重建前文。
-3. 保留最近 10 轮（20 条 user / assistant messages）完整问答。
-4. 将更早 messages 压缩为短 digest，并把对话摘要截断到固定长度；原始选中文案和原始上下文始终单独传入，不参与压缩。
-5. 把「当前问题 + 压缩上下文」拼入现有 `focus` 参数，复用 `BridgeService.explainSelectionStreaming` / Rust UniFFI 接口。
+- AI assistant 消息用 Markdown 渲染。
+- 笔记页和右栏笔记用 Markdown 渲染。
+- 文本选择保持启用。
 
-该实现不新增数据库表，不持久化聊天记录；关闭气泡后上下文释放。
+## 8. 保存 AI 回复到笔记
 
----
+`TranslationBubble` 通过 `savedExplanationEntryIds: [String: String]` 记录 message ID 到 note ID 的映射。
 
-## 10. 线程与架构约束
+- 单条 assistant 消息未保存时显示「保存这条」。
+- 已保存消息显示「已保存」。
+- 底部无已保存消息时显示「保存所有AI回复」。
+- 底部存在已保存消息时显示「已保存到笔记」和删除按钮。
+- 删除按钮遍历所有已保存 note ID，调用 `BridgeService.deleteNote(id:)`，再触发父级刷新。
 
-- 新增右栏 View 不直接调用 `BridgeService`。
-- 数据读取走 `AppState.vocabulary` / `AppState.notes`。
-- 数据刷新由 `AppState.refreshVocabulary()` / `AppState.refreshNotes()` 完成。
+`PDFReaderView.saveExplanationMessageToNote` 使用当前选区创建 note：
+
+- `content = request.word`
+- `note = assistant message content`
+- `boundsStr = request.boundsStr`
+- 保存后发送 `.addUnderlineNote`
+- 刷新 `AppState.notes`
+
+保存后的多条 AI 回复会被右栏的 `NoteSelectionKey` 归为同一选区卡片，并以独立时间条目展示。
+
+## 9. Keychain
+
+`KeychainService` 同时维护两个 service：
+
+- `com.LumenPDF.app.reinstall-stable`
+- `com.LumenPDF.app`
+
+写入策略：
+
+1. 优先写入 reinstall-stable service，并使用 `SecAccessCreate` 创建不绑定当前 ad-hoc 签名的访问控制。
+2. 同时尝试写入 data-protection keychain 的原 service。
+3. 两者至少一个成功即视为保存成功。
+
+读取策略：
+
+1. 先读 reinstall-stable service，且禁止认证 UI。
+2. 再读 data-protection keychain 的原 service。
+3. 最后读非 data-protection 的旧 service。
+4. 读到旧值后迁移到 reinstall-stable service。
+
+## 10. 架构约束
+
+- 右栏读取数据走 `AppState`，不直接访问 Rust bridge。
 - UI 状态更新保持在 `@MainActor`。
+- PDFKit 交互集中在 coordinator 和窄 AppKit representable。
 - Rust domain / application / infrastructure 不变。
+- 数据库 schema 不变。
 
----
+## 11. 验证
 
-## 11. 测试策略
+手动验证：
 
-### 11.1 手动验证
+1. 打开含单词和笔记的 PDF，右栏只展示当前 PDF 数据。
+2. 滚动 PDF，右栏跟随到当前页或最近页。
+3. 手动滚动右栏，PDF 同步跳页。
+4. 点击单词 / 笔记卡片，PDF 跳转并聚焦选区。
+5. 点击「划线」，只创建普通下划线。
+6. 点击「笔记」，保存空内容和非空内容都能创建笔记划线。
+7. 对同一选区追加多条笔记，右栏按条目分开展示时间。
+8. 笔记 Markdown 在右栏和笔记页正确渲染。
+9. 笔记卡片默认收起，展开后展示完整内容。
+10. AI 导读连续追问，历史消息稳定保留，回复用 Markdown 渲染。
+11. 流式输出在底部时持续跟随；用户向上滚动后不强制回到底部。
+12. 解释窗口可拖动、可缩放，hover 到边缘出现 resize cursor。
+13. 保存单条 AI 回复和保存所有 AI 回复后，右栏出现独立笔记条目。
+14. 删除已保存 AI 回复后，右栏和笔记页同步刷新。
+15. 本地重新安装 App 后，API Key 能读取且不反复弹钥匙串授权。
 
-1. 打开含单词和笔记的 PDF。
-2. 确认右侧栏展示当前 PDF 的条目。
-3. 滚动 PDF，确认右侧栏跟随到当前页附近条目。
-4. 点击「划线」，确认直接添加普通下划线且不弹出输入框。
-5. 点击「笔记」，填写理解并保存，确认笔记页和右栏都展示该理解。
-6. 对完全相同选区点击「添加笔记」，确认追加为 note list 的新条目。
-7. 对完全相同选区点击「取消笔记」，确认删除旧笔记及其关联下划线。
-8. 对已有笔记的子区域点击「笔记」并保存，确认不新增、不改动。
-9. 对一半旧选区一半新区点击「笔记」并保存，确认旧笔记扩展为一条合并笔记。
-10. 点击单词卡片，确认 PDF 跳转到对应页并尽量定位到高亮附近。
-11. 点击笔记卡片，确认 PDF 跳转到对应页并尽量定位到下划线附近。
-12. 点击工具栏按钮隐藏 / 显示右栏。
-13. 点击「解释」并完成首轮生成后，在解释下方继续追问，确认消息像 chatbot 一样向下追加，前文问答不闪烁、不重置位置，且新回答能承接上下文。
-14. 连续追问 5 轮以上，确认较早上下文被压缩，不会无限增长。
+程序检查：
 
-### 11.2 程序检查
+- Swift / PDFKit 层改动优先运行 Xcode build。
+- Rust 未改动时不强制运行 `cargo test`。
+- 提交前保留 pre-commit hooks。
 
-- `swiftc` 不直接适用完整 App，因为项目依赖 Xcode / PDFKit / UniFFI 生成物。
-- 优先运行 Xcode build 或 `xcodebuild`。
-- Rust 未改动时无需运行 `cargo test` 作为强制项，但可作为回归检查。
+当前验证命令：
 
----
+```bash
+xcodebuild -project LumenPDF/LumenPDF.xcodeproj -scheme LumenPDF -configuration Debug -destination 'platform=macOS' build
+```
 
 ## 12. 后续优化
 
-1. 加 `list_vocabulary_by_pdf` UniFFI API，避免全量加载词库。
-2. 添加右栏卡片选中态，并在定位后保持当前选中项。
-3. PDF 标注点击反向滚动右栏。
-4. 用 `HSplitView` 支持用户拖拽调整右栏宽度。
-5. 对 `pdf_path + page_index` 增加数据库索引。
+1. `list_vocabulary_by_pdf` 和按 PDF 查询的分页 API。
+2. 右栏卡片选中态和 PDF 标注反向选中右栏卡片。
+3. 数据库 `pdf_path + page_index` 索引。
+4. 右栏宽度用户可调。
