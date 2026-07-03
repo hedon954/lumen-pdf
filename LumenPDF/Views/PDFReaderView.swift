@@ -119,6 +119,7 @@ private struct UnderlineNoteDraftView: View {
 
 struct PDFReaderView: View {
     let document: PdfDocument
+    let onExplainSelection: (PDFSelectionContext) -> Void
     @EnvironmentObject private var appState: AppState
     @StateObject private var session = ReadingSessionService()
 
@@ -203,43 +204,14 @@ struct PDFReaderView: View {
                         isLoading: isTranslating,
                         availableSize: bubbleProxy.size,
                         onSave: { result in
-                            if req.isExplanationMode || req.isSentenceMode {
+                            if req.isSentenceMode {
                                 saveSentenceToNote(result: result, request: req)
                             } else {
                                 saveToDiary(result: result, request: req)
                             }
                         },
-                        onDelete: { deletedId in
-                        // Remove underline annotation if it was saved as a note
-                        NotificationCenter.default.post(
-                            name: .removeUnderlineNote,
-                            object: nil,
-                            userInfo: [
-                                "noteId": deletedId,
-                                "pageIndex": req.page,
-                                "filePath": document.filePath
-                            ]
-                        )
-                        // Also try to remove highlight (in case it was saved as vocabulary)
-                        NotificationCenter.default.post(
-                            name: .removeHighlight,
-                            object: nil,
-                            userInfo: [
-                                "entryId": deletedId,
-                                "pageIndex": req.page,
-                                "filePath": document.filePath
-                            ]
-                        )
-                            appState.refreshVocabulary()
-                            appState.refreshNotes()
-                        },
-                        onSaveExplanationMessage: { message in
-                            saveExplanationMessageToNote(message: message, request: req)
-                        },
-                        onAskExplanation: { focus in
-                            requestExplanation(selection: req.word, context: req.sentence,
-                                               bounds: req.bounds, boundsStr: req.boundsStr,
-                                               page: req.page, focus: focus)
+                        onDelete: { deletedId, savedToNote in
+                            deleteTranslationSave(id: deletedId, savedToNote: savedToNote, request: req)
                         },
                         onDismiss: { translationRequest = nil }
                     )
@@ -285,9 +257,17 @@ struct PDFReaderView: View {
             }
             Divider().frame(height: 26)
             actionBarBtn(icon: "text.bubble", label: "解释") {
-                presentExplanationPrompt(selection: sel.word, context: sel.sentence,
-                                         bounds: sel.bounds, boundsStr: sel.boundsStr,
-                                         page: sel.page)
+                onExplainSelection(
+                    PDFSelectionContext(
+                        pdfPath: document.filePath,
+                        pdfName: document.fileName,
+                        pageIndex: sel.page,
+                        selectedText: sel.word,
+                        surroundingText: sel.sentence,
+                        bounds: sel.bounds,
+                        boundsStr: sel.boundsStr
+                    )
+                )
                 pendingSelection = nil
             }
             Divider().frame(height: 26)
@@ -667,8 +647,7 @@ struct PDFReaderView: View {
             bounds: bounds, boundsStr: boundsStr,
             page: page, result: nil, translationError: nil,
             existingEntryId: existingEntryId,
-            isSentenceMode: isSentenceMode,
-            isExplanationMode: false
+            isSentenceMode: isSentenceMode
         )
         isTranslating = true
 
@@ -724,186 +703,6 @@ struct PDFReaderView: View {
         }
     }
 
-
-    // MARK: - Explanation
-
-    private func presentExplanationPrompt(selection: String, context: String,
-                                          bounds: CGRect, boundsStr: String, page: Int) {
-        translationRequest = TranslationBubbleRequest(
-            word: selection, sentence: context,
-            bounds: bounds, boundsStr: boundsStr,
-            page: page, result: nil, translationError: nil,
-            existingEntryId: nil,
-            isSentenceMode: true,
-            isExplanationMode: true
-        )
-        isTranslating = false
-    }
-
-    private func requestExplanation(selection: String, context: String,
-                                    bounds: CGRect, boundsStr: String, page: Int,
-                                    focus: String?) {
-        BridgeService.shared.initializeIfNeeded()
-
-        let priorRequest = translationRequest
-        let priorMessages = priorRequest?.explanationMessages ?? []
-        let trimmedFocus = focus?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let compressedContext = Self.compressedExplanationContext(
-            summary: priorRequest?.explanationSummary ?? "",
-            messages: priorMessages
-        )
-        let focusWithContext = Self.explanationFocusPrompt(
-            userQuestion: trimmedFocus,
-            compressedContext: compressedContext,
-            originalSelection: selection,
-            originalContext: context
-        )
-        let userMessage = ExplanationMessage(
-            role: .user,
-            content: trimmedFocus.isEmpty ? "直接解释" : trimmedFocus
-        )
-        let assistantMessage = ExplanationMessage(role: .assistant, content: "")
-        let pendingMessages = priorMessages + [userMessage, assistantMessage]
-
-        translationRequest = TranslationBubbleRequest(
-            id: priorRequest?.id ?? UUID(),
-            word: selection, sentence: context,
-            bounds: bounds, boundsStr: boundsStr,
-            page: page, result: nil, translationError: nil,
-            existingEntryId: nil,
-            isSentenceMode: true,
-            isExplanationMode: true,
-            explanationMessages: pendingMessages,
-            explanationSummary: compressedContext
-        )
-        isTranslating = true
-
-        let requestId = translationRequest?.id
-
-        Task {
-            @MainActor func applyPartial(_ partial: TranslationResult) {
-                guard var req = translationRequest, req.id == requestId else { return }
-                req.result = partial
-                req.explanationMessages = Self.updatingLastAssistantMessage(
-                    in: req.explanationMessages,
-                    content: partial.contextExplanation
-                )
-                req.translationError = nil
-                translationRequest = req
-            }
-
-            do {
-                let result = try await BridgeService.shared.explainSelectionStreaming(
-                    selection: selection,
-                    context: context,
-                    focus: focusWithContext,
-                    onPartial: { partial in applyPartial(partial) }
-                )
-
-                await MainActor.run {
-                    guard var req = translationRequest, req.id == requestId else { return }
-                    req.result = result
-                    req.explanationMessages = Self.updatingLastAssistantMessage(
-                        in: req.explanationMessages,
-                        content: result.contextExplanation
-                    )
-                    req.translationError = nil
-                    translationRequest = req
-                    isTranslating = false
-                }
-            } catch {
-                await MainActor.run {
-                    guard var req = translationRequest, req.id == requestId else { return }
-                    var detail = TranslationErrorFormatter.userMessage(from: error)
-                    if detail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        detail = "解释失败：\(String(describing: error))"
-                    }
-                    req.translationError = detail
-                    translationRequest = req
-                    isTranslating = false
-                }
-            }
-        }
-    }
-
-    private static func updatingLastAssistantMessage(
-        in messages: [ExplanationMessage],
-        content: String
-    ) -> [ExplanationMessage] {
-        guard let lastAssistantIndex = messages.lastIndex(where: { $0.role == .assistant }) else {
-            return messages
-        }
-        var updated = messages
-        updated[lastAssistantIndex].content = content
-        return updated
-    }
-
-    private static func compressedExplanationContext(
-        summary: String,
-        messages: [ExplanationMessage]
-    ) -> String {
-        let compactSummary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
-        let completedMessages = messages.filter { !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-        let recentMessages = completedMessages.suffix(20).map { message in
-            let role = message.role == .user ? "User" : "Assistant"
-            return "\(role): \(truncated(message.content, limit: message.role == .user ? 220 : 620))"
-        }.joined(separator: "\n---\n")
-
-        let olderCount = max(0, completedMessages.count - 20)
-        var sections: [String] = []
-        if !compactSummary.isEmpty {
-            sections.append("Existing compressed context:\n\(truncated(compactSummary, limit: 700))")
-        }
-        if olderCount > 0 {
-            let olderDigest = completedMessages.prefix(olderCount).map { message in
-                let role = message.role == .user ? "User" : "Assistant"
-                return "- \(role): \(truncated(message.content, limit: 180))"
-            }.joined(separator: "\n")
-            sections.append("Older messages digest:\n\(olderDigest)")
-        }
-        if !recentMessages.isEmpty {
-            sections.append("Recent messages:\n\(recentMessages)")
-        }
-        return truncated(sections.joined(separator: "\n\n"), limit: 3_600)
-    }
-
-
-    private static func explanationFocusPrompt(
-        userQuestion: String,
-        compressedContext: String,
-        originalSelection: String,
-        originalContext: String
-    ) -> String {
-        var parts: [String] = []
-        parts.append("Original selected text / 原始选中文案（不要压缩或改写，以此为准）:\n\(originalSelection)")
-        if !originalContext.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-           originalContext != originalSelection {
-            parts.append("Original surrounding context / 原始上下文（不要压缩或改写）:\n\(originalContext)")
-        }
-        let question = userQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !question.isEmpty {
-            parts.append("Current user question / 当前用户问题:\n\(question)")
-        }
-        let context = compressedContext.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !context.isEmpty {
-            parts.append("Conversation context summary / 对话上下文摘要（用于多轮追问，必要时纠正或延续前文）:\n\(context)")
-        }
-        parts.append("""
-        Conversation style / 对话衔接要求:
-        - Continue the same reading conversation instead of restarting the explanation.
-        - Answer the newest user question directly; avoid meta-openers such as “你刚才问的是” or “根据上下文” unless they are needed for clarity.
-        - Ground every answer in the original selected text; use previous messages only to keep continuity.
-        - Prefer concise paragraphs or short bullets over repeating the full prior explanation.
-        """)
-        return parts.joined(separator: "\n\n")
-    }
-
-    private static func truncated(_ text: String, limit: Int) -> String {
-        guard text.count > limit else { return text }
-        let index = text.index(text.startIndex, offsetBy: max(0, limit))
-        return String(text[..<index]) + "…"
-    }
-
     // MARK: - Save to vocabulary
 
     @discardableResult
@@ -939,15 +738,9 @@ struct PDFReaderView: View {
     private func saveSentenceToNote(result: TranslationResult, request: TranslationBubbleRequest) -> String? {
         BridgeService.shared.initializeIfNeeded()
 
-        let noteText: String
-        if request.isExplanationMode {
-            noteText = result.contextExplanation
-        } else {
-            // Get translation text (prefer contextSentenceTranslation, fallback to contextTranslation)
-            noteText = result.contextSentenceTranslation.isEmpty
-                ? result.contextTranslation
-                : result.contextSentenceTranslation
-        }
+        let noteText = result.contextSentenceTranslation.isEmpty
+            ? result.contextTranslation
+            : result.contextSentenceTranslation
 
         guard let noteEntry = try? BridgeService.shared.saveNote(
             pdfPath: document.filePath,
@@ -974,43 +767,38 @@ struct PDFReaderView: View {
         )
 
         appState.refreshNotes()
-        appState.showToast(request.isExplanationMode ? "解释已保存到笔记" : "已保存到笔记")
+        appState.showToast("已保存到笔记")
         return noteEntry.id
     }
 
-    @discardableResult
-    private func saveExplanationMessageToNote(message: String, request: TranslationBubbleRequest) -> String? {
-        BridgeService.shared.initializeIfNeeded()
-
-        let noteText = message.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !noteText.isEmpty else { return nil }
-
-        guard let noteEntry = try? BridgeService.shared.saveNote(
-            pdfPath: document.filePath,
-            pdfName: document.fileName,
-            pageIndex: UInt32(request.page),
-            content: request.word,
-            note: noteText,
-            boundsStr: request.boundsStr
-        ) else {
-            appState.showToast("保存笔记失败")
-            return nil
+    private func deleteTranslationSave(id: String, savedToNote: Bool, request: TranslationBubbleRequest) {
+        if savedToNote {
+            try? BridgeService.shared.deleteNote(id: id)
+            NotificationCenter.default.post(
+                name: .removeUnderlineNote,
+                object: nil,
+                userInfo: [
+                    "noteId": id,
+                    "pageIndex": request.page,
+                    "filePath": document.filePath
+                ]
+            )
+            appState.refreshNotes()
+            appState.showToast("已从笔记删除")
+        } else {
+            try? BridgeService.shared.deleteVocabulary(id: id)
+            NotificationCenter.default.post(
+                name: .removeHighlight,
+                object: nil,
+                userInfo: [
+                    "entryId": id,
+                    "pageIndex": request.page,
+                    "filePath": document.filePath
+                ]
+            )
+            appState.refreshVocabulary()
+            appState.showToast("已从单词本删除")
         }
-
-        NotificationCenter.default.post(
-            name: .addUnderlineNote,
-            object: nil,
-            userInfo: [
-                "noteId": noteEntry.id,
-                "pageIndex": request.page,
-                "boundsStr": request.boundsStr,
-                "filePath": document.filePath
-            ]
-        )
-
-        appState.refreshNotes()
-        appState.showToast("AI 回复已保存到笔记")
-        return noteEntry.id
     }
 }
 
@@ -2270,23 +2058,6 @@ extension Notification.Name {
 
 // MARK: - Supporting types
 
-enum ExplanationMessageRole: String, Equatable {
-    case user
-    case assistant
-}
-
-struct ExplanationMessage: Identifiable, Equatable {
-    let id: String
-    let role: ExplanationMessageRole
-    var content: String
-
-    init(id: String = UUID().uuidString, role: ExplanationMessageRole, content: String) {
-        self.id = id
-        self.role = role
-        self.content = content
-    }
-}
-
 struct TranslationBubbleRequest: Identifiable, Equatable {
     let id: UUID
     let word: String
@@ -2300,12 +2071,6 @@ struct TranslationBubbleRequest: Identifiable, Equatable {
     var existingEntryId: String?
     /// When true, the selection is a multi-word phrase/sentence, not a single word.
     let isSentenceMode: Bool
-    /// When true, the bubble shows an AI reading explanation instead of a translation.
-    let isExplanationMode: Bool
-    /// Chat-style explanation messages retained for the in-bubble follow-up chat.
-    var explanationMessages: [ExplanationMessage] = []
-    /// Deterministically compressed conversation context passed into follow-up prompts.
-    var explanationSummary: String = ""
 
     init(
         id: UUID = UUID(),
@@ -2317,10 +2082,7 @@ struct TranslationBubbleRequest: Identifiable, Equatable {
         result: TranslationResult?,
         translationError: String?,
         existingEntryId: String?,
-        isSentenceMode: Bool,
-        isExplanationMode: Bool,
-        explanationMessages: [ExplanationMessage] = [],
-        explanationSummary: String = ""
+        isSentenceMode: Bool
     ) {
         self.id = id
         self.word = word
@@ -2332,9 +2094,6 @@ struct TranslationBubbleRequest: Identifiable, Equatable {
         self.translationError = translationError
         self.existingEntryId = existingEntryId
         self.isSentenceMode = isSentenceMode
-        self.isExplanationMode = isExplanationMode
-        self.explanationMessages = explanationMessages
-        self.explanationSummary = explanationSummary
     }
 
     /// Must compare all fields that affect the bubble UI. Comparing only `id` made SwiftUI
@@ -2351,9 +2110,6 @@ struct TranslationBubbleRequest: Identifiable, Equatable {
             && lhs.translationError == rhs.translationError
             && lhs.existingEntryId == rhs.existingEntryId
             && lhs.isSentenceMode == rhs.isSentenceMode
-            && lhs.isExplanationMode == rhs.isExplanationMode
-            && lhs.explanationMessages == rhs.explanationMessages
-            && lhs.explanationSummary == rhs.explanationSummary
     }
 }
 

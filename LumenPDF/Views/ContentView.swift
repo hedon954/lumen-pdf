@@ -7,9 +7,9 @@ struct ContentView: View {
     @State private var showLibrary = false
     @State private var showSetupSheet = false
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @StateObject private var inspectorModel = ReadingInspectorModel()
     @AppStorage("llm_base_url") private var baseURL = ""
     @AppStorage("llm_model") private var model = ""
-    @AppStorage("show_reading_context_sidebar") private var showReadingContextSidebar = true
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -36,15 +36,11 @@ struct ContentView: View {
                 // Keep PDFReaderView alive (never destroyed on tab switch),
                 // so scroll position is preserved.
                 if let doc = appState.selectedDocument {
-                    HStack(spacing: 0) {
-                        PDFReaderView(document: doc)
-                            .id(doc.id)
-
-                        if showReadingContextSidebar {
-                            Divider()
-                            ReadingContextSidebarView()
-                        }
-                    }
+                    ReadingWorkspaceView(
+                        document: doc,
+                        inspectorModel: inspectorModel,
+                        setInspectorVisible: setReadingInspectorVisible
+                    )
                     .opacity(appState.activeTab == .reader ? 1 : 0)
                     .allowsHitTesting(appState.activeTab == .reader)
                 } else if appState.activeTab == .reader {
@@ -117,11 +113,11 @@ struct ContentView: View {
             ToolbarItemGroup(placement: .automatic) {
                 if appState.activeTab == .reader && appState.selectedDocument != nil {
                     Button {
-                        toggleReadingContextSidebarPreservingViewport()
+                        setReadingInspectorVisible(!inspectorModel.isVisible)
                     } label: {
                         Label(
-                            showReadingContextSidebar ? "隐藏单词 / 笔记栏" : "显示单词 / 笔记栏",
-                            systemImage: showReadingContextSidebar ? "sidebar.right" : "sidebar.right"
+                            inspectorModel.isVisible ? "隐藏阅读 Inspector" : "显示阅读 Inspector",
+                            systemImage: "sidebar.right"
                         )
                     }
                 }
@@ -157,9 +153,10 @@ struct ContentView: View {
                 .environmentObject(appState)
         }
     }
-    private func toggleReadingContextSidebarPreservingViewport() {
+    private func setReadingInspectorVisible(_ visible: Bool) {
+        guard inspectorModel.isVisible != visible else { return }
         guard let doc = appState.selectedDocument else {
-            showReadingContextSidebar.toggle()
+            inspectorModel.isVisible = visible
             return
         }
         NotificationCenter.default.post(
@@ -170,7 +167,7 @@ struct ContentView: View {
         DispatchQueue.main.async {
             let page = appState.currentPageIndex
             let offset = appState.currentScrollOffset
-            showReadingContextSidebar.toggle()
+            inspectorModel.isVisible = visible
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                 NotificationCenter.default.post(
                     name: .restoreReadingViewport,
