@@ -41,7 +41,9 @@ final class BridgeService {
     func initializeIfNeeded() {
         guard !isInitialized else { return }
         let config = AppConfig(
-            llmBaseUrl: UserDefaults.standard.string(forKey: "llm_base_url") ?? "https://api.openai.com/v1",
+            llmBaseUrl: Self.normalizedLLMBaseURL(
+                UserDefaults.standard.string(forKey: "llm_base_url") ?? "https://api.openai.com/v1"
+            ),
             llmApiKey: KeychainService.load(key: "llm_api_key") ?? "",
             llmModel: UserDefaults.standard.string(forKey: "llm_model") ?? "gpt-4o-mini",
             targetLanguage: UserDefaults.standard.string(forKey: "target_language") ?? "简体中文",
@@ -71,9 +73,9 @@ final class BridgeService {
         wordSystemPrompt: String,
         sentenceSystemPrompt: String,
         explanationSystemPrompt: String
-    ) {
-        try? _updateLlmConfig(AppConfig(
-            llmBaseUrl: baseURL,
+    ) throws {
+        try _updateLlmConfig(AppConfig(
+            llmBaseUrl: Self.normalizedLLMBaseURL(baseURL),
             llmApiKey: apiKey,
             llmModel: model,
             targetLanguage: targetLanguage,
@@ -84,6 +86,26 @@ final class BridgeService {
             sentenceSystemPrompt: sentenceSystemPrompt,
             explanationSystemPrompt: explanationSystemPrompt
         ))
+    }
+
+    static func normalizedLLMBaseURL(_ rawValue: String) -> String {
+        let fallback = "https://api.openai.com/v1"
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return fallback }
+
+        guard var components = URLComponents(string: trimmed),
+              components.scheme != nil,
+              components.host != nil
+        else {
+            return trimmed.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        }
+
+        if components.path.isEmpty || components.path == "/" {
+            components.path = "/v1"
+        }
+
+        let normalized = components.string ?? trimmed
+        return normalized.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
     }
 
     // MARK: - Translation
