@@ -240,7 +240,22 @@ func saveAssistantMessage(_ message: ExplanationMessage) async -> String?
 4. 删除 TranslationBubble 中解释聊天分支。
 5. 再逐步抽出 annotation / note selection service。
 
-## 12. 视觉实现约束
+## 12. 代码设计原则
+
+本迭代的代码目标是简单、可理解、可维护、可迭代。SOLID 作为约束使用，不作为制造抽象的理由。
+
+- **单一职责**：View 只负责布局和用户事件转发；状态编排放进 model；PDFKit 操作放进 coordinator / controller；持久化和 LLM 调用放进 service。
+- **开放封闭**：新增 Inspector panel 时通过明确的 model 状态和小组件扩展，不回到 `PDFReaderView` 或 `TranslationBubble` 里继续追加分支。
+- **里氏替换**：只有存在真实替代实现时才引入 protocol；不要为了“看起来架构化”而创建空协议。
+- **接口隔离**：每个组件只接收自己需要的数据和回调，避免传入整个 `AppState` 或巨型 request。
+- **依赖倒置**：新 SwiftUI View 不直接调用 `BridgeService.shared`；需要副作用时通过 model / service 方法或窄闭包注入。
+- **KISS**：优先使用 SwiftUI / AppKit 原生能力；能用 `HSplitView` 解决的交互，不自定义透明 hit zone。
+- **无冗余**：同一段逻辑只保留一个来源；笔记分组、Markdown 渲染、AI 回复保存等共享逻辑应抽到明确 helper / service。
+- **小文件边界**：新增文件以 300–500 行为软上限；超过时先检查职责是否混杂。
+- **可测试**：纯逻辑优先放在无 UI 依赖的类型中，例如 note 分组、消息压缩、保存状态计算。
+- **渐进迁移**：先迁移导读路径，再拆 PDF annotation 和 note selection；每一步都保持可编译、可回退。
+
+## 13. 视觉实现约束
 
 - Inspector 宽度不小于 300pt。
 - Header 高度控制在 44–52pt。
@@ -252,7 +267,7 @@ func saveAssistantMessage(_ message: ExplanationMessage) async -> String?
 - 删除按钮必须有足够点击区域，不与 resize handle 重叠。
 - 空状态文案短句即可，不放长说明。
 
-## 13. 验证
+## 14. 验证
 
 手动验证：
 
@@ -273,7 +288,7 @@ func saveAssistantMessage(_ message: ExplanationMessage) async -> String?
 xcodebuild -project LumenPDF/LumenPDF.xcodeproj -scheme LumenPDF -configuration Debug -destination 'platform=macOS' build
 ```
 
-## 14. 后续工程整理
+## 15. 后续工程整理
 
 1. 抽 `PDFAnnotationController` 管理 PDF 标注。
 2. 抽 `UnderlineNoteService` 管理选区合并和 note 保存。
