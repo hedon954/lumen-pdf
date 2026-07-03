@@ -763,6 +763,7 @@ struct PDFReaderView: View {
         let pendingMessages = priorMessages + [userMessage, assistantMessage]
 
         translationRequest = TranslationBubbleRequest(
+            id: priorRequest?.id ?? UUID(),
             word: selection, sentence: context,
             bounds: bounds, boundsStr: boundsStr,
             page: page, result: nil, translationError: nil,
@@ -884,7 +885,13 @@ struct PDFReaderView: View {
         if !context.isEmpty {
             parts.append("Conversation context summary / 对话上下文摘要（用于多轮追问，必要时纠正或延续前文）:\n\(context)")
         }
-        parts.append("Please answer the current question first. Always ground the answer in the original selected text, and use the conversation context only when it helps continuity. 请先回答当前问题；始终以原始选中文案为准，仅在有助于承接上下文时使用前文摘要。")
+        parts.append("""
+        Conversation style / 对话衔接要求:
+        - Continue the same reading conversation instead of restarting the explanation.
+        - Answer the newest user question directly; avoid meta-openers such as “你刚才问的是” or “根据上下文” unless they are needed for clarity.
+        - Ground every answer in the original selected text; use previous messages only to keep continuity.
+        - Prefer concise paragraphs or short bullets over repeating the full prior explanation.
+        """)
         return parts.joined(separator: "\n\n")
     }
 
@@ -2243,7 +2250,7 @@ struct ExplanationMessage: Identifiable, Equatable {
 }
 
 struct TranslationBubbleRequest: Identifiable, Equatable {
-    let id = UUID()
+    let id: UUID
     let word: String
     let sentence: String
     let bounds: CGRect
@@ -2261,6 +2268,37 @@ struct TranslationBubbleRequest: Identifiable, Equatable {
     var explanationMessages: [ExplanationMessage] = []
     /// Deterministically compressed conversation context passed into follow-up prompts.
     var explanationSummary: String = ""
+
+    init(
+        id: UUID = UUID(),
+        word: String,
+        sentence: String,
+        bounds: CGRect,
+        boundsStr: String,
+        page: Int,
+        result: TranslationResult?,
+        translationError: String?,
+        existingEntryId: String?,
+        isSentenceMode: Bool,
+        isExplanationMode: Bool,
+        explanationMessages: [ExplanationMessage] = [],
+        explanationSummary: String = ""
+    ) {
+        self.id = id
+        self.word = word
+        self.sentence = sentence
+        self.bounds = bounds
+        self.boundsStr = boundsStr
+        self.page = page
+        self.result = result
+        self.translationError = translationError
+        self.existingEntryId = existingEntryId
+        self.isSentenceMode = isSentenceMode
+        self.isExplanationMode = isExplanationMode
+        self.explanationMessages = explanationMessages
+        self.explanationSummary = explanationSummary
+    }
+
     /// Must compare all fields that affect the bubble UI. Comparing only `id` made SwiftUI
     /// treat success/error updates as «unchanged» and skip redrawing — users saw「翻译未完成」
     /// with an empty detail area even when `translationError` was set.
