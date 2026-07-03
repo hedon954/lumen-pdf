@@ -8,11 +8,13 @@ struct TranslationBubble: View {
     let availableSize: CGSize
     let onSave: (TranslationResult) -> String?
     let onDelete: (String) -> Void
+    let onSaveExplanationMessage: (String) -> String?
     let onAskExplanation: (String) -> Void
     let onDismiss: () -> Void
 
     @StateObject private var audio = AudioService()
     @State private var savedEntryId: String?
+    @State private var savedExplanationEntryIds: [String: String] = [:]
     /// Tracks whether the saved entry is a note (sentence mode) or vocabulary entry
     @State private var savedToNote: Bool = false
 
@@ -58,6 +60,7 @@ struct TranslationBubble: View {
                     measuredContentHeight = 0
                     explanationShouldFollowStream = true
                     explanationHasOverflow = false
+                    savedExplanationEntryIds = [:]
                     offset = .zero
                     requestAnchorKey = newAnchorKey
                 }
@@ -781,7 +784,7 @@ struct TranslationBubble: View {
                 assistantThinkingBubble
                     .id(message.id)
             } else {
-                assistantMessageBubble(message.content, isStreaming: isLoading && request.explanationMessages.last?.id == message.id)
+                assistantMessageBubble(message, isStreaming: isLoading && request.explanationMessages.last?.id == message.id)
                     .id(message.id)
             }
         }
@@ -804,7 +807,7 @@ struct TranslationBubble: View {
         }
     }
 
-    private func assistantMessageBubble(_ markdown: String, isStreaming: Bool) -> some View {
+    private func assistantMessageBubble(_ message: ExplanationMessage, isStreaming: Bool) -> some View {
         HStack(alignment: .top, spacing: 0) {
             RoundedRectangle(cornerRadius: 1)
                 .fill(Color.accentColor.opacity(isStreaming ? 0.7 : 0.48))
@@ -815,8 +818,12 @@ struct TranslationBubble: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                MarkdownText(markdown: markdown)
+                MarkdownText(markdown: message.content)
                     .textSelection(.enabled)
+
+                if !isStreaming {
+                    explanationMessageSaveControl(message)
+                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
@@ -827,6 +834,32 @@ struct TranslationBubble: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.1), lineWidth: 0.7)
         )
+    }
+
+    @ViewBuilder
+    private func explanationMessageSaveControl(_ message: ExplanationMessage) -> some View {
+        let trimmed = message.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            HStack {
+                Spacer()
+                if savedExplanationEntryIds[message.id] != nil {
+                    Label("已保存", systemImage: "checkmark.circle.fill")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.green)
+                } else {
+                    Button {
+                        saveExplanationMessage(message)
+                    } label: {
+                        Label("保存这条", systemImage: "note.text")
+                            .font(.caption.weight(.medium))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help("保存这条 AI 回复到笔记")
+                }
+            }
+            .padding(.top, 2)
+        }
     }
 
     private var assistantThinkingBubble: some View {
@@ -870,6 +903,36 @@ struct TranslationBubble: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
             isExplanationQuestionFocused = true
         }
+    }
+
+    private var completedAssistantMessages: [ExplanationMessage] {
+        request.explanationMessages.filter { message in
+            message.role == .assistant
+                && !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+    }
+
+    private func saveExplanationMessage(_ message: ExplanationMessage) {
+        guard savedExplanationEntryIds[message.id] == nil else { return }
+        guard let entryId = onSaveExplanationMessage(message.content) else { return }
+        savedExplanationEntryIds[message.id] = entryId
+        savedEntryId = nil
+    }
+
+    private func saveAllExplanationMessages() {
+        for message in completedAssistantMessages where savedExplanationEntryIds[message.id] == nil {
+            saveExplanationMessage(message)
+        }
+    }
+
+    private func deleteSavedExplanationMessages() {
+        let entryIds = Array(savedExplanationEntryIds.values)
+        guard !entryIds.isEmpty else { return }
+        for entryId in entryIds {
+            try? BridgeService.shared.deleteNote(id: entryId)
+            onDelete(entryId)
+        }
+        savedExplanationEntryIds = [:]
     }
 
     private func explanationQuestionBar(defaultSubmitOnReturn: Bool, isFollowUp: Bool = false) -> some View {
@@ -962,7 +1025,9 @@ struct TranslationBubble: View {
     private func footer(result: TranslationResult) -> some View {
         HStack {
             Spacer()
-            if let entryId = savedEntryId {
+            if request.isExplanationMode {
+                explanationFooter
+            } else if let entryId = savedEntryId {
                 HStack(spacing: 12) {
                     Label(savedToNote ? "已保存到笔记" : "已保存", systemImage: "checkmark.circle.fill")
                         .font(.callout).foregroundStyle(.green)
@@ -995,6 +1060,33 @@ struct TranslationBubble: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+    }
+
+    @ViewBuilder
+    private var explanationFooter: some View {
+        if savedExplanationEntryIds.isEmpty {
+            Button {
+                saveAllExplanationMessages()
+            } label: {
+                Label("保存所有AI回复", systemImage: "note.text")
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(completedAssistantMessages.isEmpty)
+        } else {
+            HStack(spacing: 12) {
+                Label("已保存到笔记", systemImage: "checkmark.circle.fill")
+                    .font(.callout)
+                    .foregroundStyle(.green)
+                Button(role: .destructive) {
+                    deleteSavedExplanationMessages()
+                } label: {
+                    Image(systemName: "trash")
+                        .foregroundStyle(.red)
+                }
+                .buttonStyle(.plain)
+                .help("删除所有已保存的 AI 回复")
+            }
+        }
     }
 }
 
