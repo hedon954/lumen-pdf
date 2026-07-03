@@ -209,11 +209,13 @@ struct TranslationBubble: View {
         // transition the non-streaming version produced.
         if request.isExplanationMode && request.result == nil && !isLoading {
             explanationPromptContent
+        } else if request.isExplanationMode && isLoading && !request.explanationMessages.isEmpty {
+            explanationChatScrollContent
         } else if let result = request.result, Self.hasAnyContent(result) {
             if result.isCompleteFailure {
                 completeFailureView(result: result)
             } else {
-                if isLoading {
+                if isLoading && !request.isExplanationMode {
                     streamingBanner
                 }
                 adaptiveContent(result: result)
@@ -266,27 +268,7 @@ struct TranslationBubble: View {
     @ViewBuilder
     private func adaptiveContent(result: TranslationResult) -> some View {
         if request.isExplanationMode {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    contentBody(result: result)
-                        .onHeightChange { measuredContentHeight = $0 }
-                    Color.clear
-                        .frame(height: 1)
-                        .id("explanation-bottom")
-                }
-                .onChange(of: request.explanationTurns.count) { _, _ in
-                    scrollExplanationToBottom(proxy)
-                }
-                .onChange(of: request.result?.contextExplanation ?? "") { _, _ in
-                    scrollExplanationToBottom(proxy)
-                }
-                .onChange(of: isLoading) { _, _ in
-                    scrollExplanationToBottom(proxy)
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: customCardSize == nil ? maximumAutomaticContentHeight : nil)
-            .frame(maxHeight: customCardSize == nil ? nil : .infinity)
+            explanationChatScrollContent
         } else if shouldScrollContent {
             ScrollView {
                 contentBody(result: result)
@@ -429,7 +411,7 @@ struct TranslationBubble: View {
     @ViewBuilder
     private func contentBody(result: TranslationResult) -> some View {
         if request.isExplanationMode {
-            explanationChatContent(result: result)
+            explanationChatContent()
                 .padding(14)
         } else if request.isSentenceMode
             && result.contextTranslation.isEmpty
@@ -566,6 +548,31 @@ struct TranslationBubble: View {
     }
 
 
+    private var explanationChatScrollContent: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                explanationChatContent()
+                    .padding(14)
+                    .onHeightChange { measuredContentHeight = $0 }
+                Color.clear
+                    .frame(height: 1)
+                    .id("explanation-bottom")
+            }
+            .onChange(of: request.explanationMessages.count) { _, _ in
+                scrollExplanationToBottom(proxy)
+            }
+            .onChange(of: request.explanationMessages.last?.content ?? "") { _, _ in
+                scrollExplanationToBottom(proxy)
+            }
+            .onChange(of: isLoading) { _, _ in
+                scrollExplanationToBottom(proxy)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: customCardSize == nil ? maximumAutomaticContentHeight : nil)
+        .frame(maxHeight: customCardSize == nil ? nil : .infinity)
+    }
+
     private func scrollExplanationToBottom(_ proxy: ScrollViewProxy) {
         DispatchQueue.main.async {
             withAnimation(.easeOut(duration: 0.18)) {
@@ -574,23 +581,13 @@ struct TranslationBubble: View {
         }
     }
 
-    private func explanationChatContent(result: TranslationResult) -> some View {
+    private func explanationChatContent() -> some View {
         VStack(alignment: .leading, spacing: 14) {
             originalSelectionCard
 
             VStack(alignment: .leading, spacing: 12) {
-                ForEach(Array(request.explanationTurns.enumerated()), id: \.offset) { index, turn in
-                    explanationChatTurn(index: index, turn: turn)
-                }
-
-                if !request.activeExplanationQuestion.isEmpty {
-                    userMessageBubble(request.activeExplanationQuestion)
-                }
-
-                if !result.contextExplanation.isEmpty {
-                    assistantMessageBubble(result.contextExplanation, isStreaming: isLoading)
-                } else if isLoading {
-                    assistantThinkingBubble
+                ForEach(request.explanationMessages) { message in
+                    explanationMessageBubble(message)
                 }
             }
 
@@ -617,12 +614,21 @@ struct TranslationBubble: View {
         .background(.quinary, in: RoundedRectangle(cornerRadius: 10))
     }
 
-    private func explanationChatTurn(index: Int, turn: ExplanationTurn) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            userMessageBubble(turn.question.isEmpty ? "直接解释" : turn.question)
-            assistantMessageBubble(turn.answer, isStreaming: false)
+    @ViewBuilder
+    private func explanationMessageBubble(_ message: ExplanationMessage) -> some View {
+        switch message.role {
+        case .user:
+            userMessageBubble(message.content)
+                .id(message.id)
+        case .assistant:
+            if message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                assistantThinkingBubble
+                    .id(message.id)
+            } else {
+                assistantMessageBubble(message.content, isStreaming: isLoading && request.explanationMessages.last?.id == message.id)
+                    .id(message.id)
+            }
         }
-        .id("turn-\(index)")
     }
 
     private func userMessageBubble(_ text: String) -> some View {

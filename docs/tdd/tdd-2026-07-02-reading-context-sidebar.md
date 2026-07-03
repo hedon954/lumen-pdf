@@ -192,18 +192,18 @@ extension Notification.Name {
 
 解释气泡复用 `TranslationBubbleRequest` 承载临时对话状态：
 
-- `explanationTurns`: 已完成的问答轮次，用于 UI 展示「前文追问」。
-- `activeExplanationQuestion`: 当前正在生成 / 已生成答案对应的问题。
+- `explanationMessages`: chatbot 式消息列表，按 user / assistant 顺序保存已完成消息和当前流式 assistant 占位。
 - `explanationSummary`: 传给后续 LLM 请求的本地压缩上下文。
 
 `TranslationBubble` 使用 chatbot 式消息流展示解释：前文 user / assistant 气泡稳定保留，新问题和流式回答向下追加；follow-up 输入框固定在消息流底部。用户继续追问时调用原有 `onAskExplanation` 回调，不关闭气泡、不要求重新选择 PDF 原文。
 
 `PDFReaderView.requestExplanation` 在发起下一轮前读取当前 `translationRequest`：
 
-1. 将当前已完成回答追加到 `explanationTurns`。
-2. 保留最近 10 轮完整问答。
-3. 将更早轮次压缩为短 digest，并把对话摘要截断到固定长度；原始选中文案和原始上下文始终单独传入，不参与压缩。
-4. 把「当前问题 + 压缩上下文」拼入现有 `focus` 参数，复用 `BridgeService.explainSelectionStreaming` / Rust UniFFI 接口。
+1. 在 `explanationMessages` 末尾追加最新 user message 和一个空 assistant message。
+2. assistant 流式返回时只更新最后一个 assistant message 的内容，避免重建前文。
+3. 保留最近 10 轮（20 条 user / assistant messages）完整问答。
+4. 将更早 messages 压缩为短 digest，并把对话摘要截断到固定长度；原始选中文案和原始上下文始终单独传入，不参与压缩。
+5. 把「当前问题 + 压缩上下文」拼入现有 `focus` 参数，复用 `BridgeService.explainSelectionStreaming` / Rust UniFFI 接口。
 
 该实现不新增数据库表，不持久化聊天记录；关闭气泡后上下文释放。
 

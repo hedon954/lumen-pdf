@@ -743,11 +743,11 @@ struct PDFReaderView: View {
         BridgeService.shared.initializeIfNeeded()
 
         let priorRequest = translationRequest
-        let conversation = Self.nextExplanationConversation(from: priorRequest)
+        let priorMessages = priorRequest?.explanationMessages ?? []
         let trimmedFocus = focus?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let compressedContext = Self.compressedExplanationContext(
             summary: priorRequest?.explanationSummary ?? "",
-            turns: conversation
+            messages: priorMessages
         )
         let focusWithContext = Self.explanationFocusPrompt(
             userQuestion: trimmedFocus,
@@ -755,6 +755,12 @@ struct PDFReaderView: View {
             originalSelection: selection,
             originalContext: context
         )
+        let userMessage = ExplanationMessage(
+            role: .user,
+            content: trimmedFocus.isEmpty ? "直接解释" : trimmedFocus
+        )
+        let assistantMessage = ExplanationMessage(role: .assistant, content: "")
+        let pendingMessages = priorMessages + [userMessage, assistantMessage]
 
         translationRequest = TranslationBubbleRequest(
             word: selection, sentence: context,
@@ -763,9 +769,8 @@ struct PDFReaderView: View {
             existingEntryId: nil,
             isSentenceMode: true,
             isExplanationMode: true,
-            explanationTurns: conversation,
-            explanationSummary: compressedContext,
-            activeExplanationQuestion: trimmedFocus
+            explanationMessages: pendingMessages,
+            explanationSummary: compressedContext
         )
         isTranslating = true
 
@@ -775,6 +780,10 @@ struct PDFReaderView: View {
             @MainActor func applyPartial(_ partial: TranslationResult) {
                 guard var req = translationRequest, req.id == requestId else { return }
                 req.result = partial
+                req.explanationMessages = Self.updatingLastAssistantMessage(
+                    in: req.explanationMessages,
+                    content: partial.contextExplanation
+                )
                 req.translationError = nil
                 translationRequest = req
             }
@@ -790,6 +799,10 @@ struct PDFReaderView: View {
                 await MainActor.run {
                     guard var req = translationRequest, req.id == requestId else { return }
                     req.result = result
+                    req.explanationMessages = Self.updatingLastAssistantMessage(
+                        in: req.explanationMessages,
+                        content: result.contextExplanation
+                    )
                     req.translationError = nil
                     translationRequest = req
                     isTranslating = false
@@ -809,44 +822,47 @@ struct PDFReaderView: View {
         }
     }
 
-    private static func nextExplanationConversation(from request: TranslationBubbleRequest?) -> [ExplanationTurn] {
-        guard let request, request.isExplanationMode else { return [] }
-        var turns = request.explanationTurns
-        let answer = request.result?.contextExplanation.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if !answer.isEmpty {
-            turns.append(ExplanationTurn(
-                question: request.activeExplanationQuestion,
-                answer: answer
-            ))
+    private static func updatingLastAssistantMessage(
+        in messages: [ExplanationMessage],
+        content: String
+    ) -> [ExplanationMessage] {
+        guard let lastAssistantIndex = messages.lastIndex(where: { $0.role == .assistant }) else {
+            return messages
         }
-        return turns
+        var updated = messages
+        updated[lastAssistantIndex].content = content
+        return updated
     }
 
-    private static func compressedExplanationContext(summary: String, turns: [ExplanationTurn]) -> String {
+    private static func compressedExplanationContext(
+        summary: String,
+        messages: [ExplanationMessage]
+    ) -> String {
         let compactSummary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
-        let recentTurns = turns.suffix(10).map { turn in
-            let question = truncated(turn.question.isEmpty ? "通用解释" : turn.question, limit: 180)
-            let answer = truncated(turn.answer, limit: 520)
-            return "Q: \(question)\nA: \(answer)"
+        let completedMessages = messages.filter { !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let recentMessages = completedMessages.suffix(20).map { message in
+            let role = message.role == .user ? "User" : "Assistant"
+            return "\(role): \(truncated(message.content, limit: message.role == .user ? 220 : 620))"
         }.joined(separator: "\n---\n")
 
-        let olderCount = max(0, turns.count - 10)
+        let olderCount = max(0, completedMessages.count - 20)
         var sections: [String] = []
         if !compactSummary.isEmpty {
             sections.append("Existing compressed context:\n\(truncated(compactSummary, limit: 700))")
         }
         if olderCount > 0 {
-            let olderDigest = turns.prefix(olderCount).map { turn in
-                let question = turn.question.isEmpty ? "通用解释" : turn.question
-                return "- \(truncated(question, limit: 120)): \(truncated(turn.answer, limit: 180))"
+            let olderDigest = completedMessages.prefix(olderCount).map { message in
+                let role = message.role == .user ? "User" : "Assistant"
+                return "- \(role): \(truncated(message.content, limit: 180))"
             }.joined(separator: "\n")
-            sections.append("Older turns digest:\n\(olderDigest)")
+            sections.append("Older messages digest:\n\(olderDigest)")
         }
-        if !recentTurns.isEmpty {
-            sections.append("Recent turns:\n\(recentTurns)")
+        if !recentMessages.isEmpty {
+            sections.append("Recent messages:\n\(recentMessages)")
         }
-        return truncated(sections.joined(separator: "\n\n"), limit: 2_400)
+        return truncated(sections.joined(separator: "\n\n"), limit: 3_600)
     }
+
 
     private static func explanationFocusPrompt(
         userQuestion: String,
@@ -2209,9 +2225,21 @@ extension Notification.Name {
 
 // MARK: - Supporting types
 
-struct ExplanationTurn: Equatable {
-    let question: String
-    let answer: String
+enum ExplanationMessageRole: String, Equatable {
+    case user
+    case assistant
+}
+
+struct ExplanationMessage: Identifiable, Equatable {
+    let id: String
+    let role: ExplanationMessageRole
+    var content: String
+
+    init(id: String = UUID().uuidString, role: ExplanationMessageRole, content: String) {
+        self.id = id
+        self.role = role
+        self.content = content
+    }
 }
 
 struct TranslationBubbleRequest: Identifiable, Equatable {
@@ -2229,12 +2257,10 @@ struct TranslationBubbleRequest: Identifiable, Equatable {
     let isSentenceMode: Bool
     /// When true, the bubble shows an AI reading explanation instead of a translation.
     let isExplanationMode: Bool
-    /// Completed explanation turns retained for the in-bubble follow-up chat.
-    var explanationTurns: [ExplanationTurn] = []
+    /// Chat-style explanation messages retained for the in-bubble follow-up chat.
+    var explanationMessages: [ExplanationMessage] = []
     /// Deterministically compressed conversation context passed into follow-up prompts.
     var explanationSummary: String = ""
-    /// The question that produced the currently streaming / displayed explanation.
-    var activeExplanationQuestion: String = ""
     /// Must compare all fields that affect the bubble UI. Comparing only `id` made SwiftUI
     /// treat success/error updates as «unchanged» and skip redrawing — users saw「翻译未完成」
     /// with an empty detail area even when `translationError` was set.
@@ -2250,9 +2276,8 @@ struct TranslationBubbleRequest: Identifiable, Equatable {
             && lhs.existingEntryId == rhs.existingEntryId
             && lhs.isSentenceMode == rhs.isSentenceMode
             && lhs.isExplanationMode == rhs.isExplanationMode
-            && lhs.explanationTurns == rhs.explanationTurns
+            && lhs.explanationMessages == rhs.explanationMessages
             && lhs.explanationSummary == rhs.explanationSummary
-            && lhs.activeExplanationQuestion == rhs.activeExplanationQuestion
     }
 }
 
