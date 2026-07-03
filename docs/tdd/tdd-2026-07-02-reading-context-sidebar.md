@@ -201,8 +201,8 @@ extension Notification.Name {
 `PDFReaderView.requestExplanation` 在发起下一轮前读取当前 `translationRequest`：
 
 1. 将当前已完成回答追加到 `explanationTurns`。
-2. 保留最近 4 轮完整问答。
-3. 将更早轮次压缩为短 digest，并把总上下文截断到固定长度。
+2. 保留最近 10 轮完整问答。
+3. 将更早轮次压缩为短 digest，并把对话摘要截断到固定长度；原始选中文案和原始上下文始终单独传入，不参与压缩。
 4. 把「当前问题 + 压缩上下文」拼入现有 `focus` 参数，复用 `BridgeService.explainSelectionStreaming` / Rust UniFFI 接口。
 
 该实现不新增数据库表，不持久化聊天记录；关闭气泡后上下文释放。
