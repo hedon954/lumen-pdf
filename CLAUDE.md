@@ -89,6 +89,21 @@ Or run `make setup` which handles this automatically.
 
 ## Architecture
 
+### Engineering Design Principles
+
+Code should stay simple, understandable, maintainable, iterable, and free of avoidable duplication. Use SOLID as a constraint for reducing complexity, not as a reason to add abstract layers.
+
+- **Single responsibility**: Views handle layout and event forwarding; ViewModels/models coordinate state; coordinators/controllers handle PDFKit/AppKit work; services handle persistence, bridge calls, and LLM calls.
+- **Open/closed**: Add new reading panels or workflows through small, explicit components and model state instead of adding more branches to oversized views such as `PDFReaderView` or `TranslationBubble`.
+- **Liskov substitution**: Introduce protocols only when there is a real alternate implementation or test boundary. Do not create empty abstractions just to look architectural.
+- **Interface segregation**: Pass only the data and callbacks a component needs. Avoid handing broad objects like the whole `AppState` or large request structs to narrow UI components.
+- **Dependency inversion**: SwiftUI Views must not call `BridgeService.shared` directly. Inject narrow closures, models, or services for side effects.
+- **KISS**: Prefer native SwiftUI/AppKit controls and layout behavior over custom hit-testing, cursor, or resize machinery unless the native option cannot satisfy the interaction.
+- **No redundancy**: Keep one source of truth for shared logic such as note grouping, Markdown rendering, AI reply saving, selection bounds parsing, and viewport restoration.
+- **Small boundaries**: Treat 300-500 lines as a soft limit for new Swift files. If a file grows beyond that, check whether responsibilities are mixed before adding more code.
+- **Testable logic**: Put pure behavior in UI-independent types where practical, especially note grouping, message compression, save-state calculation, and selection matching.
+- **Incremental migration**: Refactors must keep the app buildable and behaviorally stable at each step. Prefer small reversible commits over broad rewrites.
+
 ### DDD Layer Constraints (Strict)
 
 | Layer | Directory | Constraint |

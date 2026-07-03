@@ -4,9 +4,9 @@
   <img src="LumenPDF/Assets.xcassets/AppIcon.appiconset/256.png" alt="LumenPDF icon" width="96" height="96">
 </p>
 
-LumenPDF 是一款面向深度阅读的 macOS PDF 阅读器。它保留系统 Preview 式的轻量阅读体验，同时把翻译、解释、划线笔记、单词本和本地知识沉淀放在同一个阅读工作流里。
+LumenPDF 是一款面向深度阅读的 macOS PDF 阅读器。它保留系统 Preview 式的轻量阅读体验，同时把翻译、AI 导读、划线笔记、单词本和本地知识沉淀放在同一个阅读工作流里。
 
-适合阅读英文论文、技术书和长篇资料：边读边翻译、解释、划线、记笔记，并随时回到原文位置。
+适合阅读英文论文、技术书和长篇资料：边读边翻译、追问、划线、记笔记，并随时回到原文位置。
 
 ![macOS 15+](https://img.shields.io/badge/macOS-15%2B-blue)
 ![Swift](https://img.shields.io/badge/Swift-5.9-orange)
@@ -20,9 +20,10 @@ LumenPDF 是一款面向深度阅读的 macOS PDF 阅读器。它保留系统 Pr
 ## 特性
 
 - **PDF 阅读**：连续滚动、目录跳转、自动恢复阅读位置。
-- **翻译与解释**：划选文本后获得结合上下文的中文解释，并可继续追问。
+- **轻量翻译**：划选单词、短语或句子后快速查看上下文翻译。
+- **Reading Inspector**：右侧 Inspector 集中显示上下文、AI 导读和笔记。
+- **AI 导读**：围绕当前选区连续追问，支持 Markdown 回复和一键保存。
 - **单词与笔记**：保存单词、划线、笔记和 AI 回复，沉淀当前文档的阅读上下文。
-- **右侧上下文栏**：在 PDF 旁边查看当前文档的单词和笔记，点击即可跳回原文。
 - **本地优先**：阅读进度、单词和笔记保存在本机，API Key 存入 macOS Keychain。
 
 ## 安装
@@ -63,38 +64,16 @@ make upgrade
 
 | 配置项 | 说明 |
 | --- | --- |
-| API Base URL | 例如 `https://api.openai.com/v1`，也可以使用兼容 OpenAI API 的服务 |
+| API Base URL | 例如 `https://api.openai.com/v1` 或 `https://api.deepseek.com/v1` |
 | API Key | 存入 macOS Keychain，不写入明文配置文件 |
 | 模型 | 任意兼容 Chat Completions 的模型 |
 | 目标语言 | 默认简体中文 |
 
 不配置 LLM 也能使用基础翻译；上下文解释和追问需要 LLM。
 
-## 常用操作
+## 阅读工作流
 
-### 打开和阅读 PDF
-
-点击工具栏中的文库按钮打开 PDF。LumenPDF 会记录阅读位置，下次打开自动回到上次阅读处。包含目录的 PDF 会在左侧显示大纲，点击章节即可跳转。
-
-### 翻译和解释
-
-在 PDF 中划选文本后，可以选择「翻译」或「解释」：
-
-- 「翻译」适合快速理解单词、短语或句子。
-- 「解释」适合带着问题阅读；你可以先输入疑问，也可以直接让 LLM 解释。
-- 解释结果支持继续追问，也可以保存到笔记。
-
-### 高亮、划线和笔记
-
-划选文本后可以高亮、划线或写笔记。划线适合快速标记；笔记适合写下理解、疑问和总结。笔记支持 Markdown，也可以对同一处原文追加多条想法。
-
-### 右侧阅读上下文栏
-
-阅读 PDF 时可以打开右侧栏，查看当前文档的单词和笔记。右栏会跟随阅读位置，点击卡片即可回到对应原文；同一选区的多条笔记会分开展示，也可以展开查看完整内容。
-
-### 管理单词和笔记
-
-切换到“单词本”或“笔记”页，可以搜索、编辑、删除已有内容，也可以跳回原 PDF 位置继续阅读。
+打开 PDF 后，LumenPDF 会自动恢复上次阅读位置，并在左侧显示目录。划选文本后可以翻译、解释、划线或写笔记；「解释」会进入右侧 Reading Inspector，后续追问、AI 回复保存、上下文单词和笔记都在这里完成。切换到“单词本”或“笔记”页，可以集中搜索和管理已保存内容。
 
 ## 开发
 
@@ -157,8 +136,8 @@ Rust 后端按 DDD 分层组织：
 
 ## 文档
 
-- 最新 PRD：[docs/prd/prd-2026-07-02-reading-context-sidebar.md](docs/prd/prd-2026-07-02-reading-context-sidebar.md)
-- 最新 TDD：[docs/tdd/tdd-2026-07-02-reading-context-sidebar.md](docs/tdd/tdd-2026-07-02-reading-context-sidebar.md)
+- 最新 PRD：[docs/prd/prd-2026-07-03-reading-inspector.md](docs/prd/prd-2026-07-03-reading-inspector.md)
+- 最新 TDD：[docs/tdd/tdd-2026-07-03-reading-inspector.md](docs/tdd/tdd-2026-07-03-reading-inspector.md)
 - 历史产品和技术文档见 [docs/](docs/)
 
 ## 数据位置
