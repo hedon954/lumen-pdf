@@ -1,4 +1,4 @@
-use super::DbPool;
+use super::{query, DbPool};
 use crate::domain::vocabulary::{
     entity::{SaveVocabularyRequest, UpdateVocabularyRequest, VocabularyEntry},
     repository::VocabularyRepository,
@@ -104,16 +104,11 @@ impl VocabularyRepository for SqliteVocabularyRepo {
 
     fn get_by_id(&self, id: &str) -> Result<Option<VocabularyEntry>, LumenError> {
         let conn = self.pool.get()?;
-        let result = conn.query_row(
+        query::optional(conn.query_row(
             &format!("SELECT {SELECT_COLS} FROM vocabulary_entries WHERE id = ?1"),
             rusqlite::params![id],
             row_to_entry,
-        );
-        match result {
-            Ok(e) => Ok(Some(e)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(e.into()),
-        }
+        ))
     }
 
     fn get_by_word_and_hash(
@@ -122,16 +117,11 @@ impl VocabularyRepository for SqliteVocabularyRepo {
         sentence_hash: &str,
     ) -> Result<Option<VocabularyEntry>, LumenError> {
         let conn = self.pool.get()?;
-        let result = conn.query_row(
+        query::optional(conn.query_row(
             &format!("SELECT {SELECT_COLS} FROM vocabulary_entries WHERE LOWER(word) = LOWER(?1) AND sentence_hash = ?2"),
             rusqlite::params![word, sentence_hash],
             row_to_entry,
-        );
-        match result {
-            Ok(e) => Ok(Some(e)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(e.into()),
-        }
+        ))
     }
 
     fn list(&self) -> Result<Vec<VocabularyEntry>, LumenError> {

@@ -35,7 +35,7 @@ struct NoteListView: View {
                 Divider().frame(height: 18)
 
                 Button {
-                    exportContent = BridgeService.shared.exportNotesMarkdown()
+                    exportContent = ReaderPersistence.shared.exportNotesMarkdown()
                     showExportSheet = true
                 } label: {
                     Label("导出", systemImage: "square.and.arrow.up")
@@ -93,12 +93,12 @@ struct NoteListView: View {
     }
 
     private func delete(_ note: NoteEntry) {
-        try? BridgeService.shared.deleteNote(id: note.id)
+        try? ReaderPersistence.shared.deleteNote(id: note.id)
         // Remove underline annotation from PDF when deleting note
-        NotificationCenter.default.post(
-            name: .removeUnderlineNote,
-            object: nil,
-            userInfo: ["noteId": note.id, "pageIndex": Int(note.pageIndex), "filePath": note.pdfPath]
+        ReaderEventBus.shared.postRemoveUnderlineNote(
+            noteId: note.id,
+            page: Int(note.pageIndex),
+            filePath: note.pdfPath
         )
         appState.refreshNotes()
     }
@@ -108,9 +108,9 @@ struct NoteListView: View {
             appState.selectedDocument = doc
             appState.activeTab = .reader
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                NotificationCenter.default.post(
-                    name: .jumpToPage, object: nil,
-                    userInfo: ["pageIndex": Int(note.pageIndex), "filePath": note.pdfPath]
+                ReaderEventBus.shared.postJumpToPage(
+                    page: Int(note.pageIndex),
+                    filePath: note.pdfPath
                 )
             }
         }
@@ -242,7 +242,7 @@ struct NoteEditSheet: View {
                 Button("取消") { dismiss() }
                 Spacer()
                 Button("保存") {
-                    try? BridgeService.shared.updateNote(id: note.id, note: noteText)
+                    try? ReaderPersistence.shared.updateNote(id: note.id, note: noteText)
                     onSave()
                     dismiss()
                 }

@@ -20,7 +20,7 @@ struct ReadingGuidePanel: View {
             } else {
                 ReadingInspectorEmptyState(
                     systemImage: "sparkles",
-                    title: "选择文本开始导读",
+                    title: "选择文本开始 AI 解读",
                     message: "在 PDF 中划选文本后点击「解释」"
                 )
             }
@@ -223,7 +223,7 @@ struct ReadingGuidePanel: View {
                 .fill(Color.red.opacity(0.55))
                 .frame(width: 3)
             VStack(alignment: .leading, spacing: 7) {
-                Label("导读调用失败", systemImage: "exclamationmark.triangle")
+                Label("AI 调用失败", systemImage: "exclamationmark.triangle")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.red)
                 Text(text)

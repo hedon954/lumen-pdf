@@ -1,4 +1,4 @@
-use super::DbPool;
+use super::{query, DbPool};
 use crate::domain::pdf_document::{
     entity::{PdfDocument, UpsertPdfRequest},
     repository::PdfDocumentRepository,
@@ -35,15 +35,15 @@ impl PdfDocumentRepository for SqlitePdfDocumentRepo {
         let conn = self.pool.get()?;
         let now = Utc::now().timestamp();
 
-        let existing = conn.query_row(
+        let existing = query::optional(conn.query_row(
             "SELECT id, file_path, file_name, total_pages, last_page, last_scroll_offset, opened_at, added_at
              FROM pdf_documents WHERE file_path = ?1",
             rusqlite::params![req.file_path],
             row_to_doc,
-        );
+        ))?;
 
         match existing {
-            Ok(mut doc) => {
+            Some(mut doc) => {
                 doc.opened_at = now;
                 doc.total_pages = req.total_pages;
                 conn.execute(
@@ -52,7 +52,7 @@ impl PdfDocumentRepository for SqlitePdfDocumentRepo {
                 )?;
                 Ok(doc)
             }
-            Err(rusqlite::Error::QueryReturnedNoRows) => {
+            None => {
                 let id = Uuid::new_v4().to_string();
                 conn.execute(
                     "INSERT INTO pdf_documents (id, file_path, file_name, total_pages, last_page, last_scroll_offset, opened_at, added_at)
@@ -70,7 +70,6 @@ impl PdfDocumentRepository for SqlitePdfDocumentRepo {
                     added_at: now,
                 })
             }
-            Err(e) => Err(e.into()),
         }
     }
 

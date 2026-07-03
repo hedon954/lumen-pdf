@@ -25,6 +25,7 @@ targets:
     sources:
       - path: App
       - path: Views
+      - path: Reader
       - path: Services
       - path: Generated
         optional: true

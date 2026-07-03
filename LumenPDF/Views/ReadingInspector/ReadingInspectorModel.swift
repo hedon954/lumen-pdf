@@ -35,10 +35,10 @@ final class ReadingInspectorModel: ObservableObject {
         width = Self.clampedWidth(storedWidth == 0 ? Self.defaultWidth : storedWidth)
 
         if let rawMode = UserDefaults.standard.string(forKey: Self.modeKey),
-           let storedMode = ReadingInspectorMode(rawValue: rawMode) {
+           let storedMode = ReadingInspectorMode.storedMode(from: rawMode) {
             mode = storedMode
         } else {
-            mode = .context
+            mode = .words
         }
     }
 
@@ -49,7 +49,7 @@ final class ReadingInspectorModel: ObservableObject {
     func startGuide(selection: PDFSelectionContext) {
         self.selection = selection
         guideSession = ExplanationSession(selection: selection)
-        mode = .guide
+        mode = .ai
         isVisible = true
     }
 

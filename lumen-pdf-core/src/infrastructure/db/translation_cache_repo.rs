@@ -1,4 +1,4 @@
-use super::DbPool;
+use super::{query, DbPool};
 use crate::domain::translation::{
     entity::TranslationResult, repository::TranslationCacheRepository,
 };
@@ -24,14 +24,14 @@ impl TranslationCacheRepository for SqliteTranslationCacheRepo {
         target_language: &str,
     ) -> Result<Option<TranslationResult>, LumenError> {
         let conn = self.pool.get()?;
-        let result = conn.query_row(
+        let json = query::optional(conn.query_row(
             "SELECT response_json FROM translation_cache WHERE word = ?1 AND sentence_hash = ?2 AND target_language = ?3",
             rusqlite::params![word, sentence_hash, target_language],
             |row| row.get::<_, String>(0),
-        );
+        ))?;
 
-        match result {
-            Ok(json) => {
+        match json {
+            Some(json) => {
                 conn.execute(
                     "UPDATE translation_cache SET hit_count = hit_count + 1 WHERE word = ?1 AND sentence_hash = ?2 AND target_language = ?3",
                     rusqlite::params![word, sentence_hash, target_language],
@@ -42,8 +42,7 @@ impl TranslationCacheRepository for SqliteTranslationCacheRepo {
                     })?;
                 Ok(Some(r))
             }
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(e.into()),
+            None => Ok(None),
         }
     }
 

@@ -17,6 +17,19 @@ impl SqliteNoteRepo {
     }
 }
 
+fn row_to_note(row: &rusqlite::Row<'_>) -> rusqlite::Result<NoteEntry> {
+    Ok(NoteEntry {
+        id: row.get(0)?,
+        pdf_path: row.get(1)?,
+        pdf_name: row.get(2)?,
+        page_index: row.get::<_, i32>(3)? as u32,
+        content: row.get(4)?,
+        note: row.get(5)?,
+        bounds_str: row.get(6)?,
+        created_at: row.get(7)?,
+    })
+}
+
 impl NoteRepository for SqliteNoteRepo {
     fn save(&self, req: &SaveNoteRequest) -> Result<NoteEntry, LumenError> {
         let conn = self.pool.get().map_err(|e| LumenError::DatabaseError {
@@ -67,18 +80,7 @@ impl NoteRepository for SqliteNoteRepo {
         )?;
 
         let entries = stmt
-            .query_map([], |row| {
-                Ok(NoteEntry {
-                    id: row.get(0)?,
-                    pdf_path: row.get(1)?,
-                    pdf_name: row.get(2)?,
-                    page_index: row.get::<_, i32>(3)? as u32,
-                    content: row.get(4)?,
-                    note: row.get(5)?,
-                    bounds_str: row.get(6)?,
-                    created_at: row.get(7)?,
-                })
-            })?
+            .query_map([], row_to_note)?
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(entries)
@@ -95,18 +97,7 @@ impl NoteRepository for SqliteNoteRepo {
         )?;
 
         let entries = stmt
-            .query_map(params![pdf_path], |row| {
-                Ok(NoteEntry {
-                    id: row.get(0)?,
-                    pdf_path: row.get(1)?,
-                    pdf_name: row.get(2)?,
-                    page_index: row.get::<_, i32>(3)? as u32,
-                    content: row.get(4)?,
-                    note: row.get(5)?,
-                    bounds_str: row.get(6)?,
-                    created_at: row.get(7)?,
-                })
-            })?
+            .query_map(params![pdf_path], row_to_note)?
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(entries)
@@ -138,18 +129,7 @@ impl NoteRepository for SqliteNoteRepo {
              FROM notes WHERE id = ?1",
         )?;
 
-        let entry = stmt.query_row(params![req.id], |row| {
-            Ok(NoteEntry {
-                id: row.get(0)?,
-                pdf_path: row.get(1)?,
-                pdf_name: row.get(2)?,
-                page_index: row.get::<_, i32>(3)? as u32,
-                content: row.get(4)?,
-                note: row.get(5)?,
-                bounds_str: row.get(6)?,
-                created_at: row.get(7)?,
-            })
-        })?;
+        let entry = stmt.query_row(params![req.id], row_to_note)?;
 
         Ok(entry)
     }

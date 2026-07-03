@@ -71,6 +71,7 @@ struct ContentView: View {
                 } label: {
                     Label("文库", systemImage: "books.vertical")
                 }
+                .accessibilityIdentifier("toolbar.library")
                 .popover(isPresented: $showLibrary, arrowEdge: .bottom) {
                     LibraryPickerView()
                         .frame(width: 280, height: 360)
@@ -85,6 +86,7 @@ struct ContentView: View {
                         Text("单词本").tag(MainTab.vocabulary)
                         Text("笔记").tag(MainTab.notes)
                     }
+                    .accessibilityIdentifier("toolbar.mainTabs")
                     .pickerStyle(.segmented)
                     .frame(width: 280)
 
@@ -120,6 +122,7 @@ struct ContentView: View {
                             systemImage: "sidebar.right"
                         )
                     }
+                    .accessibilityIdentifier("toolbar.readingInspector")
                 }
 
                 Button {
@@ -127,21 +130,30 @@ struct ContentView: View {
                 } label: {
                     Label("打开 PDF", systemImage: "plus")
                 }
+                .accessibilityIdentifier("toolbar.openPDF")
 
                 if #available(macOS 14, *) {
                     SettingsLink {
                         Label("设置", systemImage: "gear")
                     }
+                    .accessibilityIdentifier("toolbar.settings")
                 } else {
                     Button {
                         NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
                     } label: {
                         Label("设置", systemImage: "gear")
                     }
+                    .accessibilityIdentifier("toolbar.settings")
                 }
             }
         }
         .onAppear {
+            let args = ProcessInfo.processInfo.arguments
+            if args.contains("--uitesting-show-settings") {
+                showSetupSheet = true
+                return
+            }
+            guard !args.contains("--uitesting") else { return }
             // Show LLM setup sheet if not configured (and user didn't opt "never remind")
             let storedKey = KeychainService.load(key: "llm_api_key") ?? ""
             if baseURL.isEmpty || storedKey.isEmpty || model.isEmpty {
@@ -159,24 +171,16 @@ struct ContentView: View {
             inspectorModel.isVisible = visible
             return
         }
-        NotificationCenter.default.post(
-            name: .saveReadingPositionNow,
-            object: nil,
-            userInfo: ["filePath": doc.filePath]
-        )
+        ReaderEventBus.shared.postSaveReadingPositionNow(filePath: doc.filePath)
         DispatchQueue.main.async {
             let page = appState.currentPageIndex
             let offset = appState.currentScrollOffset
             inspectorModel.isVisible = visible
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                NotificationCenter.default.post(
-                    name: .restoreReadingViewport,
-                    object: nil,
-                    userInfo: [
-                        "filePath": doc.filePath,
-                        "pageIndex": page,
-                        "scrollOffset": offset
-                    ]
+                ReaderEventBus.shared.postRestoreReadingViewport(
+                    filePath: doc.filePath,
+                    page: page,
+                    scrollOffset: offset
                 )
             }
         }
