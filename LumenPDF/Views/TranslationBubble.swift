@@ -785,10 +785,10 @@ struct TranslationBubble: View {
     }
 
     private func assistantMessageBubble(_ markdown: String, isStreaming: Bool) -> some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: 0) {
             RoundedRectangle(cornerRadius: 1)
-                .fill(Color.secondary.opacity(isStreaming ? 0.42 : 0.22))
-                .frame(width: 2)
+                .fill(Color.accentColor.opacity(isStreaming ? 0.7 : 0.48))
+                .frame(width: 3)
             VStack(alignment: .leading, spacing: 6) {
                 if isStreaming {
                     Label("正在生成", systemImage: "dot.radiowaves.left.and.right")
@@ -798,16 +798,22 @@ struct TranslationBubble: View {
                 MarkdownText(markdown: markdown)
                     .textSelection(.enabled)
             }
-            .padding(.vertical, 2)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.1), lineWidth: 0.7)
+        )
     }
 
     private var assistantThinkingBubble: some View {
         HStack(alignment: .center, spacing: 10) {
             RoundedRectangle(cornerRadius: 1)
-                .fill(Color.secondary.opacity(0.28))
-                .frame(width: 2, height: 30)
+                .fill(Color.accentColor.opacity(0.48))
+                .frame(width: 3, height: 30)
             HStack(spacing: 8) {
                 SpinnerView()
                 Text("正在思考…")
@@ -816,7 +822,11 @@ struct TranslationBubble: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
-            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.1), lineWidth: 0.7)
+            )
         }
     }
 
@@ -835,11 +845,19 @@ struct TranslationBubble: View {
         HStack(spacing: 8) {
             Image(systemName: isFollowUp ? "bubble.left.and.text.bubble.right" : "questionmark.bubble")
                 .font(.callout)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.primary.opacity(0.68))
                 .frame(width: 20)
 
-            TextField(isFollowUp ? "继续追问…" : "想先问什么？留空则直接解释", text: $explanationQuestion)
+            TextField(
+                text: $explanationQuestion,
+                prompt: Text(isFollowUp ? "继续追问…" : "想先问什么？留空则直接解释")
+                    .foregroundStyle(.secondary)
+            ) {
+                EmptyView()
+            }
                 .textFieldStyle(.plain)
+                .font(.callout)
+                .foregroundStyle(.primary)
                 .submitLabel(.send)
                 .onSubmit { submitExplanationQuestion() }
                 .disabled(isLoading)
@@ -848,10 +866,10 @@ struct TranslationBubble: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+                .strokeBorder(Color.primary.opacity(0.16), lineWidth: 0.8)
         )
     }
 
