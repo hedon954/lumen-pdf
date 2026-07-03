@@ -9,11 +9,13 @@ struct ExplanationMessage: Identifiable, Equatable {
     let id: UUID
     let role: ExplanationMessageRole
     var content: String
+    var isError: Bool
 
-    init(id: UUID = UUID(), role: ExplanationMessageRole, content: String) {
+    init(id: UUID = UUID(), role: ExplanationMessageRole, content: String, isError: Bool = false) {
         self.id = id
         self.role = role
         self.content = content
+        self.isError = isError
     }
 }
 
@@ -47,6 +49,7 @@ struct ExplanationSession: Identifiable, Equatable {
     var completedAssistantMessages: [ExplanationMessage] {
         messages.filter {
             $0.role == .assistant &&
+            !$0.isError &&
             !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
     }

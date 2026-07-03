@@ -69,11 +69,14 @@ final class ReadingGuideService {
                 onSessionChange(completed)
             } catch {
                 var failed = pending
-                var detail = TranslationErrorFormatter.userMessage(from: error)
-                if detail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    detail = "解释失败：\(String(describing: error))"
-                }
-                failed.errorMessage = detail
+                let detail = Self.guideErrorMessage(from: error)
+                failed.messages = Self.updatingAssistantMessage(
+                    in: failed.messages,
+                    id: assistantId,
+                    content: detail,
+                    isError: true
+                )
+                failed.errorMessage = nil
                 failed.isLoading = false
                 onSessionChange(failed)
             }
@@ -126,14 +129,26 @@ final class ReadingGuideService {
     private static func updatingAssistantMessage(
         in messages: [ExplanationMessage],
         id: UUID,
-        content: String
+        content: String,
+        isError: Bool = false
     ) -> [ExplanationMessage] {
         messages.map { message in
             guard message.id == id else { return message }
             var updated = message
             updated.content = content
+            updated.isError = isError
             return updated
         }
+    }
+
+    private static func guideErrorMessage(from error: Error) -> String {
+        let detail = TranslationErrorFormatter.userMessage(from: error)
+            .replacingOccurrences(of: "翻译失败：", with: "导读调用失败：")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if detail.isEmpty {
+            return "导读调用失败：请检查 LLM 设置后重试。"
+        }
+        return detail
     }
 
     private static func compressedExplanationContext(
