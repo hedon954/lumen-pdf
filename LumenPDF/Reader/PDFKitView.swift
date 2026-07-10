@@ -8,10 +8,12 @@ struct PDFKitView: NSViewRepresentable {
     let savedPage: Int
     let savedScrollOffset: Double
     let onPageChange: (Int, Double) -> Void
-    /// word, sentence, overallBounds, perLineBoundsStr, pageIndex, menuAnchor
-    let onTextSelected: (String, String, CGRect, String, Int, CGPoint) -> Void
+    /// word, sentence, overallBounds, perLineBoundsStr, pageIndex, menuAnchor, selectionAnchorRect
+    let onTextSelected: (String, String, CGRect, String, Int, CGPoint, CGRect) -> Void
     let onClearSelection: () -> Void
     let onDocumentLoaded: (Int) -> Void
+    let noteAnchorRequests: [NoteAnchorRequest]
+    let onNoteAnchorsChanged: ([NoteAnchorPosition]) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -63,9 +65,12 @@ struct PDFKitView: NSViewRepresentable {
     func updateNSView(_ pdfView: PDFView, context: Context) {
         // Use coordinator's stored filePath (not documentURL?.path) because
         // Security-Scoped Bookmark-resolved URLs can differ from the original path.
-        guard context.coordinator.currentFilePath != filePath else { return }
-        guard let doc = Self.loadDocument(filePath: filePath) else { return }
         context.coordinator.parent = self
+        guard context.coordinator.currentFilePath != filePath else {
+            context.coordinator.publishNoteAnchors()
+            return
+        }
+        guard let doc = Self.loadDocument(filePath: filePath) else { return }
         context.coordinator.currentFilePath = filePath
         // Set BEFORE `document =` — assigning the document fires PDFViewPageChanged at page 0.
         // Without this, we would persist page 0 and reset TOC to the first chapter.
@@ -96,6 +101,7 @@ struct PDFKitView: NSViewRepresentable {
                 object: sv
             )
         }
+        context.coordinator.publishNoteAnchors()
     }
 
     /// Load a PDFDocument, with security-scoped bookmark fallback for sandboxed apps.
@@ -545,6 +551,7 @@ struct PDFKitView: NSViewRepresentable {
             }
 
             triggerAnnotationSave()
+            publishNoteAnchors()
 
             // 注册撤销操作
             if let undo = pdfView.undoManager, let newInfo = newNoteInfo {
@@ -654,6 +661,7 @@ struct PDFKitView: NSViewRepresentable {
                 .filter { $0.userName == noteId }
                 .forEach { page.removeAnnotation($0) }
             triggerAnnotationSave()
+            publishNoteAnchors()
         }
 
         // MARK: Apply saved highlights on document load
@@ -907,10 +915,12 @@ struct PDFKitView: NSViewRepresentable {
             lastKnownPageIndex = pageIndex
             lastScrollOffset = offset
             parent.onPageChange(pageIndex, offset)
+            publishNoteAnchors()
         }
 
         /// Debounced live-scroll handler — saves position ~0.5 s after scrolling stops.
         @objc func didLiveScroll(_ notification: Notification) {
+            publishNoteAnchors()
             if pendingRestoreTargetPage != nil { return }
             scrollDebounce?.invalidate()
             scrollDebounce = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
@@ -1027,8 +1037,9 @@ struct PDFKitView: NSViewRepresentable {
                 let pageIndex = doc.index(for: currentPage)
                 let menuAnchor = Self.menuAnchor(boundsInPage: overallBounds,
                                                  page: currentPage, pdfView: pdfView)
+                let selectionAnchorRect = Self.swiftUIRect(boundsInPage: overallBounds, page: currentPage, pdfView: pdfView)
                 DispatchQueue.main.async {
-                    self.parent.onTextSelected(word, sentence, overallBounds, boundsStr, pageIndex, menuAnchor)
+                    self.parent.onTextSelected(word, sentence, overallBounds, boundsStr, pageIndex, menuAnchor, selectionAnchorRect)
                 }
             }
         }
@@ -1047,6 +1058,60 @@ struct PDFKitView: NSViewRepresentable {
             let menuY = max(selTopSwiftUI - 8 - menuH / 2, menuH / 2 + 4)
             let menuX = min(max(swiftUICenterX, 120), pdfView.bounds.width - 120)
             return CGPoint(x: menuX, y: menuY)
+        }
+
+        private static func swiftUIRect(boundsInPage: CGRect, page: PDFPage, pdfView: PDFView) -> CGRect {
+            let boundsInPDFView = pdfView.convert(boundsInPage, from: page)
+            let boundsInWindow = pdfView.convert(boundsInPDFView, to: nil)
+            let pdfFrameInWindow = pdfView.convert(pdfView.bounds, to: nil)
+            return CGRect(
+                x: boundsInWindow.minX - pdfFrameInWindow.minX,
+                y: pdfFrameInWindow.maxY - boundsInWindow.maxY,
+                width: boundsInWindow.width,
+                height: boundsInWindow.height
+            )
+        }
+
+        func publishNoteAnchors() {
+            guard let pdfView, !parent.noteAnchorRequests.isEmpty else {
+                DispatchQueue.main.async { self.parent.onNoteAnchorsChanged([]) }
+                return
+            }
+
+            let pdfFrameInWindow = pdfView.convert(pdfView.bounds, to: nil)
+            let visibleRect = pdfView.bounds
+            let anchors = parent.noteAnchorRequests.compactMap { request -> NoteAnchorPosition? in
+                guard let page = pdfView.document?.page(at: request.pageIndex) else { return nil }
+                let rects = Self.parseAnnotationRects(request.boundsStr)
+                guard let last = rects.last, !last.isEmpty else { return nil }
+
+                let lineInPDFView = pdfView.convert(last, from: page)
+                guard lineInPDFView.intersects(visibleRect.insetBy(dx: -48, dy: -48)) else { return nil }
+
+                let anchorInPDFView = CGPoint(x: lineInPDFView.maxX + 10, y: lineInPDFView.midY)
+                let anchorInWindow = pdfView.convert(anchorInPDFView, to: nil)
+                let x = min(max(anchorInWindow.x - pdfFrameInWindow.minX, 18), pdfView.bounds.width - 18)
+                let y = min(max(pdfFrameInWindow.maxY - anchorInWindow.y, 18), pdfView.bounds.height - 18)
+
+                let union = rects.dropFirst().reduce(rects[0]) { $0.union($1) }
+                let unionInPDFView = pdfView.convert(union, from: page)
+                let unionInWindow = pdfView.convert(unionInPDFView, to: nil)
+                let anchorRect = CGRect(
+                    x: unionInWindow.minX - pdfFrameInWindow.minX,
+                    y: pdfFrameInWindow.maxY - unionInWindow.maxY,
+                    width: unionInWindow.width,
+                    height: unionInWindow.height
+                )
+
+                return NoteAnchorPosition(
+                    id: request.id,
+                    noteId: request.noteId,
+                    pageIndex: request.pageIndex,
+                    point: CGPoint(x: x, y: y),
+                    anchorRect: anchorRect
+                )
+            }
+            DispatchQueue.main.async { self.parent.onNoteAnchorsChanged(anchors) }
         }
 
         // MARK: Sentence extraction

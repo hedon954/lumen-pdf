@@ -2,6 +2,7 @@ import SwiftUI
 
 struct UnderlineNoteDraftView: View {
     let draft: UnderlineNoteDraft
+    let dragGesture: AnyGesture<DragGesture.Value>
     let onCancel: () -> Void
     let onSave: (String) -> Void
 
@@ -9,7 +10,7 @@ struct UnderlineNoteDraftView: View {
     @FocusState private var isFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
                 Image(systemName: "note.text")
                     .font(.callout.weight(.semibold))
@@ -24,24 +25,35 @@ struct UnderlineNoteDraftView: View {
                 }
                 .buttonStyle(.plain)
             }
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
+            .padding(.bottom, 12)
+            .contentShape(Rectangle())
+            .gesture(dragGesture)
 
-            Text(ContextSentenceFormatting.displayParagraph(draft.word))
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(ContextSentenceFormatting.displayParagraph(draft.word))
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
-            TextEditor(text: $noteText)
-                .font(.body)
-                .scrollContentBackground(.hidden)
-                .padding(8)
-                .frame(height: 74)
-                .focused($isFocused)
-                .background(.background.opacity(0.72), in: RoundedRectangle(cornerRadius: 9))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 9)
-                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
-                )
+                    TextEditor(text: $noteText)
+                        .font(.body)
+                        .scrollContentBackground(.hidden)
+                        .padding(8)
+                        .frame(minHeight: 74)
+                        .focused($isFocused)
+                        .background(.background.opacity(0.72), in: RoundedRectangle(cornerRadius: 9))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 9)
+                                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+                        )
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 12)
+            }
+            .frame(maxHeight: 260)
 
             HStack(alignment: .center) {
                 Text(draft.appendingNoteId == nil ? "可留空；保存后会添加笔记划线" : "会追加到现有笔记")
@@ -56,8 +68,10 @@ struct UnderlineNoteDraftView: View {
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
             }
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+            .padding(.bottom, 16)
         }
-        .padding(16)
         .frame(width: 380)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
