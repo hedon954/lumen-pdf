@@ -96,7 +96,7 @@ https://github.com/hedon954/lumen-pdf/commit/<full-sha>
 
 ```bash
 git add LumenPDF/Info.plist CHANGELOG.md .github/workflows/release.yml CLAUDE.md
-git commit -m "chore(release): 发布 v${VERSION}" -m "整理 v${VERSION} 发布记录并同步版本信息。\n\n验证：说明实际执行的发布检查。"
+git commit -m "chore(release): 发布 v${VERSION}" -m "整理 v${VERSION} 发布记录并同步版本信息。"
 git push origin main
 git tag -a "v${VERSION}" \
   -m "LumenPDF v${VERSION}" \
