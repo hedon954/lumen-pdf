@@ -17,6 +17,7 @@ description: 收尾 LumenPDF 版本发布。当需要更新版本号、重写 CH
 - 不覆盖用户未说明的改动。工作区脏时，先确认哪些文件属于当前任务。
 - `CFBundleShortVersionString` 是公开版本号，`CFBundleVersion` 是内部 build number。普通 `1.0.N` 发布默认 build number 为 `N`，除非用户另有要求。
 - Release note 不是 commit 流水账，但每条具体变更都必须带至少一个 GitHub commit URL。
+- Annotated tag message 必须与当前版本 changelog 对齐：标题写版本号，正文提炼版本段落开头的发布摘要，并指向 `CHANGELOG.md` 获取完整变更。禁止只写 `LumenPDF vX.Y.Z`。
 
 ## 工作流
 
@@ -95,11 +96,16 @@ https://github.com/hedon954/lumen-pdf/commit/<full-sha>
 
 ```bash
 git add LumenPDF/Info.plist CHANGELOG.md .github/workflows/release.yml CLAUDE.md
-git commit -m "chore(release): 发布 v${VERSION}"
+git commit -m "chore(release): 发布 v${VERSION}" -m "整理 v${VERSION} 发布记录并同步版本信息。\n\n验证：说明实际执行的发布检查。"
 git push origin main
-git tag -a "v${VERSION}" -m "LumenPDF v${VERSION}"
+git tag -a "v${VERSION}" \
+  -m "LumenPDF v${VERSION}" \
+  -m "${TAG_SUMMARY}" \
+  -m "完整变更见 CHANGELOG.md。"
 git push origin "v${VERSION}"
 ```
+
+`TAG_SUMMARY` 必须根据 `CHANGELOG.md` 当前版本标题后的首段摘要填写，保持简洁、面向用户，不复制完整条目列表。创建 tag 后使用 `git tag -n99 "v${VERSION}"` 复核标题和正文，再推送。
 
 实际 staging 文件以本次改动为准，不要 stage 无关用户改动。
 

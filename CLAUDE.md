@@ -34,7 +34,8 @@ make dmg
 
 ## Release Process Notes
 
-- Use `$lumenpdf-release-wrapup` for release closeout work: version bumps, AI-authored changelog entries with commit URLs, release commits, annotated tags, and post-tag checks.
+- Use `$release-tag` for release closeout work: version bumps, AI-authored changelog entries with commit URLs, release commits, annotated tags, and post-tag checks.
+- Keep annotated tag messages aligned with the matching changelog section: include the version title, a concise user-facing release summary, and a pointer to `CHANGELOG.md`; do not use a version-only message.
 - `CHANGELOG.md` is maintained before tagging. The release workflow reads the matching version section as the GitHub Release body; it must not generate or commit changelog content.
 - Write changelog entries in Chinese and include GitHub commit URLs for the concrete changes covered by each version.
 - Version bumps live in `LumenPDF/Info.plist`:
