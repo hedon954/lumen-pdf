@@ -3,11 +3,23 @@
 LumenPDF 的版本记录由人工/AI 维护。每个版本只记录对用户或后续开发有意义的变化，并为具体变更附上对应的 GitHub commit URL。
 
 ---
-## [Unreleased](https://github.com/hedon954/lumen-pdf/compare/v1.0.14..HEAD)
+## [1.0.15](https://github.com/hedon954/lumen-pdf/compare/v1.0.14..v1.0.15) - 2026-07-11
+
+这一版集中修复翻译与笔记浮层在长内容、选区避让和窗口定位上的交互问题，并补齐右侧阅读工作区的笔记与单词管理能力。
+
+### 主要变化
+
+- 将翻译和笔记浮层统一到共用窗口逻辑：浮层随内容自适应增长，最大高度限制为 PDF 阅读器窗口的 80%，超过后改为内部滚动，同时保持选区避让和生成前后位置稳定（[d5f758c](https://github.com/hedon954/lumen-pdf/commit/d5f758c0ce67cc57657b889af94f2c6be9faa01d)，[8fa440d](https://github.com/hedon954/lumen-pdf/commit/8fa440df685f52c8a1fa1aca06fe7534fb78cee3)）。
+- 完善右侧阅读工作区：单词和笔记支持删除，笔记内容为空时禁止提交，并恢复页面返回后的快捷操作提示及右侧笔记联动（[8fa440d](https://github.com/hedon954/lumen-pdf/commit/8fa440df685f52c8a1fa1aca06fe7534fb78cee3)）。
+
+### 修复
+
+- 消除词汇编辑保存时未显式处理可选返回值的 Swift 编译警告，保持原有保存交互不变（[9838ef9](https://github.com/hedon954/lumen-pdf/commit/9838ef9a1c0607b478ca98d638c93fb716dd4e02)）。
 
 ### 工程与发布
 
-- 发布收尾流程改为手写维护：移除 git-cliff 配置和自动 changelog 回写，GitHub Release 改为读取 `CHANGELOG.md` 中对应版本段落，并新增 `.cursor/skills/lumenpdf-release-wrapup` 作为版本收尾指南（[d033dd2](https://github.com/hedon954/lumen-pdf/commit/d033dd22af97588eaae317d9df42a476319a9ee3)）。
+- 发布收尾改为手写维护，GitHub Release 直接读取 `CHANGELOG.md` 中对应版本段落，不再由 git-cliff 自动生成和回写发布记录（[d033dd2](https://github.com/hedon954/lumen-pdf/commit/d033dd22af97588eaae317d9df42a476319a9ee3)，[4a5c10c](https://github.com/hedon954/lumen-pdf/commit/4a5c10c105beec60472927ea5f98d00d98e31b80)）。
+- 将发布指南统一为 `release-tag` skill，并通过 `.cursor/skills` 向 Codex 和 Claude 共享同一份仓库级定义，减少多工具间的重复维护（[21267ef](https://github.com/hedon954/lumen-pdf/commit/21267efccaa22e764a6227f6b53cceb61b17cb85)，[5f755ab](https://github.com/hedon954/lumen-pdf/commit/5f755ab221621434e383af9d6c4689d99334c983)）。
 
 ---
 ## [1.0.14](https://github.com/hedon954/lumen-pdf/compare/v1.0.13..v1.0.14) - 2026-07-03
