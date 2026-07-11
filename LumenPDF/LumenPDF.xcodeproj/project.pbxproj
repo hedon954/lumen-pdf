@@ -36,6 +36,7 @@
 		9257B0414A31CB31C2441A29 /* liblumen_pdf_core.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = FDAFB107C96F1EAEFC542766 /* liblumen_pdf_core.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		A92D3D70F398A821E827184F /* ReadingGuidePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73952626C8655E4B82D4990F /* ReadingGuidePanel.swift */; };
 		AF82E5794BAC9B20BC7C6746 /* TranslationErrorFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64617D1512820E56274C1747 /* TranslationErrorFormatter.swift */; };
+		AF88A75629B32ADB7429FA33 /* ReadingOverlayWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6FB1A1B40FC7F240DF1E0F7 /* ReadingOverlayWindow.swift */; };
 		B308BE40E9C7A5E667FB725E /* TranslationBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = C67FF397B0476E532E9D1AFE /* TranslationBubble.swift */; };
 		B38C30BED51AB79AD1D81851 /* PDFReaderModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D30F8A859F8099B314A72B1 /* PDFReaderModels.swift */; };
 		BB1E55DF99A85DA5569B31DC /* PDFHighlightAnnotationFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F133B2E2B5413CFCFCF1B03 /* PDFHighlightAnnotationFactory.swift */; };
@@ -107,6 +108,7 @@
 		D971163E74432C8E4D8E88B6 /* BridgeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeService.swift; sourceTree = "<group>"; };
 		DCF17425FFE3A224B125B14E /* AudioService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioService.swift; sourceTree = "<group>"; };
 		E5A0EBC40C3F33282D857841 /* UnderlineNoteMergePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnderlineNoteMergePolicy.swift; sourceTree = "<group>"; };
+		E6FB1A1B40FC7F240DF1E0F7 /* ReadingOverlayWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingOverlayWindow.swift; sourceTree = "<group>"; };
 		E7BE79696867D170FC2335E2 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		ED26F16D258821C77002AB92 /* ReaderPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderPersistence.swift; sourceTree = "<group>"; };
 		EE9BA24B6EA3E9B58D6835C6 /* AnnotationBoundsCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnotationBoundsCodec.swift; sourceTree = "<group>"; };
@@ -195,6 +197,7 @@
 				8D30F8A859F8099B314A72B1 /* PDFReaderModels.swift */,
 				9E475C0C73F37B07EF7BBC81 /* ReaderEventBus.swift */,
 				ED26F16D258821C77002AB92 /* ReaderPersistence.swift */,
+				E6FB1A1B40FC7F240DF1E0F7 /* ReadingOverlayWindow.swift */,
 				C5D204492B4D1E54DC478CF6 /* UnderlineNoteDraftView.swift */,
 				E5A0EBC40C3F33282D857841 /* UnderlineNoteMergePolicy.swift */,
 			);
@@ -349,6 +352,7 @@
 				EF690DAE04F45E35A8429F75 /* ReadingInspectorView.swift in Sources */,
 				7169990F59B805C6B5E1175C /* ReadingNoteGrouping.swift in Sources */,
 				D91AF0A3F01264BB1FD664C1 /* ReadingNotesPanel.swift in Sources */,
+				AF88A75629B32ADB7429FA33 /* ReadingOverlayWindow.swift in Sources */,
 				848778EA79429D8021B4DD18 /* ReadingSessionService.swift in Sources */,
 				5424E1B1C76DEACCDE1B1541 /* ReadingWordsPanel.swift in Sources */,
 				813B45931E38DB591F998A25 /* ReadingWorkspaceView.swift in Sources */,

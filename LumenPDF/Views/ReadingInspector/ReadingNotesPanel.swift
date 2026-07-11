@@ -47,9 +47,11 @@ struct ReadingNotesPanel: View {
                 .padding(.horizontal, 3)
 
             ForEach(group.items) { noteGroup in
-                ReadingInspectorNoteCard(group: noteGroup) {
-                    jump(to: noteGroup)
-                }
+                ReadingInspectorNoteCard(
+                    group: noteGroup,
+                    onJump: { jump(to: noteGroup) },
+                    onDelete: { delete(noteGroup) }
+                )
             }
         }
     }
@@ -64,11 +66,37 @@ struct ReadingNotesPanel: View {
         )
         appState.showToast("已定位到 P\(group.pageIndex + 1)")
     }
+
+    private func delete(_ group: ReadingInspectorNoteGroup) {
+        var deletedCount = 0
+        for noteId in group.sourceIds {
+            do {
+                try ReaderPersistence.shared.deleteNote(id: noteId)
+                ReaderEventBus.shared.postRemoveUnderlineNote(
+                    noteId: noteId,
+                    page: Int(group.pageIndex),
+                    filePath: group.pdfPath
+                )
+                deletedCount += 1
+            } catch {
+                continue
+            }
+        }
+        appState.refreshNotes()
+        if deletedCount == group.sourceIds.count {
+            appState.showToast("已删除笔记")
+        } else if deletedCount > 0 {
+            appState.showToast("部分笔记删除失败")
+        } else {
+            appState.showToast("删除笔记失败")
+        }
+    }
 }
 
 private struct ReadingInspectorNoteCard: View {
     let group: ReadingInspectorNoteGroup
     let onJump: () -> Void
+    let onDelete: () -> Void
 
     @State private var isExpanded = false
 
@@ -104,6 +132,14 @@ private struct ReadingInspectorNoteCard: View {
             .buttonStyle(.plain)
 
             HStack {
+                Button(role: .destructive, action: onDelete) {
+                    Image(systemName: "trash")
+                        .font(.caption)
+                        .foregroundStyle(.red.opacity(0.72))
+                }
+                .buttonStyle(.plain)
+                .help(group.sourceIds.count > 1 ? "删除这组笔记" : "删除笔记")
+
                 Spacer()
                 Button {
                     withAnimation(.easeInOut(duration: 0.18)) {

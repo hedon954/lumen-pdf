@@ -9,6 +9,7 @@ struct ReadingInspectorNoteItem: Identifiable, Equatable {
 struct ReadingInspectorNoteGroup: Identifiable, Equatable {
     let id: String
     let sourceId: String
+    let sourceIds: [String]
     let pdfPath: String
     let pageIndex: UInt32
     let boundsStr: String
@@ -42,6 +43,7 @@ struct ReadingInspectorNoteGroup: Identifiable, Equatable {
             return ReadingInspectorNoteGroup(
                 id: NoteSelectionKey(representative).stableId,
                 sourceId: representative.id,
+                sourceIds: sortedEntries.map(\.id),
                 pdfPath: representative.pdfPath,
                 pageIndex: representative.pageIndex,
                 boundsStr: representative.boundsStr,

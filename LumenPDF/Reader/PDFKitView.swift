@@ -28,6 +28,8 @@ struct PDFKitView: NSViewRepresentable {
                        name: .PDFViewPageChanged, object: pdfView)
         nc.addObserver(context.coordinator, selector: #selector(Coordinator.selectionChanged(_:)),
                        name: .PDFViewSelectionChanged, object: pdfView)
+        nc.addObserver(context.coordinator, selector: #selector(Coordinator.viewportGeometryChanged(_:)),
+                       name: .PDFViewScaleChanged, object: pdfView)
         nc.addObserver(context.coordinator, selector: #selector(Coordinator.outlineNavigate(_:)),
                        name: .outlineNavigate, object: nil)
         nc.addObserver(context.coordinator, selector: #selector(Coordinator.jumpToPage(_:)),
@@ -66,6 +68,7 @@ struct PDFKitView: NSViewRepresentable {
         // Use coordinator's stored filePath (not documentURL?.path) because
         // Security-Scoped Bookmark-resolved URLs can differ from the original path.
         context.coordinator.parent = self
+        context.coordinator.attachViewportObserverIfNeeded()
         guard context.coordinator.currentFilePath != filePath else {
             context.coordinator.publishNoteAnchors()
             return
@@ -92,14 +95,12 @@ struct PDFKitView: NSViewRepresentable {
             }
         }
 
-        // Re-attach the scroll observer to the new scroll view when the document changes.
-        if let sv = pdfView.enclosingScrollView {
-            NotificationCenter.default.addObserver(
-                context.coordinator,
-                selector: #selector(Coordinator.didLiveScroll(_:)),
-                name: NSScrollView.didLiveScrollNotification,
-                object: sv
-            )
+        // PDFKit may finish installing or replace its internal scroll view after assigning
+        // the document. Re-attach on the next run loop so viewport changes keep publishing
+        // SwiftUI note-anchor coordinates even when no PDF page-change notification fires.
+        DispatchQueue.main.async { [weak coordinator = context.coordinator] in
+            coordinator?.attachViewportObserverIfNeeded()
+            coordinator?.publishNoteAnchors()
         }
         context.coordinator.publishNoteAnchors()
     }
@@ -134,6 +135,7 @@ struct PDFKitView: NSViewRepresentable {
         private var selectionDebounce: Timer?
         private var scrollDebounce: Timer?
         private var annotationSaveDebounce: Timer?
+        private weak var observedViewport: NSClipView?
         var isJumping = false
         /// The file path of the currently loaded document.
         /// Stored explicitly so we never rely on `documentURL?.path`,
@@ -151,6 +153,55 @@ struct PDFKitView: NSViewRepresentable {
             self.parent = parent
             self.lastKnownPageIndex = parent.savedPage
             self.lastScrollOffset = parent.savedScrollOffset
+        }
+
+        deinit {
+            NotificationCenter.default.removeObserver(self)
+            selectionDebounce?.invalidate()
+            scrollDebounce?.invalidate()
+            annotationSaveDebounce?.invalidate()
+            pendingRestoreTimeoutWorkItem?.cancel()
+        }
+
+        func attachViewportObserverIfNeeded() {
+            guard let pdfView,
+                  let scrollView = Self.scrollView(for: pdfView) else {
+                return
+            }
+            let viewport = scrollView.contentView
+            guard observedViewport !== viewport else { return }
+
+            if let observedViewport {
+                NotificationCenter.default.removeObserver(
+                    self,
+                    name: NSView.boundsDidChangeNotification,
+                    object: observedViewport
+                )
+            }
+            viewport.postsBoundsChangedNotifications = true
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(viewportBoundsChanged(_:)),
+                name: NSView.boundsDidChangeNotification,
+                object: viewport
+            )
+            observedViewport = viewport
+        }
+
+        private static func embeddedScrollView(in view: NSView) -> NSScrollView? {
+            for subview in view.subviews {
+                if let scrollView = subview as? NSScrollView {
+                    return scrollView
+                }
+                if let nested = embeddedScrollView(in: subview) {
+                    return nested
+                }
+            }
+            return nil
+        }
+
+        private static func scrollView(for pdfView: PDFView) -> NSScrollView? {
+            embeddedScrollView(in: pdfView) ?? pdfView.enclosingScrollView
         }
 
         /// Persist free-form markups (highlights / underlines) to the app-side store.
@@ -201,7 +252,7 @@ struct PDFKitView: NSViewRepresentable {
 
         /// Inverse of `scrollOffset(for:)` — restores vertical position in continuous scroll mode.
         static func applyNormalizedScrollOffset(_ normalized: Double, to pdfView: PDFView) {
-            guard let sv = pdfView.enclosingScrollView, let dv = sv.documentView else { return }
+            guard let sv = scrollView(for: pdfView), let dv = sv.documentView else { return }
             let h = dv.bounds.height
             guard h > 0 else { return }
             let y = CGFloat(max(0, min(1, normalized))) * h
@@ -863,7 +914,7 @@ struct PDFKitView: NSViewRepresentable {
         }
 
         private func center(rect: CGRect, on page: PDFPage, in pdfView: PDFView) {
-            guard let scrollView = pdfView.enclosingScrollView,
+            guard let scrollView = Self.scrollView(for: pdfView),
                   let documentView = scrollView.documentView else { return }
             let rectInPDFView = pdfView.convert(rect, from: page)
             let targetInDocument = pdfView.convert(rectInPDFView, to: documentView)
@@ -905,7 +956,8 @@ struct PDFKitView: NSViewRepresentable {
                 if pageIndex != target { return }
                 pendingRestoreTimeoutWorkItem?.cancel()
                 pendingRestoreTargetPage = nil
-                // Layout not updated yet — measured offset is ~0; keep DB scroll until `didLiveScroll`.
+                // Layout not updated yet — measured offset is ~0; keep DB scroll until the
+                // observed viewport posts its first bounds change.
                 lastKnownPageIndex = pageIndex
                 parent.onPageChange(pageIndex, lastScrollOffset)
                 return
@@ -918,8 +970,9 @@ struct PDFKitView: NSViewRepresentable {
             publishNoteAnchors()
         }
 
-        /// Debounced live-scroll handler — saves position ~0.5 s after scrolling stops.
-        @objc func didLiveScroll(_ notification: Notification) {
+        /// The PDFKit clip view is the authoritative viewport signal. Unlike
+        /// `didLiveScroll`, this also covers momentum and programmatic scrolling.
+        @objc func viewportBoundsChanged(_ notification: Notification) {
             publishNoteAnchors()
             if pendingRestoreTargetPage != nil { return }
             scrollDebounce?.invalidate()
@@ -933,6 +986,11 @@ struct PDFKitView: NSViewRepresentable {
                 self.lastScrollOffset = offset
                 self.parent.onPageChange(pageIndex, offset)
             }
+        }
+
+        @objc func viewportGeometryChanged(_ notification: Notification) {
+            attachViewportObserverIfNeeded()
+            publishNoteAnchors()
         }
 
         /// Save position synchronously just before the window is minimized.
@@ -1073,6 +1131,7 @@ struct PDFKitView: NSViewRepresentable {
         }
 
         func publishNoteAnchors() {
+            attachViewportObserverIfNeeded()
             guard let pdfView, !parent.noteAnchorRequests.isEmpty else {
                 DispatchQueue.main.async { self.parent.onNoteAnchorsChanged([]) }
                 return
@@ -1174,7 +1233,7 @@ struct PDFKitView: NSViewRepresentable {
         // MARK: Scroll offset
 
         private func scrollOffset(for pdfView: PDFView) -> Double {
-            guard let sv = pdfView.enclosingScrollView else { return 0 }
+            guard let sv = Self.scrollView(for: pdfView) else { return 0 }
             let h = sv.documentView?.bounds.height ?? 1
             guard h > 0 else { return 0 }
             return max(0, min(1, sv.documentVisibleRect.minY / h))

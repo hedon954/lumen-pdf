@@ -70,57 +70,86 @@ struct ReadingWordsPanel: View {
     }
 
     private func contextCard(_ item: WordItem) -> some View {
-        Button {
-            jump(to: item)
-        } label: {
-            VStack(alignment: .leading, spacing: 7) {
-                HStack(spacing: 6) {
-                    Label("单词", systemImage: "book.closed")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Text("P\(item.pageIndex + 1)")
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.tertiary)
-                }
+        ZStack(alignment: .topTrailing) {
+            Button {
+                jump(to: item)
+            } label: {
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack(spacing: 6) {
+                        Label("单词", systemImage: "book.closed")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text("P\(item.pageIndex + 1)")
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.tertiary)
+                        Color.clear.frame(width: 18, height: 1)
+                    }
 
-                Text(item.title)
-                    .font(.headline)
-                    .foregroundStyle(.primary)
-                    .lineLimit(3)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                if !item.subtitle.isEmpty {
-                    Text(item.subtitle)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(4)
+                    Text(item.title)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                        .lineLimit(3)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                }
 
-                if !item.detail.isEmpty {
-                    Text(item.detail)
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(2)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if !item.subtitle.isEmpty {
+                        Text(item.subtitle)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(4)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    if !item.detail.isEmpty {
+                        Text(item.detail)
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(2)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .buttonStyle(.plain)
+
+            Button(role: .destructive) {
+                delete(item)
+            } label: {
+                Image(systemName: "trash")
+                    .font(.caption)
+                    .foregroundStyle(.red.opacity(0.72))
+            }
+            .buttonStyle(.plain)
             .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 1.5)
-                    .fill(Color.yellow.opacity(0.62))
-                    .frame(width: 3)
-                    .padding(.vertical, 9)
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
-            }
+            .help("删除单词")
         }
-        .buttonStyle(.plain)
+        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 1.5)
+                .fill(Color.yellow.opacity(0.62))
+                .frame(width: 3)
+                .padding(.vertical, 9)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+        }
+    }
+
+    private func delete(_ item: WordItem) {
+        do {
+            try ReaderPersistence.shared.deleteVocabulary(id: item.id)
+            ReaderEventBus.shared.postRemoveHighlight(
+                entryId: item.id,
+                page: Int(item.pageIndex),
+                filePath: item.pdfPath
+            )
+            appState.refreshVocabulary()
+            appState.showToast("已删除单词")
+        } catch {
+            appState.showToast("删除单词失败")
+        }
     }
 
     private func jump(to item: WordItem) {

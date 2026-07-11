@@ -52,6 +52,8 @@ Format:
 
 ```text
 <type>(<scope>): <summary>
+
+<body>
 ```
 
 Rules:
@@ -59,7 +61,9 @@ Rules:
 - Use lowercase `type`. Allowed types: `feat`, `fix`, `docs`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `style`, `revert`.
 - Use a short lowercase scope when it clarifies the affected area, for example `reader`, `notes`, `sidebar`, `bridge`, `core`, `release`, or `docs`.
 - Write the summary in Chinese, without a trailing period, and keep the first line under 72 characters when practical.
-- Use a body for motivation, behavior changes, migration notes, or testing details when the change is non-trivial.
+- Every commit must include a non-empty body, including small changes and `docs`/`chore` commits. Separate the summary and body with one blank line.
+- Write the body in Chinese. Explain the motivation or context, the key behavior or impact, and the verification actually performed. Do not merely repeat the summary.
+- If no tests were run, state the reason explicitly, for example `验证：未运行测试（仅文档变更）`.
 - Mark breaking changes with `!` after the type/scope and include a `BREAKING CHANGE:` footer.
 - Agent-authored commits should keep the Codex git identity (`Codex <codex@openai.com>`) unless the user explicitly requests another author.
 
@@ -67,9 +71,24 @@ Examples:
 
 ```text
 feat(reader): 增加阅读上下文侧栏
+
+统一承载单词、笔记和 AI 导读，减少阅读过程中在多个页面间切换。
+验证：通过 macOS Debug 构建。
+
 fix(notes): 保留划线笔记追加顺序
+
+修复追加笔记后排序发生变化的问题，确保同一划线下的内容按创建顺序展示。
+验证：运行相关笔记单元测试并通过。
+
 docs(readme): 说明 Gatekeeper 处理方式
+
+补充首次安装时处理未签名应用提示的步骤，避免用户误以为安装失败。
+验证：未运行测试（仅文档变更）。
+
 chore(release): 更新版本到 1.0.12
+
+同步应用公开版本号和内部构建号，为 1.0.12 发布做准备。
+验证：检查 Info.plist 与发布文档中的版本号一致。
 ```
 
 ## Pre-commit Checks

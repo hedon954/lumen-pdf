@@ -10,12 +10,22 @@ struct ReadingWorkspaceView: View {
 
     var body: some View {
         HSplitView {
-            PDFReaderView(document: document) { selection in
-                if !inspectorModel.isVisible {
-                    setInspectorVisible(true)
+            PDFReaderView(
+                document: document,
+                onExplainSelection: { selection in
+                    if !inspectorModel.isVisible {
+                        setInspectorVisible(true)
+                    }
+                    inspectorModel.startGuide(selection: selection)
+                },
+                onOpenNotes: {
+                    appState.refreshNotes()
+                    inspectorModel.mode = .notes
+                    if !inspectorModel.isVisible {
+                        setInspectorVisible(true)
+                    }
                 }
-                inspectorModel.startGuide(selection: selection)
-            }
+            )
             .id(document.id)
             .frame(minWidth: 420)
 
