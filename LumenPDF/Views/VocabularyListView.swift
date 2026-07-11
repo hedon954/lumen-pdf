@@ -370,7 +370,7 @@ private struct VocabularyEditSheet: View {
                 Button("取消") { dismiss() }
                 Spacer()
                 Button("保存") {
-                    try? ReaderPersistence.shared.updateVocabulary(
+                    _ = try? ReaderPersistence.shared.updateVocabulary(
                         id: entry.id, phonetic: phonetic, partOfSpeech: partOfSpeech,
                         contextTranslation: contextTranslation,
                         contextExplanation: contextExplanation,
