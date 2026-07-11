@@ -1,5 +1,5 @@
 ---
-name: lumenpdf-release-wrapup
+name: release-tag
 description: 收尾 LumenPDF 版本发布。当需要更新版本号、重写 CHANGELOG.md、为变更补充 GitHub commit URL、移除自动生成 changelog 逻辑、提交发布 commit、创建 annotated tag、推送 tag 或验证发布结果时使用。
 ---
 
@@ -68,6 +68,7 @@ https://github.com/hedon954/lumen-pdf/commit/<full-sha>
 
 ```markdown
 ---
+
 ## [1.0.15](https://github.com/hedon954/lumen-pdf/compare/v1.0.14..v1.0.15) - 2026-07-04
 
 这一版聚焦于……

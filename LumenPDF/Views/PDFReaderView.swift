@@ -5,6 +5,7 @@ import AppKit
 struct PDFReaderView: View {
     let document: PdfDocument
     let onExplainSelection: (PDFSelectionContext) -> Void
+    let onOpenNotes: () -> Void
     @EnvironmentObject private var appState: AppState
     @StateObject private var session = ReadingSessionService()
 
@@ -12,10 +13,13 @@ struct PDFReaderView: View {
     @State private var isTranslating = false
     @State private var pendingSelection: SelectionInfo?
     @State private var underlineDraft: UnderlineNoteDraft?
+    @State private var noteAnchorPositions: [NoteAnchorPosition] = []
+    @State private var activeNoteReview: ActiveNoteReview?
     // totalPages is kept as a local state for the initial load callback,
     // then written to appState so ContentView can display it in the toolbar.
 
     var body: some View {
+        GeometryReader { proxy in
         ZStack {
             PDFKitView(
                 filePath: document.filePath,
@@ -31,12 +35,13 @@ struct PDFReaderView: View {
                         scrollOffset: offset
                     )
                 },
-                onTextSelected: { word, sentence, bounds, boundsStr, page, anchor in
+                onTextSelected: { word, sentence, bounds, boundsStr, page, anchor, selectionAnchorRect in
                     guard !word.isEmpty else { return }
                     pendingSelection = SelectionInfo(
                         word: word, sentence: sentence,
                         bounds: bounds, boundsStr: boundsStr,
-                        page: page, menuAnchor: anchor
+                        page: page, menuAnchor: anchor,
+                        selectionAnchorRect: selectionAnchorRect
                     )
                 },
                 onClearSelection: {
@@ -44,30 +49,50 @@ struct PDFReaderView: View {
                 },
                 onDocumentLoaded: { total in
                     handleDocumentLoaded(totalPages: total)
+                },
+                noteAnchorRequests: noteAnchorRequests,
+                onNoteAnchorsChanged: { anchors in
+                    if noteAnchorPositions != anchors {
+                        noteAnchorPositions = anchors
+                    }
                 }
             )
 
             // Selection action menu — positioned near the selection
-            if let sel = pendingSelection, translationRequest == nil && underlineDraft == nil {
+            if let sel = pendingSelection,
+               translationRequest == nil,
+               underlineDraft == nil,
+               activeNoteReview == nil {
                 selectionActionBar(sel)
                     .transition(.opacity.combined(with: .scale(scale: 0.88)))
                     .animation(.spring(duration: 0.18), value: pendingSelection)
+                    .zIndex(5)
             }
 
             if let draft = underlineDraft {
                 UnderlineNoteDraftView(
                     draft: draft,
+                    availableSize: proxy.size,
                     onCancel: {
                         underlineDraft = nil
                         pendingSelection = nil
                     },
                     onSave: { noteText in
+                        let trimmedNoteText = noteText.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !trimmedNoteText.isEmpty else {
+                            appState.showToast("请输入笔记内容")
+                            return
+                        }
                         if let noteId = draft.appendingNoteId {
-                            appendUnderlineNoteText(noteId: noteId, existingNoteText: draft.existingNoteText, noteText: noteText)
+                            appendUnderlineNoteText(
+                                noteId: noteId,
+                                existingNoteText: draft.existingNoteText,
+                                noteText: trimmedNoteText
+                            )
                         } else {
                             saveUnderlineNote(
                                 word: draft.word,
-                                noteText: noteText,
+                                noteText: trimmedNoteText,
                                 boundsStr: draft.boundsStr,
                                 page: draft.page
                             )
@@ -77,32 +102,51 @@ struct PDFReaderView: View {
                     }
                 )
                 .transition(.opacity.combined(with: .scale(scale: 0.96)))
-                .position(x: draft.anchor.x, y: draft.anchor.y + 72)
                 .zIndex(2)
+            }
+
+            NoteAnchorOverlayView(anchors: noteAnchorPositions) { anchor in
+                openNoteReview(anchor)
+            }
+            .zIndex(1)
+
+            if let review = activeNoteReview {
+                NoteReviewPopoverView(
+                    review: review,
+                    availableSize: proxy.size,
+                    onOpenNotes: {
+                        onOpenNotes()
+                        activeNoteReview = nil
+                    },
+                    onClose: {
+                        activeNoteReview = nil
+                    }
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                .zIndex(3)
             }
 
             // Translation bubble
             if let req = translationRequest {
-                GeometryReader { bubbleProxy in
-                    TranslationBubble(
-                        request: req,
-                        isLoading: isTranslating,
-                        availableSize: bubbleProxy.size,
-                        onSave: { result in
-                            if req.isSentenceMode {
-                                saveSentenceToNote(result: result, request: req)
-                            } else {
-                                saveToDiary(result: result, request: req)
-                            }
-                        },
-                        onDelete: { deletedId, savedToNote in
-                            deleteTranslationSave(id: deletedId, savedToNote: savedToNote, request: req)
-                        },
-                        onDismiss: { translationRequest = nil }
-                    )
-                }
+                TranslationBubble(
+                    request: req,
+                    isLoading: isTranslating,
+                    availableSize: proxy.size,
+                    onSave: { result in
+                        if req.isSentenceMode {
+                            saveSentenceToNote(result: result, request: req)
+                        } else {
+                            saveToDiary(result: result, request: req)
+                        }
+                    },
+                    onDelete: { deletedId, savedToNote in
+                        deleteTranslationSave(id: deletedId, savedToNote: savedToNote, request: req)
+                    },
+                    onDismiss: closeTranslationOverlay
+                )
                 .transition(.opacity.combined(with: .scale(scale: 0.95)))
                 .animation(.easeOut(duration: 0.15), value: translationRequest != nil)
+                .zIndex(4)
             }
             // ⌘S — invisible button that flushes reading position immediately.
             // Must be inside the ZStack (not .background) to stay in the responder chain.
@@ -120,10 +164,51 @@ struct PDFReaderView: View {
             .frame(width: 0, height: 0)
             .opacity(0)
         }
+        }
         .id(document.id)
         .onReceive(NotificationCenter.default.publisher(for: .refreshNotesList)) { _ in
             appState.refreshNotes()
         }
+    }
+
+    private var noteAnchorRequests: [NoteAnchorRequest] {
+        let notes = appState.notes.filter { $0.pdfPath == document.filePath && !$0.boundsStr.isEmpty }
+        let grouped = Dictionary(grouping: notes) { note in
+            "\(note.pageIndex)|\(note.boundsStr)"
+        }
+        return grouped.values.compactMap { group in
+            guard let first = group.sorted(by: { $0.createdAt < $1.createdAt }).first else { return nil }
+            return NoteAnchorRequest(
+                id: "note-anchor|\(first.pageIndex)|\(first.boundsStr)",
+                noteId: first.id,
+                pageIndex: Int(first.pageIndex),
+                boundsStr: first.boundsStr
+            )
+        }
+    }
+
+    private func openNoteReview(_ anchor: NoteAnchorPosition) {
+        let anchorBounds = appState.notes.first(where: { $0.id == anchor.noteId })?.boundsStr
+        let notes = appState.notes.filter { note in
+            note.pdfPath == document.filePath &&
+                Int(note.pageIndex) == anchor.pageIndex &&
+                (note.id == anchor.noteId || note.boundsStr == anchorBounds)
+        }
+        guard !notes.isEmpty else { return }
+        closeTranslationOverlay()
+        underlineDraft = nil
+        pendingSelection = nil
+        activeNoteReview = ActiveNoteReview(id: anchor.id, anchor: anchor, notes: notes.sorted { $0.createdAt < $1.createdAt })
+    }
+
+    private func closeOtherReadingOverlays() {
+        closeTranslationOverlay()
+        activeNoteReview = nil
+    }
+
+    private func closeTranslationOverlay() {
+        translationRequest = nil
+        isTranslating = false
     }
 
     // MARK: - Selection Action Bar
@@ -133,7 +218,8 @@ struct PDFReaderView: View {
             actionBarBtn(icon: "character.bubble", label: "翻译") {
                 requestTranslation(word: sel.word, sentence: sel.sentence,
                                    bounds: sel.bounds, boundsStr: sel.boundsStr,
-                                   page: sel.page)
+                                   page: sel.page,
+                                   selectionAnchorRect: sel.selectionAnchorRect)
                 pendingSelection = nil
             }
             Divider().frame(height: 26)
@@ -164,27 +250,31 @@ struct PDFReaderView: View {
             Divider().frame(height: 26)
             if let existingNote = exactUnderlineNote(boundsStr: sel.boundsStr, page: sel.page) {
                 actionBarBtn(icon: "plus.bubble", label: "添加笔记") {
+                    closeOtherReadingOverlays()
                     underlineDraft = UnderlineNoteDraft(
                         word: sel.word,
                         boundsStr: sel.boundsStr,
                         page: sel.page,
                         anchor: sel.menuAnchor,
+                        anchorRect: sel.selectionAnchorRect,
                         appendingNoteId: existingNote.id,
                         existingNoteText: existingNote.note
                     )
                 }
                 Divider().frame(height: 26)
                 actionBarBtn(icon: "note.text", label: "取消笔记") {
-                    saveUnderlineNote(word: sel.word, noteText: "", boundsStr: sel.boundsStr, page: sel.page)
+                    removeUnderlineNote(existingNote)
                     pendingSelection = nil
                 }
             } else {
                 actionBarBtn(icon: "note.text", label: "笔记") {
+                    closeOtherReadingOverlays()
                     underlineDraft = UnderlineNoteDraft(
                         word: sel.word,
                         boundsStr: sel.boundsStr,
                         page: sel.page,
                         anchor: sel.menuAnchor,
+                        anchorRect: sel.selectionAnchorRect,
                         appendingNoteId: nil,
                         existingNoteText: ""
                     )
@@ -251,8 +341,25 @@ struct PDFReaderView: View {
         appState.showToast("已追加笔记")
     }
 
-    /// 创建笔记并添加关联下划线：相同选区 toggle，子区域不变，部分重叠则扩展/合并。
+    private func removeUnderlineNote(_ note: NoteEntry) {
+        try? ReaderPersistence.shared.deleteNote(id: note.id)
+        ReaderEventBus.shared.postRemoveUnderlineNote(
+            noteId: note.id,
+            page: Int(note.pageIndex),
+            filePath: document.filePath
+        )
+        appState.refreshNotes()
+        appState.showToast("已移除笔记")
+    }
+
+    /// 创建非空笔记并添加关联下划线：子区域不变，部分重叠则扩展/合并。
     private func saveUnderlineNote(word: String, noteText: String, boundsStr: String, page: Int) {
+        let trimmedNoteText = noteText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedNoteText.isEmpty else {
+            appState.showToast("请输入笔记内容")
+            return
+        }
+
         ReaderPersistence.shared.initializeIfNeeded()
 
         let newRects = Self.parseAnnotationRectsStatic(boundsStr)
@@ -268,16 +375,8 @@ struct PDFReaderView: View {
 
         let samePageNotes = existingNotes.filter { $0.pageIndex == UInt32(page) }
 
-        // Same selection keeps the toggle behavior: tap/draw the exact same underline again to remove it.
-        if let match = samePageNotes.first(where: { $0.boundsStr == boundsStr }) {
-            try? ReaderPersistence.shared.deleteNote(id: match.id)
-            ReaderEventBus.shared.postRemoveUnderlineNote(
-                noteId: match.id,
-                page: page,
-                filePath: document.filePath
-            )
-            appState.refreshNotes()
-            appState.showToast("已移除笔记")
+        if samePageNotes.contains(where: { $0.boundsStr == boundsStr }) {
+            appState.showToast("该选区已有笔记")
             return
         }
 
@@ -296,7 +395,7 @@ struct PDFReaderView: View {
         if !overlappingNotes.isEmpty {
             mergeUnderlineNote(
                 word: word,
-                noteText: noteText,
+                noteText: trimmedNoteText,
                 page: page,
                 newRects: newRects,
                 overlappingNotes: overlappingNotes
@@ -304,7 +403,13 @@ struct PDFReaderView: View {
             return
         }
 
-        createUnderlineNote(word: word, noteText: noteText, boundsStr: boundsStr, page: page, deletedNotesInfo: [])
+        createUnderlineNote(
+            word: word,
+            noteText: trimmedNoteText,
+            boundsStr: boundsStr,
+            page: page,
+            deletedNotesInfo: []
+        )
     }
 
     private func mergeUnderlineNote(
@@ -452,7 +557,10 @@ struct PDFReaderView: View {
     // MARK: - Translation
 
     private func requestTranslation(word: String, sentence: String,
-                                     bounds: CGRect, boundsStr: String, page: Int) {
+                                     bounds: CGRect, boundsStr: String, page: Int,
+                                     selectionAnchorRect: CGRect) {
+        underlineDraft = nil
+        activeNoteReview = nil
         ReaderPersistence.shared.initializeIfNeeded()
 
         // Determine if this is sentence mode (multi-word selection)
@@ -474,7 +582,8 @@ struct PDFReaderView: View {
         translationRequest = TranslationBubbleRequest(
             word: word, sentence: sentence,
             bounds: bounds, boundsStr: boundsStr,
-            page: page, result: nil, translationError: nil,
+            page: page, selectionAnchorRect: selectionAnchorRect,
+            result: nil, translationError: nil,
             existingEntryId: existingEntryId,
             isSentenceMode: isSentenceMode
         )
@@ -615,5 +724,124 @@ struct PDFReaderView: View {
             appState.refreshVocabulary()
             appState.showToast("已从单词本删除")
         }
+    }
+}
+
+private struct NoteAnchorOverlayView: View {
+    let anchors: [NoteAnchorPosition]
+    let onOpen: (NoteAnchorPosition) -> Void
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            ForEach(anchors) { anchor in
+                Button {
+                    onOpen(anchor)
+                } label: {
+                    Image(systemName: "note.text")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(5)
+                        .background(Color.accentColor.opacity(0.88), in: Circle())
+                        .shadow(color: .black.opacity(0.16), radius: 4, x: 0, y: 1)
+                }
+                .buttonStyle(.plain)
+                .help("打开笔记")
+                .position(anchor.point)
+            }
+        }
+        .allowsHitTesting(!anchors.isEmpty)
+    }
+}
+
+private struct NoteReviewPopoverView: View {
+    let review: ActiveNoteReview
+    let availableSize: CGSize
+    let onOpenNotes: () -> Void
+    let onClose: () -> Void
+
+    var body: some View {
+        ReadingOverlayWindow(
+            anchorRect: review.anchor.anchorRect,
+            availableSize: availableSize,
+            resetID: AnyHashable(review.id),
+            configuration: ReadingOverlayWindowConfiguration(
+                width: 420,
+                initialContentHeight: 300,
+                minimumContentHeight: 120,
+                dismissesOnBackgroundTap: true
+            ),
+            onDismiss: onClose,
+            header: { header },
+            content: { content },
+            footer: { footer }
+        )
+    }
+
+    private var header: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "note.text")
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text("笔记")
+                .font(.headline)
+            Spacer()
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 16)
+        .padding(.bottom, 12)
+    }
+
+    private var content: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if let first = review.notes.first {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("原文")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                    Text(ContextSentenceFormatting.displayParagraph(first.content))
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+            }
+
+            ForEach(review.notes, id: \.id) { note in
+                VStack(alignment: .leading, spacing: 6) {
+                    if let createdAt = ReadingInspectorDateFormat.timestampText(for: note.createdAt) {
+                        Text(createdAt)
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.tertiary)
+                    }
+                    MarkdownText(markdown: NoteTextList.markdown(note.note))
+                        .font(.callout)
+                        .foregroundStyle(.primary)
+                        .textSelection(.enabled)
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 12)
+    }
+
+    private var footer: some View {
+        HStack {
+            Spacer()
+            Button("打开右侧笔记", action: onOpenNotes)
+                .buttonStyle(.borderless)
+            Button("关闭", action: onClose)
+                .buttonStyle(.borderedProminent)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+        .padding(.bottom, 16)
     }
 }

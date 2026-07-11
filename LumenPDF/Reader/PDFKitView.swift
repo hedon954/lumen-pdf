@@ -8,10 +8,12 @@ struct PDFKitView: NSViewRepresentable {
     let savedPage: Int
     let savedScrollOffset: Double
     let onPageChange: (Int, Double) -> Void
-    /// word, sentence, overallBounds, perLineBoundsStr, pageIndex, menuAnchor
-    let onTextSelected: (String, String, CGRect, String, Int, CGPoint) -> Void
+    /// word, sentence, overallBounds, perLineBoundsStr, pageIndex, menuAnchor, selectionAnchorRect
+    let onTextSelected: (String, String, CGRect, String, Int, CGPoint, CGRect) -> Void
     let onClearSelection: () -> Void
     let onDocumentLoaded: (Int) -> Void
+    let noteAnchorRequests: [NoteAnchorRequest]
+    let onNoteAnchorsChanged: ([NoteAnchorPosition]) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -26,6 +28,8 @@ struct PDFKitView: NSViewRepresentable {
                        name: .PDFViewPageChanged, object: pdfView)
         nc.addObserver(context.coordinator, selector: #selector(Coordinator.selectionChanged(_:)),
                        name: .PDFViewSelectionChanged, object: pdfView)
+        nc.addObserver(context.coordinator, selector: #selector(Coordinator.viewportGeometryChanged(_:)),
+                       name: .PDFViewScaleChanged, object: pdfView)
         nc.addObserver(context.coordinator, selector: #selector(Coordinator.outlineNavigate(_:)),
                        name: .outlineNavigate, object: nil)
         nc.addObserver(context.coordinator, selector: #selector(Coordinator.jumpToPage(_:)),
@@ -63,9 +67,13 @@ struct PDFKitView: NSViewRepresentable {
     func updateNSView(_ pdfView: PDFView, context: Context) {
         // Use coordinator's stored filePath (not documentURL?.path) because
         // Security-Scoped Bookmark-resolved URLs can differ from the original path.
-        guard context.coordinator.currentFilePath != filePath else { return }
-        guard let doc = Self.loadDocument(filePath: filePath) else { return }
         context.coordinator.parent = self
+        context.coordinator.attachViewportObserverIfNeeded()
+        guard context.coordinator.currentFilePath != filePath else {
+            context.coordinator.publishNoteAnchors()
+            return
+        }
+        guard let doc = Self.loadDocument(filePath: filePath) else { return }
         context.coordinator.currentFilePath = filePath
         // Set BEFORE `document =` — assigning the document fires PDFViewPageChanged at page 0.
         // Without this, we would persist page 0 and reset TOC to the first chapter.
@@ -87,15 +95,14 @@ struct PDFKitView: NSViewRepresentable {
             }
         }
 
-        // Re-attach the scroll observer to the new scroll view when the document changes.
-        if let sv = pdfView.enclosingScrollView {
-            NotificationCenter.default.addObserver(
-                context.coordinator,
-                selector: #selector(Coordinator.didLiveScroll(_:)),
-                name: NSScrollView.didLiveScrollNotification,
-                object: sv
-            )
+        // PDFKit may finish installing or replace its internal scroll view after assigning
+        // the document. Re-attach on the next run loop so viewport changes keep publishing
+        // SwiftUI note-anchor coordinates even when no PDF page-change notification fires.
+        DispatchQueue.main.async { [weak coordinator = context.coordinator] in
+            coordinator?.attachViewportObserverIfNeeded()
+            coordinator?.publishNoteAnchors()
         }
+        context.coordinator.publishNoteAnchors()
     }
 
     /// Load a PDFDocument, with security-scoped bookmark fallback for sandboxed apps.
@@ -128,6 +135,7 @@ struct PDFKitView: NSViewRepresentable {
         private var selectionDebounce: Timer?
         private var scrollDebounce: Timer?
         private var annotationSaveDebounce: Timer?
+        private weak var observedViewport: NSClipView?
         var isJumping = false
         /// The file path of the currently loaded document.
         /// Stored explicitly so we never rely on `documentURL?.path`,
@@ -145,6 +153,55 @@ struct PDFKitView: NSViewRepresentable {
             self.parent = parent
             self.lastKnownPageIndex = parent.savedPage
             self.lastScrollOffset = parent.savedScrollOffset
+        }
+
+        deinit {
+            NotificationCenter.default.removeObserver(self)
+            selectionDebounce?.invalidate()
+            scrollDebounce?.invalidate()
+            annotationSaveDebounce?.invalidate()
+            pendingRestoreTimeoutWorkItem?.cancel()
+        }
+
+        func attachViewportObserverIfNeeded() {
+            guard let pdfView,
+                  let scrollView = Self.scrollView(for: pdfView) else {
+                return
+            }
+            let viewport = scrollView.contentView
+            guard observedViewport !== viewport else { return }
+
+            if let observedViewport {
+                NotificationCenter.default.removeObserver(
+                    self,
+                    name: NSView.boundsDidChangeNotification,
+                    object: observedViewport
+                )
+            }
+            viewport.postsBoundsChangedNotifications = true
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(viewportBoundsChanged(_:)),
+                name: NSView.boundsDidChangeNotification,
+                object: viewport
+            )
+            observedViewport = viewport
+        }
+
+        private static func embeddedScrollView(in view: NSView) -> NSScrollView? {
+            for subview in view.subviews {
+                if let scrollView = subview as? NSScrollView {
+                    return scrollView
+                }
+                if let nested = embeddedScrollView(in: subview) {
+                    return nested
+                }
+            }
+            return nil
+        }
+
+        private static func scrollView(for pdfView: PDFView) -> NSScrollView? {
+            embeddedScrollView(in: pdfView) ?? pdfView.enclosingScrollView
         }
 
         /// Persist free-form markups (highlights / underlines) to the app-side store.
@@ -195,7 +252,7 @@ struct PDFKitView: NSViewRepresentable {
 
         /// Inverse of `scrollOffset(for:)` — restores vertical position in continuous scroll mode.
         static func applyNormalizedScrollOffset(_ normalized: Double, to pdfView: PDFView) {
-            guard let sv = pdfView.enclosingScrollView, let dv = sv.documentView else { return }
+            guard let sv = scrollView(for: pdfView), let dv = sv.documentView else { return }
             let h = dv.bounds.height
             guard h > 0 else { return }
             let y = CGFloat(max(0, min(1, normalized))) * h
@@ -545,6 +602,7 @@ struct PDFKitView: NSViewRepresentable {
             }
 
             triggerAnnotationSave()
+            publishNoteAnchors()
 
             // 注册撤销操作
             if let undo = pdfView.undoManager, let newInfo = newNoteInfo {
@@ -654,6 +712,7 @@ struct PDFKitView: NSViewRepresentable {
                 .filter { $0.userName == noteId }
                 .forEach { page.removeAnnotation($0) }
             triggerAnnotationSave()
+            publishNoteAnchors()
         }
 
         // MARK: Apply saved highlights on document load
@@ -855,7 +914,7 @@ struct PDFKitView: NSViewRepresentable {
         }
 
         private func center(rect: CGRect, on page: PDFPage, in pdfView: PDFView) {
-            guard let scrollView = pdfView.enclosingScrollView,
+            guard let scrollView = Self.scrollView(for: pdfView),
                   let documentView = scrollView.documentView else { return }
             let rectInPDFView = pdfView.convert(rect, from: page)
             let targetInDocument = pdfView.convert(rectInPDFView, to: documentView)
@@ -897,7 +956,8 @@ struct PDFKitView: NSViewRepresentable {
                 if pageIndex != target { return }
                 pendingRestoreTimeoutWorkItem?.cancel()
                 pendingRestoreTargetPage = nil
-                // Layout not updated yet — measured offset is ~0; keep DB scroll until `didLiveScroll`.
+                // Layout not updated yet — measured offset is ~0; keep DB scroll until the
+                // observed viewport posts its first bounds change.
                 lastKnownPageIndex = pageIndex
                 parent.onPageChange(pageIndex, lastScrollOffset)
                 return
@@ -907,10 +967,13 @@ struct PDFKitView: NSViewRepresentable {
             lastKnownPageIndex = pageIndex
             lastScrollOffset = offset
             parent.onPageChange(pageIndex, offset)
+            publishNoteAnchors()
         }
 
-        /// Debounced live-scroll handler — saves position ~0.5 s after scrolling stops.
-        @objc func didLiveScroll(_ notification: Notification) {
+        /// The PDFKit clip view is the authoritative viewport signal. Unlike
+        /// `didLiveScroll`, this also covers momentum and programmatic scrolling.
+        @objc func viewportBoundsChanged(_ notification: Notification) {
+            publishNoteAnchors()
             if pendingRestoreTargetPage != nil { return }
             scrollDebounce?.invalidate()
             scrollDebounce = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
@@ -923,6 +986,11 @@ struct PDFKitView: NSViewRepresentable {
                 self.lastScrollOffset = offset
                 self.parent.onPageChange(pageIndex, offset)
             }
+        }
+
+        @objc func viewportGeometryChanged(_ notification: Notification) {
+            attachViewportObserverIfNeeded()
+            publishNoteAnchors()
         }
 
         /// Save position synchronously just before the window is minimized.
@@ -1027,8 +1095,9 @@ struct PDFKitView: NSViewRepresentable {
                 let pageIndex = doc.index(for: currentPage)
                 let menuAnchor = Self.menuAnchor(boundsInPage: overallBounds,
                                                  page: currentPage, pdfView: pdfView)
+                let selectionAnchorRect = Self.swiftUIRect(boundsInPage: overallBounds, page: currentPage, pdfView: pdfView)
                 DispatchQueue.main.async {
-                    self.parent.onTextSelected(word, sentence, overallBounds, boundsStr, pageIndex, menuAnchor)
+                    self.parent.onTextSelected(word, sentence, overallBounds, boundsStr, pageIndex, menuAnchor, selectionAnchorRect)
                 }
             }
         }
@@ -1047,6 +1116,61 @@ struct PDFKitView: NSViewRepresentable {
             let menuY = max(selTopSwiftUI - 8 - menuH / 2, menuH / 2 + 4)
             let menuX = min(max(swiftUICenterX, 120), pdfView.bounds.width - 120)
             return CGPoint(x: menuX, y: menuY)
+        }
+
+        private static func swiftUIRect(boundsInPage: CGRect, page: PDFPage, pdfView: PDFView) -> CGRect {
+            let boundsInPDFView = pdfView.convert(boundsInPage, from: page)
+            let boundsInWindow = pdfView.convert(boundsInPDFView, to: nil)
+            let pdfFrameInWindow = pdfView.convert(pdfView.bounds, to: nil)
+            return CGRect(
+                x: boundsInWindow.minX - pdfFrameInWindow.minX,
+                y: pdfFrameInWindow.maxY - boundsInWindow.maxY,
+                width: boundsInWindow.width,
+                height: boundsInWindow.height
+            )
+        }
+
+        func publishNoteAnchors() {
+            attachViewportObserverIfNeeded()
+            guard let pdfView, !parent.noteAnchorRequests.isEmpty else {
+                DispatchQueue.main.async { self.parent.onNoteAnchorsChanged([]) }
+                return
+            }
+
+            let pdfFrameInWindow = pdfView.convert(pdfView.bounds, to: nil)
+            let visibleRect = pdfView.bounds
+            let anchors = parent.noteAnchorRequests.compactMap { request -> NoteAnchorPosition? in
+                guard let page = pdfView.document?.page(at: request.pageIndex) else { return nil }
+                let rects = Self.parseAnnotationRects(request.boundsStr)
+                guard let last = rects.last, !last.isEmpty else { return nil }
+
+                let lineInPDFView = pdfView.convert(last, from: page)
+                guard lineInPDFView.intersects(visibleRect.insetBy(dx: -48, dy: -48)) else { return nil }
+
+                let anchorInPDFView = CGPoint(x: lineInPDFView.maxX + 10, y: lineInPDFView.midY)
+                let anchorInWindow = pdfView.convert(anchorInPDFView, to: nil)
+                let x = min(max(anchorInWindow.x - pdfFrameInWindow.minX, 18), pdfView.bounds.width - 18)
+                let y = min(max(pdfFrameInWindow.maxY - anchorInWindow.y, 18), pdfView.bounds.height - 18)
+
+                let union = rects.dropFirst().reduce(rects[0]) { $0.union($1) }
+                let unionInPDFView = pdfView.convert(union, from: page)
+                let unionInWindow = pdfView.convert(unionInPDFView, to: nil)
+                let anchorRect = CGRect(
+                    x: unionInWindow.minX - pdfFrameInWindow.minX,
+                    y: pdfFrameInWindow.maxY - unionInWindow.maxY,
+                    width: unionInWindow.width,
+                    height: unionInWindow.height
+                )
+
+                return NoteAnchorPosition(
+                    id: request.id,
+                    noteId: request.noteId,
+                    pageIndex: request.pageIndex,
+                    point: CGPoint(x: x, y: y),
+                    anchorRect: anchorRect
+                )
+            }
+            DispatchQueue.main.async { self.parent.onNoteAnchorsChanged(anchors) }
         }
 
         // MARK: Sentence extraction
@@ -1109,7 +1233,7 @@ struct PDFKitView: NSViewRepresentable {
         // MARK: Scroll offset
 
         private func scrollOffset(for pdfView: PDFView) -> Double {
-            guard let sv = pdfView.enclosingScrollView else { return 0 }
+            guard let sv = Self.scrollView(for: pdfView) else { return 0 }
             let h = sv.documentView?.bounds.height ?? 1
             guard h > 0 else { return 0 }
             return max(0, min(1, sv.documentVisibleRect.minY / h))

@@ -1,5 +1,4 @@
 import SwiftUI
-import AppKit
 import Textual
 
 struct TranslationBubble: View {
@@ -13,31 +12,29 @@ struct TranslationBubble: View {
     @StateObject private var audio = AudioService()
     @State private var savedEntryId: String?
     @State private var savedToNote = false
-    @State private var offset: CGSize = .zero
-    @State private var customCardSize: CGSize?
-    @State private var measuredCardSize: CGSize = .zero
-    @State private var measuredContentHeight: CGFloat = 0
 
     var body: some View {
-        ZStack {
-            Color.clear
-                .contentShape(Rectangle())
-                .onTapGesture { onDismiss() }
-
-            card
-                .offset(offset)
-                .animation(nil, value: offset)
-                .onTapGesture {}
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        ReadingOverlayWindow(
+            anchorRect: request.selectionAnchorRect,
+            availableSize: availableSize,
+            resetID: AnyHashable(request.id),
+            configuration: ReadingOverlayWindowConfiguration(
+                width: cardWidth,
+                initialContentHeight: request.isSentenceMode ? 160 : 120,
+                minimumContentHeight: 80,
+                isResizable: true,
+                minimumSize: CGSize(width: 340, height: 240),
+                maximumSize: CGSize(width: 920, height: CGFloat.greatestFiniteMagnitude),
+                dismissesOnBackgroundTap: true,
+                showsFooter: showsFooter
+            ),
+            onDismiss: onDismiss,
+            header: { header },
+            content: { content },
+            footer: { overlayFooter }
+        )
         .onAppear(perform: syncSavedState)
-        .onChange(of: request.id) { _, _ in
-            syncSavedState()
-            customCardSize = nil
-            measuredCardSize = .zero
-            measuredContentHeight = 0
-            offset = .zero
-        }
+        .onChange(of: request.id) { _, _ in syncSavedState() }
     }
 
     private func syncSavedState() {
@@ -45,30 +42,7 @@ struct TranslationBubble: View {
         savedToNote = false
     }
 
-    private var card: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            header
-            Divider()
-            content
-        }
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay { resizeOverlay }
-        .shadow(color: .black.opacity(0.18), radius: 14, x: 0, y: 6)
-        .frame(width: cardWidth, height: customCardSize?.height)
-        .onSizeChange { size in
-            guard measuredCardSize != size else { return }
-            DispatchQueue.main.async {
-                measuredCardSize = size
-            }
-        }
-    }
-
     private var cardWidth: CGFloat {
-        if let customCardSize {
-            return customCardSize.width
-        }
-
         let availableWidth = max(availableSize.width, 420)
         let cap = min(max(340, availableWidth - 96), 760)
         let base: CGFloat = request.isSentenceMode ? 560 : 380
@@ -76,105 +50,9 @@ struct TranslationBubble: View {
         return min(max(base, CGFloat(text.count) * 4.2), cap)
     }
 
-    private var shouldScrollContent: Bool {
-        customCardSize != nil || measuredContentHeight > maximumAutomaticContentHeight
-    }
-
-    private var maximumAutomaticContentHeight: CGFloat {
-        let designMax: CGFloat = request.isSentenceMode ? 560 : 520
-        let viewportMax = max(220, availableSize.height - 180)
-        return min(designMax, viewportMax)
-    }
-
-    private var resizeOverlay: some View {
-        ZStack {
-            Image(systemName: "arrow.down.right.and.arrow.up.left")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-                .padding(8)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                .allowsHitTesting(false)
-
-            resizeRegion(.top, cursor: .resizeUpDown)
-                .frame(height: resizeHitThickness)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            resizeRegion(.bottom, cursor: .resizeUpDown)
-                .frame(height: resizeHitThickness)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-            resizeRegion(.leading, cursor: .resizeLeftRight)
-                .frame(width: resizeHitThickness)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-            resizeRegion(.trailing, cursor: .resizeLeftRight)
-                .frame(width: resizeHitThickness)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
-
-            resizeRegion([.top, .leading], cursor: .resizeDiagonalDownRight)
-                .frame(width: resizeCornerSize, height: resizeCornerSize)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            resizeRegion([.top, .trailing], cursor: .resizeDiagonalUpRight)
-                .frame(width: resizeCornerSize, height: resizeCornerSize)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-            resizeRegion([.bottom, .leading], cursor: .resizeDiagonalUpRight)
-                .frame(width: resizeCornerSize, height: resizeCornerSize)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-            resizeRegion([.bottom, .trailing], cursor: .resizeDiagonalDownRight)
-                .frame(width: resizeCornerSize, height: resizeCornerSize)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-        }
-    }
-
-    private var resizeHitThickness: CGFloat { 6 }
-    private var resizeCornerSize: CGFloat { 16 }
-
-    private func resizeRegion(_ edges: ResizeEdges, cursor: NSCursor) -> some View {
-        AppKitResizeCapture(cursor: cursor) { delta in
-            resizeCard(by: delta, edges: edges)
-        }
-    }
-
-    private func resizeCard(by delta: CGSize, edges: ResizeEdges) {
-        let current = customCardSize ?? CGSize(
-            width: cardWidth,
-            height: max(measuredCardSize.height, 240)
-        )
-        let maxWidth = min(max(360, availableSize.width - 48), 920)
-        let maxHeight = min(max(260, availableSize.height - 48), 820)
-
-        var nextWidth = current.width
-        var nextHeight = current.height
-
-        if edges.contains(.leading) {
-            nextWidth -= delta.width
-        }
-        if edges.contains(.trailing) {
-            nextWidth += delta.width
-        }
-        if edges.contains(.top) {
-            nextHeight -= delta.height
-        }
-        if edges.contains(.bottom) {
-            nextHeight += delta.height
-        }
-
-        nextWidth = min(max(nextWidth, 340), maxWidth)
-        nextHeight = min(max(nextHeight, 240), maxHeight)
-
-        let widthDelta = nextWidth - current.width
-        let heightDelta = nextHeight - current.height
-
-        if edges.contains(.leading), !edges.contains(.trailing) {
-            offset.width -= widthDelta / 2
-        } else if edges.contains(.trailing), !edges.contains(.leading) {
-            offset.width += widthDelta / 2
-        }
-
-        if edges.contains(.top), !edges.contains(.bottom) {
-            offset.height -= heightDelta / 2
-        } else if edges.contains(.bottom), !edges.contains(.top) {
-            offset.height += heightDelta / 2
-        }
-
-        customCardSize = CGSize(width: nextWidth, height: nextHeight)
+    private var showsFooter: Bool {
+        guard let result = request.result else { return false }
+        return !isLoading && !result.isCompleteFailure && Self.hasAnyContent(result)
     }
 
     private var header: some View {
@@ -226,13 +104,6 @@ struct TranslationBubble: View {
             }
         }
         .padding(14)
-        .background(
-            AppKitDragCapture { delta in
-                offset.width += delta.width
-                offset.height += delta.height
-            }
-        )
-        .cursor(.openHand)
     }
 
     private var headerTitle: String {
@@ -252,13 +123,7 @@ struct TranslationBubble: View {
                     if isLoading {
                         streamingBanner
                     }
-
-                    adaptiveContent(result: result)
-
-                    if !isLoading {
-                        Divider()
-                        footer(result: result)
-                    }
+                    resultContent(result: result)
                 }
             }
         } else if isLoading {
@@ -268,32 +133,19 @@ struct TranslationBubble: View {
         }
     }
 
-    @ViewBuilder
-    private func adaptiveContent(result: TranslationResult) -> some View {
-        if shouldScrollContent {
-            ScrollView {
-                measuredContent(result: result)
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: customCardSize == nil ? maximumAutomaticContentHeight : nil)
-            .frame(maxHeight: customCardSize == nil ? nil : .infinity)
-        } else {
-            measuredContent(result: result)
-        }
-    }
-
-    private func measuredContent(result: TranslationResult) -> some View {
+    private func resultContent(result: TranslationResult) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             contentBody(result: result)
             errorSection(result: result)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .onHeightChange { height in
-            guard abs(measuredContentHeight - height) > 0.5 else { return }
-            DispatchQueue.main.async {
-                measuredContentHeight = height
-            }
+    }
+
+    @ViewBuilder
+    private var overlayFooter: some View {
+        if let result = request.result, showsFooter {
+            footer(result: result)
         }
     }
 
@@ -583,132 +435,6 @@ struct TranslationBubble: View {
     }
 }
 
-// MARK: - AppKit drag capture
-
-private struct AppKitDragCapture: NSViewRepresentable {
-    let onDelta: (CGSize) -> Void
-
-    func makeCoordinator() -> Coordinator { Coordinator(onDelta) }
-    func makeNSView(context: Context) -> NSView { context.coordinator.view }
-    func updateNSView(_ nsView: NSView, context: Context) {
-        context.coordinator.onDelta = onDelta
-    }
-
-    final class Coordinator: NSObject {
-        var onDelta: (CGSize) -> Void
-        lazy var view = CaptureView(coordinator: self)
-
-        init(_ onDelta: @escaping (CGSize) -> Void) {
-            self.onDelta = onDelta
-        }
-    }
-
-    final class CaptureView: NSView {
-        weak var coordinator: Coordinator?
-        private var lastLocation: CGPoint?
-
-        init(coordinator: Coordinator) {
-            self.coordinator = coordinator
-            super.init(frame: .zero)
-        }
-
-        required init?(coder: NSCoder) {
-            fatalError("init(coder:) has not been implemented")
-        }
-
-        override func mouseDown(with event: NSEvent) {
-            lastLocation = event.locationInWindow
-        }
-
-        override func mouseDragged(with event: NSEvent) {
-            guard let lastLocation else { return }
-            let current = event.locationInWindow
-            let delta = CGSize(width: current.x - lastLocation.x, height: -(current.y - lastLocation.y))
-            self.lastLocation = current
-            coordinator?.onDelta(delta)
-        }
-
-        override func mouseUp(with event: NSEvent) {
-            lastLocation = nil
-        }
-
-        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    }
-}
-
-// MARK: - AppKit resize capture
-
-private struct AppKitResizeCapture: NSViewRepresentable {
-    let cursor: NSCursor
-    let onDelta: (CGSize) -> Void
-
-    func makeCoordinator() -> Coordinator { Coordinator(cursor: cursor, onDelta: onDelta) }
-    func makeNSView(context: Context) -> NSView { context.coordinator.view }
-    func updateNSView(_ nsView: NSView, context: Context) {
-        context.coordinator.cursor = cursor
-        context.coordinator.onDelta = onDelta
-        nsView.window?.invalidateCursorRects(for: nsView)
-    }
-
-    final class Coordinator: NSObject {
-        var cursor: NSCursor
-        var onDelta: (CGSize) -> Void
-        lazy var view = CaptureView(coordinator: self)
-
-        init(cursor: NSCursor, onDelta: @escaping (CGSize) -> Void) {
-            self.cursor = cursor
-            self.onDelta = onDelta
-        }
-    }
-
-    final class CaptureView: NSView {
-        weak var coordinator: Coordinator?
-        private var lastLocation: CGPoint?
-
-        init(coordinator: Coordinator) {
-            self.coordinator = coordinator
-            super.init(frame: .zero)
-        }
-
-        required init?(coder: NSCoder) {
-            fatalError("init(coder:) has not been implemented")
-        }
-
-        override func mouseDown(with event: NSEvent) {
-            lastLocation = event.locationInWindow
-        }
-
-        override func mouseDragged(with event: NSEvent) {
-            guard let lastLocation else { return }
-            let current = event.locationInWindow
-            let delta = CGSize(width: current.x - lastLocation.x, height: -(current.y - lastLocation.y))
-            self.lastLocation = current
-            coordinator?.onDelta(delta)
-        }
-
-        override func mouseUp(with event: NSEvent) {
-            lastLocation = nil
-        }
-
-        override func resetCursorRects() {
-            if let cursor = coordinator?.cursor {
-                addCursorRect(bounds, cursor: cursor)
-            }
-        }
-
-        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    }
-}
-
-private struct ResizeEdges: OptionSet {
-    let rawValue: Int
-
-    static let top = ResizeEdges(rawValue: 1 << 0)
-    static let bottom = ResizeEdges(rawValue: 1 << 1)
-    static let leading = ResizeEdges(rawValue: 1 << 2)
-    static let trailing = ResizeEdges(rawValue: 1 << 3)
-}
-
 // MARK: - Spinner
 
 private struct SpinnerView: View {
@@ -725,69 +451,6 @@ private struct SpinnerView: View {
                     angle = 360
                 }
             }
-    }
-}
-
-// MARK: - Measurement and cursor helpers
-
-private extension View {
-    func onSizeChange(_ onChange: @escaping (CGSize) -> Void) -> some View {
-        background(
-            GeometryReader { proxy in
-                Color.clear.preference(key: ViewSizePreferenceKey.self, value: proxy.size)
-            }
-        )
-        .onPreferenceChange(ViewSizePreferenceKey.self, perform: onChange)
-    }
-
-    func onHeightChange(_ onChange: @escaping (CGFloat) -> Void) -> some View {
-        background(
-            GeometryReader { proxy in
-                Color.clear.preference(key: ViewHeightPreferenceKey.self, value: proxy.size.height)
-            }
-        )
-        .onPreferenceChange(ViewHeightPreferenceKey.self, perform: onChange)
-    }
-
-    func cursor(_ cursor: NSCursor) -> some View {
-        onHover { inside in
-            if inside {
-                cursor.push()
-            } else {
-                NSCursor.pop()
-            }
-        }
-    }
-}
-
-private struct ViewSizePreferenceKey: PreferenceKey {
-    static var defaultValue: CGSize = .zero
-
-    static func reduce(value: inout CGSize, nextValue: () -> CGSize) {
-        value = nextValue()
-    }
-}
-
-private struct ViewHeightPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
-
-private extension NSCursor {
-    static var resizeDiagonalDownRight: NSCursor {
-        diagonalResizeCursor(systemName: "arrow.down.right.and.arrow.up.left")
-    }
-
-    static var resizeDiagonalUpRight: NSCursor {
-        diagonalResizeCursor(systemName: "arrow.up.right.and.arrow.down.left")
-    }
-
-    private static func diagonalResizeCursor(systemName: String) -> NSCursor {
-        let image = NSImage(systemSymbolName: systemName, accessibilityDescription: nil)
-        return NSCursor(image: image ?? NSImage(), hotSpot: NSPoint(x: 6, y: 6))
     }
 }
 
