@@ -91,9 +91,11 @@ make setup        # 首次安装工具并生成工程
 make build-rust   # 构建 Rust 后端并生成 UniFFI Swift 绑定
 make gen-project  # 根据 project.yml 重新生成 Xcode 工程
 make test         # 运行 Rust 单元测试
-make dmg          # 打包 DMG
+make dmg          # 使用稳定签名身份打包 DMG
 make upgrade      # 打包并安装到本机 /Applications
 ```
+
+`make dmg` / `make upgrade` 默认要求长期稳定的代码签名身份，避免二进制更新后反复触发 Keychain 授权。身份准备、CI secrets 和临时 ad-hoc 调试方式见 [代码签名与 Keychain 延续](docs/code-signing.md)。
 
 也可以直接用 Xcode 打开工程运行：
 

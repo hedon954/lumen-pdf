@@ -1,103 +1,51 @@
-import Security
 import Foundation
-import LocalAuthentication
+import Security
 
 enum KeychainService {
     private static let service = "com.LumenPDF.app"
-    // Ad-hoc debug builds get a fresh code signature after reinstall, so this
-    // item avoids binding API-key access to the previous installed binary.
-    private static let reinstallStableService = "com.LumenPDF.app.reinstall-stable"
+    private static let legacyReinstallService = "com.LumenPDF.app.reinstall-stable"
 
     static func save(key: String, value: String) {
         let data = Data(value.utf8)
-        let stableStatus = store(
-            key: key,
-            data: data,
-            service: reinstallStableService,
-            useDataProtectionKeychain: false,
-            usesReinstallStableAccess: true
-        )
-        let protectedStatus = store(
-            key: key,
-            data: data,
-            service: service,
-            useDataProtectionKeychain: true,
-            usesReinstallStableAccess: false
-        )
-        if protectedStatus == errSecSuccess || stableStatus == errSecSuccess {
-            return
-        }
-        _ = store(
-            key: key,
-            data: data,
-            service: service,
-            useDataProtectionKeychain: false,
-            usesReinstallStableAccess: true
-        )
+        guard upsertProtectedItem(key: key, data: data) == errSecSuccess else { return }
+        deleteLegacyItems(key: key)
     }
 
     static func load(key: String) -> String? {
-        if let value = load(
-            key: key,
-            service: reinstallStableService,
-            useDataProtectionKeychain: false
-        ) {
-            return value
-        }
-
-        if let value = load(
+        if let value = loadItem(
             key: key,
             service: service,
             useDataProtectionKeychain: true
         ) {
-            migrate(value: value, key: key)
             return value
         }
 
-        guard let value = load(
-            key: key,
-            service: service,
-            useDataProtectionKeychain: false
-        ) else { return nil }
-        migrate(value: value, key: key)
-        return value
+        // Previous builds wrote file-based keychain items with an ACL tied to
+        // an ad-hoc binary. Never show an authentication dialog during launch:
+        // migrate only when the current stable signature can already read the
+        // old item. Otherwise the user can enter the value once in Settings.
+        for legacy in legacyItemLocations {
+            guard let value = loadItem(
+                key: key,
+                service: legacy.service,
+                useDataProtectionKeychain: legacy.useDataProtectionKeychain
+            ) else { continue }
+            save(key: key, value: value)
+            return value
+        }
+        return nil
     }
 
-    private static func migrate(value: String, key: String) {
-        let data = Data(value.utf8)
-        _ = store(
-            key: key,
-            data: data,
-            service: reinstallStableService,
-            useDataProtectionKeychain: false,
-            usesReinstallStableAccess: true
-        )
-        _ = store(
-            key: key,
-            data: data,
-            service: service,
-            useDataProtectionKeychain: true,
-            usesReinstallStableAccess: false
-        )
-    }
-
-    private static func store(
-        key: String,
-        data: Data,
-        service: String,
-        useDataProtectionKeychain: Bool,
-        usesReinstallStableAccess: Bool
-    ) -> OSStatus {
-        let updateQuery = query(
+    private static func upsertProtectedItem(key: String, data: Data) -> OSStatus {
+        let lookup = itemQuery(
             key: key,
             service: service,
-            useDataProtectionKeychain: useDataProtectionKeychain,
-            allowAuthenticationUI: false
+            useDataProtectionKeychain: true
         )
-        let updateAttrs: [CFString: Any] = [
-            kSecValueData: data,
-        ]
-        let updateStatus = SecItemUpdate(updateQuery as CFDictionary, updateAttrs as CFDictionary)
+        let updateStatus = SecItemUpdate(
+            lookup as CFDictionary,
+            [kSecValueData: data] as CFDictionary
+        )
         if updateStatus == errSecSuccess {
             return updateStatus
         }
@@ -105,63 +53,58 @@ enum KeychainService {
             return updateStatus
         }
 
-        var addAttrs = query(
-            key: key,
-            service: service,
-            useDataProtectionKeychain: useDataProtectionKeychain,
-            allowAuthenticationUI: Optional<Bool>.none
-        )
-        addAttrs[kSecValueData] = data
-        if usesReinstallStableAccess,
-           let access = reinstallStableAccess(name: service) {
-            addAttrs[kSecAttrAccess] = access
-        }
-        return SecItemAdd(addAttrs as CFDictionary, nil)
+        var attributes = lookup
+        attributes[kSecValueData] = data
+        attributes[kSecAttrAccessible] = kSecAttrAccessibleWhenUnlocked
+        return SecItemAdd(attributes as CFDictionary, nil)
     }
 
-    private static func load(
+    private static func loadItem(
         key: String,
         service: String,
         useDataProtectionKeychain: Bool
     ) -> String? {
-        var query = query(
+        var query = itemQuery(
             key: key,
             service: service,
-            useDataProtectionKeychain: useDataProtectionKeychain,
-            allowAuthenticationUI: false
+            useDataProtectionKeychain: useDataProtectionKeychain
         )
         query[kSecReturnData] = true
         query[kSecMatchLimit] = kSecMatchLimitOne
+
         var result: AnyObject?
         guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
               let data = result as? Data else { return nil }
         return String(data: data, encoding: .utf8)
     }
 
-    private static func query(
+    private static func itemQuery(
         key: String,
         service: String,
-        useDataProtectionKeychain: Bool,
-        allowAuthenticationUI: Bool?
+        useDataProtectionKeychain: Bool
     ) -> [CFString: Any] {
-        var attrs: [CFString: Any] = [
+        [
             kSecClass: kSecClassGenericPassword,
             kSecAttrService: service,
             kSecAttrAccount: key,
             kSecUseDataProtectionKeychain: useDataProtectionKeychain,
+            kSecUseAuthenticationUI: kSecUseAuthenticationUIFail,
         ]
-        if let allowAuthenticationUI {
-            let context = LAContext()
-            context.interactionNotAllowed = !allowAuthenticationUI
-            attrs[kSecUseAuthenticationContext] = context
-        }
-        return attrs
     }
 
-    private static func reinstallStableAccess(name: String) -> SecAccess? {
-        var access: SecAccess?
-        let status = SecAccessCreate(name as CFString, nil, &access)
-        guard status == errSecSuccess else { return nil }
-        return access
+    private static let legacyItemLocations: [(service: String, useDataProtectionKeychain: Bool)] = [
+        (legacyReinstallService, false),
+        (service, false),
+    ]
+
+    private static func deleteLegacyItems(key: String) {
+        for legacy in legacyItemLocations {
+            let query = itemQuery(
+                key: key,
+                service: legacy.service,
+                useDataProtectionKeychain: legacy.useDataProtectionKeychain
+            )
+            _ = SecItemDelete(query as CFDictionary)
+        }
     }
 }

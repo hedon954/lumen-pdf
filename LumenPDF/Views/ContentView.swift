@@ -6,13 +6,14 @@ struct ContentView: View {
     @EnvironmentObject private var appState: AppState
     @State private var showLibrary = false
     @State private var showSetupSheet = false
-    @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @StateObject private var inspectorModel = ReadingInspectorModel()
+    @StateObject private var selectionActionBarModel = SelectionActionBarModel()
+    @ObservedObject private var restorationStore = ReadingRestorationStore.shared
     @AppStorage("llm_base_url") private var baseURL = ""
     @AppStorage("llm_model") private var model = ""
 
     var body: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
+        NavigationSplitView(columnVisibility: outlineColumnVisibility) {
             // Left sidebar: PDF outline TOC (only when a document is open)
             Group {
                 if let kitDoc = appState.kitDocument {
@@ -30,7 +31,25 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
-            .frame(minWidth: 200, idealWidth: 220)
+            .navigationSplitViewColumnWidth(
+                min: restorationStore.isRestoringLayout
+                    ? clampedOutlineSidebarWidth
+                    : Self.minimumOutlineSidebarWidth,
+                ideal: clampedOutlineSidebarWidth,
+                max: restorationStore.isRestoringLayout
+                    ? clampedOutlineSidebarWidth
+                    : Self.maximumOutlineSidebarWidth
+            )
+            .background {
+                SplitPaneWidthObserver(
+                    edge: .leading,
+                    restoredWidth: clampedOutlineSidebarWidth,
+                    isRestoring: restorationStore.isRestoringLayout
+                ) { width in
+                    guard isOutlineSidebarVisible else { return }
+                    restorationStore.updateOutlineWidth(Double(width))
+                }
+            }
         } detail: {
             ZStack(alignment: .bottom) {
                 // Keep PDFReaderView alive (never destroyed on tab switch),
@@ -39,6 +58,7 @@ struct ContentView: View {
                     ReadingWorkspaceView(
                         document: doc,
                         inspectorModel: inspectorModel,
+                        selectionActionBarModel: selectionActionBarModel,
                         setInspectorVisible: setReadingInspectorVisible
                     )
                     .opacity(appState.activeTab == .reader ? 1 : 0)
@@ -61,6 +81,12 @@ struct ContentView: View {
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                         .animation(.easeInOut(duration: 0.3), value: appState.toastMessage)
                 }
+            }
+        }
+        .coordinateSpace(name: ReaderRootCoordinateSpace.name)
+        .overlay {
+            if appState.activeTab == .reader {
+                SelectionActionBarOverlay(model: selectionActionBarModel)
             }
         }
         .toolbar {
@@ -164,7 +190,42 @@ struct ContentView: View {
             SettingsView(onDismiss: { showSetupSheet = false })
                 .environmentObject(appState)
         }
+        .onChange(of: appState.activeTab) { _, _ in
+            selectionActionBarModel.dismiss()
+        }
+        .onChange(of: appState.selectedDocument?.id) { _, _ in
+            selectionActionBarModel.dismiss()
+        }
     }
+
+    private static let minimumOutlineSidebarWidth = CGFloat(
+        ReadingRestorationState.minimumOutlineWidth
+    )
+    private static let maximumOutlineSidebarWidth = CGFloat(
+        ReadingRestorationState.maximumOutlineWidth
+    )
+
+    private var isOutlineSidebarVisible: Bool {
+        restorationStore.state.outlineSidebar.isVisible
+    }
+
+    private var clampedOutlineSidebarWidth: CGFloat {
+        min(
+            max(
+                CGFloat(restorationStore.state.outlineSidebar.width),
+                Self.minimumOutlineSidebarWidth
+            ),
+            Self.maximumOutlineSidebarWidth
+        )
+    }
+
+    private var outlineColumnVisibility: Binding<NavigationSplitViewVisibility> {
+        Binding(
+            get: { isOutlineSidebarVisible ? .all : .detailOnly },
+            set: { restorationStore.updateOutlineVisibility($0 != .detailOnly) }
+        )
+    }
+
     private func setReadingInspectorVisible(_ visible: Bool) {
         guard inspectorModel.isVisible != visible else { return }
         guard let doc = appState.selectedDocument else {

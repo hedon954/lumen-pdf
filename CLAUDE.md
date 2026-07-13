@@ -140,6 +140,36 @@ Code should stay simple, understandable, maintainable, iterable, and free of avo
 - All UI updates must run on `@MainActor`
 - No direct `URLSession`, `sqlite3` in Views or Coordinators
 
+### SwiftUI / AppKit Presentation Boundaries (Strict)
+
+- Keep in-window UI in one SwiftUI hierarchy whenever possible. When an overlay must appear above multiple `NavigationSplitView` columns, lift its state and rendering to their nearest common SwiftUI ancestor before considering AppKit.
+- Do not inject arbitrary subviews into `NSHostingView`, and do not introduce an `NSPanel` or child window solely to bypass SwiftUI clipping or local `zIndex`. A separate window is allowed only when the feature is semantically a separate window and SwiftUI cannot express the required behavior.
+- Moving a view to another presentation container is a behavioral change, not only a layout change. Before implementation, record and preserve appearance and transparency, coordinate space, hit testing, keyboard focus, inside/outside dismissal, selection ownership, instance uniqueness, attach/update/detach lifecycle, window activation, resizing, moving, minimization, closing, and multi-window behavior.
+- Every AppKit bridge must have one explicit owner and deterministic cleanup. Child windows, event monitors, notification observers, delegates, and hosted views must be removed on every dismissal and teardown path.
+- If a new bridge requires custom event routing, global identifiers, orphan cleanup, and duplicated state merely to reproduce behavior SwiftUI previously provided, stop and reconsider the abstraction boundary.
+- Classify window state as stable or transient before implementation. Persist user-adjusted stable state such as the main window frame, split visibility and split widths, and each document's reader viewport (zoom mode, scale, horizontal offset, and vertical offset); do not restore transient selections, action bars, loading overlays, or editors.
+- Collect the complete stable reading workspace in one versioned state model and one persistence manager. Views, view models, window bridges, and PDFKit coordinators may report changes or apply restored values, but must not create parallel `UserDefaults` keys for window frame, split widths, split visibility, active tab, last document, inspector mode, or PDF viewport.
+- Treat restoration as an ordered phase, not independent property initialization. While the saved window and split geometry are being applied, initial layout measurements must not overwrite persisted values; only enable geometry capture after the restored layout has settled.
+- A persisted split width must be the same explicit state that controls the pane width. If a native SwiftUI split view does not expose a reliable width binding, use one narrow, accessible divider component rather than inferring user intent from private `NSSplitView` ancestry or child geometry.
+- Window minimization is a restoration boundary. Freeze stable-layout writes before miniaturization, closing, and termination; keep the last visible split widths unchanged while hidden; then reapply the complete saved layout before reopening width capture after deminiaturization.
+
+### Signing and Keychain Security (Strict)
+
+- Persistent credentials use one data-protection Keychain item. Do not create parallel file-based items or use `SecAccess` / trusted-application ACLs to compensate for unstable code signing.
+- Packaging may use ad-hoc signing by default. If a stable signing identity is configured, use it consistently for the app and all nested code; do not claim that ad-hoc signing preserves Keychain access across binary replacement.
+- After modifying embedded code, sign nested dylibs first and the app last with the same identity. Do not use `codesign --deep` as a signing shortcut.
+- Manual app signing must reattach `LumenPDF.entitlements`, and packaging must fail if the final signature no longer contains `com.apple.security.app-sandbox`.
+- CI release jobs follow the same configured signing identity as local packaging and must not add identity-presence gates that block ad-hoc release packaging.
+
+### UI Runtime Verification Gate (Strict)
+
+- A successful build proves compilation only. Do not report a visual or interaction fix as complete until the affected behavior has been exercised in a running app.
+- For selection overlays, popovers, floating controls, and split-view chrome, runtime verification must cover normal placement; placement near the left sidebar and right inspector; clicking inside the control; clicking PDF content, sidebar, inspector, and toolbar; creating a second selection; zooming and scrolling while the control is visible; resizing and moving the window; app deactivation and reactivation; and transparency and clipping in both light and dark appearance.
+- Changes to the primary reading window or split layout must also be verified across quit and relaunch after moving, live resizing, using the window zoom/tile actions, hiding or resizing each sidebar, changing the active reading tab, manually zooming and panning the PDF in both axes, and disconnecting a display. Restored windows must remain fully visible on the current screens, and the reopened PDF must preserve the same text scale and visible region.
+- If runtime or visual verification is unavailable, state that the change is unverified and do not treat compilation as acceptance evidence.
+- After the first regression caused by a new presentation or ownership boundary, stop stacking local patches. Revert or reassess the architecture before adding more lifecycle machinery.
+- Keep feature fixes separate from unrelated development tooling or workspace configuration unless the user explicitly requests both.
+
 ## UniFFI Bridge
 
 The project uses `uniffi::setup_scaffolding!()` in `lib.rs` with proc-macros instead of UDL files:

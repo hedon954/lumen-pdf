@@ -74,25 +74,19 @@ struct PDFKitView: NSViewRepresentable {
             return
         }
         guard let doc = Self.loadDocument(filePath: filePath) else { return }
+        context.coordinator.persistViewportState()
         context.coordinator.currentFilePath = filePath
-        // Set BEFORE `document =` — assigning the document fires PDFViewPageChanged at page 0.
-        // Without this, we would persist page 0 and reset TOC to the first chapter.
-        context.coordinator.pendingRestoreTargetPage = savedPage
-        context.coordinator.lastScrollOffset = savedScrollOffset
-        context.coordinator.schedulePendingRestoreTimeout()
+        let storedViewport = ReadingRestorationStore.shared.viewport(for: filePath)
+        context.coordinator.beginViewportRestore(
+            pageIndex: storedViewport?.pageIndex ?? savedPage,
+            scrollOffset: savedScrollOffset,
+            viewportState: storedViewport
+        )
         pdfView.document = doc
         onDocumentLoaded(doc.pageCount)
-        context.coordinator.lastKnownPageIndex = savedPage
         context.coordinator.applyHighlights(to: doc, filePath: filePath)
-        DispatchQueue.main.async { [savedPage = self.savedPage, savedScroll = self.savedScrollOffset] in
-            if savedPage > 0, savedPage < doc.pageCount,
-               let page = doc.page(at: savedPage) {
-                pdfView.go(to: page)
-            }
-            // Continuous mode: restore vertical scroll within the document after layout.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                Coordinator.applyNormalizedScrollOffset(savedScroll, to: pdfView)
-            }
+        DispatchQueue.main.async { [weak coordinator = context.coordinator] in
+            coordinator?.applyInitialViewportRestore(to: pdfView)
         }
 
         // PDFKit may finish installing or replace its internal scroll view after assigning
@@ -145,6 +139,9 @@ struct PDFKitView: NSViewRepresentable {
         var lastKnownPageIndex: Int = 0
         /// Normalized vertical scroll (0…1), kept in sync with saves.
         var lastScrollOffset: Double = 0
+        /// Complete per-document PDFKit viewport state, including manual zoom and horizontal pan.
+        private var lastViewportState: ReadingRestorationState.PDFViewport?
+        private var isRestoringViewport = false
         /// While non-nil, ignore spurious `pageChanged` / scroll-save until we reach this page (document load).
         var pendingRestoreTargetPage: Int?
         private var pendingRestoreTimeoutWorkItem: DispatchWorkItem?
@@ -245,9 +242,134 @@ struct PDFKitView: NSViewRepresentable {
             pendingRestoreTimeoutWorkItem?.cancel()
             let work = DispatchWorkItem { [weak self] in
                 self?.pendingRestoreTargetPage = nil
+                self?.isRestoringViewport = false
             }
             pendingRestoreTimeoutWorkItem = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0, execute: work)
+        }
+
+        fileprivate func beginViewportRestore(
+            pageIndex: Int,
+            scrollOffset: Double,
+            viewportState: ReadingRestorationState.PDFViewport?
+        ) {
+            pendingRestoreTargetPage = pageIndex
+            lastKnownPageIndex = pageIndex
+            lastScrollOffset = scrollOffset
+            lastViewportState = viewportState
+            isRestoringViewport = true
+            schedulePendingRestoreTimeout()
+        }
+
+        func applyInitialViewportRestore(to pdfView: PDFView) {
+            guard isRestoringViewport,
+                  let document = pdfView.document else { return }
+            applyZoomState(lastViewportState, to: pdfView)
+            if lastKnownPageIndex >= 0,
+               lastKnownPageIndex < document.pageCount,
+               let page = document.page(at: lastKnownPageIndex) {
+                pdfView.go(to: page)
+            }
+
+            applySavedScrollPosition(to: pdfView)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self, weak pdfView] in
+                guard let self, let pdfView, self.isRestoringViewport else { return }
+                self.applyZoomState(self.lastViewportState, to: pdfView)
+                self.applySavedScrollPosition(to: pdfView)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self, weak pdfView] in
+                guard let self, let pdfView, self.isRestoringViewport else { return }
+                self.applySavedScrollPosition(to: pdfView)
+                self.finishViewportRestore(in: pdfView)
+            }
+        }
+
+        func persistViewportState() {
+            guard let pdfView,
+                  !currentFilePath.isEmpty,
+                  let state = Self.captureViewportState(from: pdfView) else { return }
+            lastViewportState = state
+            ReadingRestorationStore.shared.updateViewport(state, for: currentFilePath)
+        }
+
+        private func finishViewportRestore(in pdfView: PDFView) {
+            pendingRestoreTimeoutWorkItem?.cancel()
+            pendingRestoreTargetPage = nil
+            isRestoringViewport = false
+
+            guard let document = pdfView.document,
+                  let currentPage = pdfView.currentPage else { return }
+            let pageIndex = document.index(for: currentPage)
+            let scrollOffset = scrollOffset(for: pdfView)
+            lastKnownPageIndex = pageIndex
+            lastScrollOffset = scrollOffset
+            persistViewportState()
+            parent.onPageChange(pageIndex, scrollOffset)
+            publishNoteAnchors()
+        }
+
+        private func applySavedScrollPosition(to pdfView: PDFView) {
+            if let lastViewportState {
+                Self.applyViewportOffsets(lastViewportState, to: pdfView)
+            } else {
+                Self.applyNormalizedScrollOffset(lastScrollOffset, to: pdfView)
+            }
+        }
+
+        private func applyZoomState(
+            _ state: ReadingRestorationState.PDFViewport?,
+            to pdfView: PDFView
+        ) {
+            guard let state else {
+                pdfView.autoScales = true
+                return
+            }
+            if state.autoScales {
+                pdfView.autoScales = true
+                return
+            }
+
+            pdfView.autoScales = false
+            let minimum = pdfView.minScaleFactor > 0 ? pdfView.minScaleFactor : 0.1
+            let maximum = pdfView.maxScaleFactor > minimum ? pdfView.maxScaleFactor : 10
+            pdfView.scaleFactor = min(max(CGFloat(state.scaleFactor), minimum), maximum)
+        }
+
+        private static func captureViewportState(
+            from pdfView: PDFView
+        ) -> ReadingRestorationState.PDFViewport? {
+            guard let scrollView = scrollView(for: pdfView),
+                  let documentView = scrollView.documentView else { return nil }
+            let visibleRect = scrollView.documentVisibleRect
+            let maxX = max(0, documentView.bounds.width - visibleRect.width)
+            let maxY = max(0, documentView.bounds.height - visibleRect.height)
+            let pageIndex = pdfView.currentPage.flatMap { page in
+                pdfView.document?.index(for: page)
+            }
+            return ReadingRestorationState.PDFViewport(
+                pageIndex: pageIndex,
+                autoScales: pdfView.autoScales,
+                scaleFactor: Double(pdfView.scaleFactor),
+                horizontalOffset: maxX > 0 ? Double(visibleRect.minX / maxX) : 0,
+                verticalOffset: maxY > 0 ? Double(visibleRect.minY / maxY) : 0
+            )
+        }
+
+        private static func applyViewportOffsets(
+            _ state: ReadingRestorationState.PDFViewport,
+            to pdfView: PDFView
+        ) {
+            guard let scrollView = scrollView(for: pdfView),
+                  let documentView = scrollView.documentView else { return }
+            let visibleRect = scrollView.documentVisibleRect
+            let maxX = max(0, documentView.bounds.width - visibleRect.width)
+            let maxY = max(0, documentView.bounds.height - visibleRect.height)
+            let point = NSPoint(
+                x: CGFloat(max(0, min(1, state.horizontalOffset))) * maxX,
+                y: CGFloat(max(0, min(1, state.verticalOffset))) * maxY
+            )
+            scrollView.contentView.scroll(to: point)
+            scrollView.reflectScrolledClipView(scrollView.contentView)
         }
 
         /// Inverse of `scrollOffset(for:)` — restores vertical position in continuous scroll mode.
@@ -952,20 +1074,16 @@ struct PDFKitView: NSViewRepresentable {
                   let doc = pdfView.document else { return }
             let pageIndex = doc.index(for: currentPage)
 
-            if let target = pendingRestoreTargetPage {
+            if isRestoringViewport, let target = pendingRestoreTargetPage {
                 if pageIndex != target { return }
-                pendingRestoreTimeoutWorkItem?.cancel()
-                pendingRestoreTargetPage = nil
-                // Layout not updated yet — measured offset is ~0; keep DB scroll until the
-                // observed viewport posts its first bounds change.
                 lastKnownPageIndex = pageIndex
-                parent.onPageChange(pageIndex, lastScrollOffset)
                 return
             }
 
             let offset = scrollOffset(for: pdfView)
             lastKnownPageIndex = pageIndex
             lastScrollOffset = offset
+            persistViewportState()
             parent.onPageChange(pageIndex, offset)
             publishNoteAnchors()
         }
@@ -974,7 +1092,18 @@ struct PDFKitView: NSViewRepresentable {
         /// `didLiveScroll`, this also covers momentum and programmatic scrolling.
         @objc func viewportBoundsChanged(_ notification: Notification) {
             publishNoteAnchors()
-            if pendingRestoreTargetPage != nil { return }
+            guard !isRestoringViewport else { return }
+            scheduleViewportPersistence()
+        }
+
+        @objc func viewportGeometryChanged(_ notification: Notification) {
+            attachViewportObserverIfNeeded()
+            publishNoteAnchors()
+            guard !isRestoringViewport else { return }
+            scheduleViewportPersistence()
+        }
+
+        private func scheduleViewportPersistence() {
             scrollDebounce?.invalidate()
             scrollDebounce = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
                 guard let self, let pdfView = self.pdfView,
@@ -984,13 +1113,9 @@ struct PDFKitView: NSViewRepresentable {
                 let offset = self.scrollOffset(for: pdfView)
                 self.lastKnownPageIndex = pageIndex
                 self.lastScrollOffset = offset
+                self.persistViewportState()
                 self.parent.onPageChange(pageIndex, offset)
             }
-        }
-
-        @objc func viewportGeometryChanged(_ notification: Notification) {
-            attachViewportObserverIfNeeded()
-            publishNoteAnchors()
         }
 
         /// Save position synchronously just before the window is minimized.
@@ -1005,6 +1130,7 @@ struct PDFKitView: NSViewRepresentable {
             let offset = scrollOffset(for: pdfView)
             lastKnownPageIndex = pageIndex
             lastScrollOffset = offset
+            persistViewportState()
             try? ReaderPersistence.shared.saveReadingPosition(
                 filePath: currentFilePath,
                 page: UInt32(pageIndex),
@@ -1018,11 +1144,17 @@ struct PDFKitView: NSViewRepresentable {
                   let pdfView, pdfView.window === notifWindow,
                   let page = pdfView.document?.page(at: lastKnownPageIndex) else { return }
             let offset = lastScrollOffset
+            let viewportState = lastViewportState
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak pdfView] in
                 guard let pdfView else { return }
+                self.applyZoomState(viewportState, to: pdfView)
                 pdfView.go(to: page)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    Self.applyNormalizedScrollOffset(offset, to: pdfView)
+                    if let viewportState {
+                        Self.applyViewportOffsets(viewportState, to: pdfView)
+                    } else {
+                        Self.applyNormalizedScrollOffset(offset, to: pdfView)
+                    }
                 }
             }
             ReaderEventBus.shared.postWindowDidDeminiaturize()
@@ -1039,6 +1171,7 @@ struct PDFKitView: NSViewRepresentable {
             let pageIndex = doc.index(for: currentPage)
             let offset = scrollOffset(for: pdfView)
             lastScrollOffset = offset
+            persistViewportState()
             parent.onPageChange(pageIndex, offset)
         }
 
@@ -1050,6 +1183,7 @@ struct PDFKitView: NSViewRepresentable {
             scrollDebounce?.invalidate()
             annotationSaveDebounce?.invalidate()
             persistFreeMarkups()
+            persistViewportState()
             let pageIndex = doc.index(for: currentPage)
             try? ReaderPersistence.shared.saveReadingPosition(
                 filePath: currentFilePath,
@@ -1139,6 +1273,7 @@ struct PDFKitView: NSViewRepresentable {
 
             let pdfFrameInWindow = pdfView.convert(pdfView.bounds, to: nil)
             let visibleRect = pdfView.bounds
+            var textRectsByPageIndex: [Int: [CGRect]] = [:]
             let anchors = parent.noteAnchorRequests.compactMap { request -> NoteAnchorPosition? in
                 guard let page = pdfView.document?.page(at: request.pageIndex) else { return nil }
                 let rects = Self.parseAnnotationRects(request.boundsStr)
@@ -1147,10 +1282,24 @@ struct PDFKitView: NSViewRepresentable {
                 let lineInPDFView = pdfView.convert(last, from: page)
                 guard lineInPDFView.intersects(visibleRect.insetBy(dx: -48, dy: -48)) else { return nil }
 
-                let anchorInPDFView = CGPoint(x: lineInPDFView.maxX + 10, y: lineInPDFView.midY)
-                let anchorInWindow = pdfView.convert(anchorInPDFView, to: nil)
-                let x = min(max(anchorInWindow.x - pdfFrameInWindow.minX, 18), pdfView.bounds.width - 18)
-                let y = min(max(pdfFrameInWindow.maxY - anchorInWindow.y, 18), pdfView.bounds.height - 18)
+                let lineRects = rects.map { Self.swiftUIRect(boundsInPage: $0, page: page, pdfView: pdfView) }
+                let textRects = textRectsByPageIndex[request.pageIndex] ?? {
+                    let pageTextSelection = page.selection(for: page.bounds(for: .cropBox))
+                    let pageTextLines = pageTextSelection?.selectionsByLine() ?? []
+                    let converted = pageTextLines.compactMap { selection -> CGRect? in
+                        let rect = selection.bounds(for: page)
+                        guard !rect.isEmpty else { return nil }
+                        return Self.swiftUIRect(boundsInPage: rect, page: page, pdfView: pdfView)
+                    }
+                    textRectsByPageIndex[request.pageIndex] = converted
+                    return converted
+                }()
+                let placement = NoteAnchorPlacementPolicy.place(
+                    lineRects: lineRects,
+                    textRects: textRects,
+                    containerRect: CGRect(origin: .zero, size: pdfView.bounds.size).insetBy(dx: 4, dy: 4)
+                )
+                guard let point = placement?.point else { return nil }
 
                 let union = rects.dropFirst().reduce(rects[0]) { $0.union($1) }
                 let unionInPDFView = pdfView.convert(union, from: page)
@@ -1166,7 +1315,7 @@ struct PDFKitView: NSViewRepresentable {
                     id: request.id,
                     noteId: request.noteId,
                     pageIndex: request.pageIndex,
-                    point: CGPoint(x: x, y: y),
+                    point: point,
                     anchorRect: anchorRect
                 )
             }

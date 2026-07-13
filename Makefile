@@ -22,8 +22,7 @@ gen-project:
 test:
 	cd lumen-pdfcore && cargo test
 
-## 打包为 DMG（本地开发版，不签名）
-## 使用 Developer ID 签名：TEAM_ID=XXXXXXXXXX make dmg
+## 打包为 DMG（默认 ad-hoc；可用 SIGN_IDENTITY=<hash-or-name> 指定身份）
 dmg:
 	./scripts/package-dmg.sh
 
