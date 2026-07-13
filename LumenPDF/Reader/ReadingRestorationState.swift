@@ -75,7 +75,7 @@ final class ReadingRestorationStore: ObservableObject {
     static let shared = ReadingRestorationStore()
 
     @Published private(set) var state: ReadingRestorationState
-    @Published private(set) var isRestoringInitialLayout = true
+    @Published private(set) var isRestoringLayout = true
 
     private let defaults: UserDefaults
     private let storageKey = "reading_restoration_state_v1"
@@ -92,14 +92,17 @@ final class ReadingRestorationStore: ObservableObject {
         }
     }
 
-    func beginInitialLayoutRestore() {
-        guard !isRestoringInitialLayout else { return }
-        isRestoringInitialLayout = true
+    /// Freezes split-width capture while the window is being attached, minimized,
+    /// restored, or torn down. Transient AppKit layout passes must never replace
+    /// the last width that was measured while the window was visible and stable.
+    func beginLayoutRestoration() {
+        guard !isRestoringLayout else { return }
+        isRestoringLayout = true
     }
 
-    func finishInitialLayoutRestore() {
-        guard isRestoringInitialLayout else { return }
-        isRestoringInitialLayout = false
+    func finishLayoutRestoration() {
+        guard isRestoringLayout else { return }
+        isRestoringLayout = false
     }
 
     func updateWindowFrame(_ frame: NSRect) {
@@ -111,6 +114,7 @@ final class ReadingRestorationStore: ObservableObject {
     }
 
     func updateOutlineWidth(_ width: Double) {
+        guard !isRestoringLayout else { return }
         update {
             $0.outlineSidebar.width = Self.clamp(
                 width,
@@ -125,6 +129,7 @@ final class ReadingRestorationStore: ObservableObject {
     }
 
     func updateInspectorWidth(_ width: Double) {
+        guard !isRestoringLayout else { return }
         update {
             $0.inspector.width = Self.clamp(
                 width,

@@ -74,6 +74,7 @@ private struct WindowFramePersistence: NSViewRepresentable {
         private weak var window: NSWindow?
         private var observers: [NSObjectProtocol] = []
         private var restoreWorkItem: DispatchWorkItem?
+        private var layoutRestoreCompletionWorkItem: DispatchWorkItem?
 
         init(autosaveName: String, restorationStore: ReadingRestorationStore) {
             self.autosaveName = autosaveName
@@ -85,16 +86,13 @@ private struct WindowFramePersistence: NSViewRepresentable {
             detach()
             guard let window else { return }
             self.window = window
-            restorationStore.beginInitialLayoutRestore()
+            restorationStore.beginLayoutRestoration()
 
             let workItem = DispatchWorkItem { [weak self, weak window] in
                 guard let self, let window, self.window === window else { return }
                 self.restoreFrame(of: window)
                 self.startObserving(window)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self, weak window] in
-                    guard let self, let window, self.window === window else { return }
-                    self.restorationStore.finishInitialLayoutRestore()
-                }
+                self.scheduleLayoutRestoreCompletion(for: window)
             }
             restoreWorkItem = workItem
             DispatchQueue.main.async(execute: workItem)
@@ -103,9 +101,12 @@ private struct WindowFramePersistence: NSViewRepresentable {
         func detach() {
             restoreWorkItem?.cancel()
             restoreWorkItem = nil
+            layoutRestoreCompletionWorkItem?.cancel()
+            layoutRestoreCompletionWorkItem = nil
             observers.forEach(NotificationCenter.default.removeObserver)
             observers.removeAll()
             if let window {
+                restorationStore.beginLayoutRestoration()
                 saveFrame(of: window)
             }
             window = nil
@@ -141,37 +142,89 @@ private struct WindowFramePersistence: NSViewRepresentable {
 
         private func startObserving(_ window: NSWindow) {
             let center = NotificationCenter.default
-            let windowNotifications: [Notification.Name] = [
+            let stableFrameNotifications: [Notification.Name] = [
                 NSWindow.didResizeNotification,
                 NSWindow.didMoveNotification,
-                NSWindow.didExitFullScreenNotification,
-                NSWindow.willCloseNotification
+                NSWindow.didExitFullScreenNotification
             ]
-            observers += windowNotifications.map { name in
+            observers += stableFrameNotifications.map { name in
                 center.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
                     self?.saveFrame(of: window)
                 }
             }
             observers.append(
                 center.addObserver(
+                    forName: NSWindow.willMiniaturizeNotification,
+                    object: window,
+                    queue: .main
+                ) { [weak self, weak window] _ in
+                    guard let self, let window else { return }
+                    self.freezeLayoutCapture()
+                    self.saveFrame(of: window)
+                }
+            )
+            observers.append(
+                center.addObserver(
+                    forName: NSWindow.didDeminiaturizeNotification,
+                    object: window,
+                    queue: .main
+                ) { [weak self, weak window] _ in
+                    guard let self, let window, self.window === window else { return }
+                    self.restorationStore.beginLayoutRestoration()
+                    self.scheduleLayoutRestoreCompletion(for: window)
+                }
+            )
+            observers.append(
+                center.addObserver(
+                    forName: NSWindow.willCloseNotification,
+                    object: window,
+                    queue: .main
+                ) { [weak self, weak window] _ in
+                    guard let self, let window else { return }
+                    self.freezeLayoutCapture()
+                    self.saveFrame(of: window)
+                }
+            )
+            observers.append(
+                center.addObserver(
                     forName: NSApplication.willTerminateNotification,
                     object: nil,
                     queue: .main
                 ) { [weak self, weak window] _ in
-                    guard let window else { return }
-                    self?.saveFrame(of: window)
+                    guard let self, let window else { return }
+                    self.freezeLayoutCapture()
+                    self.saveFrame(of: window)
                 }
             )
         }
 
+        private func freezeLayoutCapture() {
+            layoutRestoreCompletionWorkItem?.cancel()
+            layoutRestoreCompletionWorkItem = nil
+            restorationStore.beginLayoutRestoration()
+        }
+
+        private func scheduleLayoutRestoreCompletion(for window: NSWindow) {
+            layoutRestoreCompletionWorkItem?.cancel()
+            let workItem = DispatchWorkItem { [weak self, weak window] in
+                guard let self, let window, self.window === window,
+                      !window.isMiniaturized else { return }
+                self.restorationStore.finishLayoutRestoration()
+            }
+            layoutRestoreCompletionWorkItem = workItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: workItem)
+        }
+
         private func saveFrame(of window: NSWindow) {
-            guard !window.styleMask.contains(.fullScreen) else { return }
+            guard !window.styleMask.contains(.fullScreen),
+                  !window.isMiniaturized else { return }
             window.saveFrame(usingName: autosaveName)
             restorationStore.updateWindowFrame(window.frame)
         }
 
         deinit {
             restoreWorkItem?.cancel()
+            layoutRestoreCompletionWorkItem?.cancel()
             observers.forEach(NotificationCenter.default.removeObserver)
         }
     }

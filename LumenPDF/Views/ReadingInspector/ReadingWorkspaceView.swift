@@ -31,6 +31,7 @@ struct ReadingWorkspaceView: View {
             )
             .id(document.id)
             .frame(minWidth: 420)
+            .layoutPriority(1)
 
             if inspectorModel.isVisible {
                 ReadingInspectorView(model: inspectorModel) {
@@ -38,11 +39,11 @@ struct ReadingWorkspaceView: View {
                 }
                 .environmentObject(appState)
                 .frame(
-                    minWidth: restorationStore.isRestoringInitialLayout
+                    minWidth: restorationStore.isRestoringLayout
                         ? CGFloat(inspectorModel.width)
                         : CGFloat(ReadingInspectorModel.minimumWidth),
                     idealWidth: CGFloat(inspectorModel.width),
-                    maxWidth: restorationStore.isRestoringInitialLayout
+                    maxWidth: restorationStore.isRestoringLayout
                         ? CGFloat(inspectorModel.width)
                         : CGFloat(ReadingInspectorModel.maximumWidth)
                 )

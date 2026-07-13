@@ -32,29 +32,23 @@ struct ContentView: View {
                 }
             }
             .navigationSplitViewColumnWidth(
-                min: restorationStore.isRestoringInitialLayout
+                min: restorationStore.isRestoringLayout
                     ? clampedOutlineSidebarWidth
                     : Self.minimumOutlineSidebarWidth,
                 ideal: clampedOutlineSidebarWidth,
-                max: restorationStore.isRestoringInitialLayout
+                max: restorationStore.isRestoringLayout
                     ? clampedOutlineSidebarWidth
                     : Self.maximumOutlineSidebarWidth
             )
             .background {
-                GeometryReader { proxy in
-                    Color.clear.preference(
-                        key: OutlineSidebarWidthPreferenceKey.self,
-                        value: proxy.size.width
-                    )
+                SplitPaneWidthObserver(
+                    edge: .leading,
+                    restoredWidth: clampedOutlineSidebarWidth,
+                    isRestoring: restorationStore.isRestoringLayout
+                ) { width in
+                    guard isOutlineSidebarVisible else { return }
+                    restorationStore.updateOutlineWidth(Double(width))
                 }
-            }
-            .onPreferenceChange(OutlineSidebarWidthPreferenceKey.self) { width in
-                guard !restorationStore.isRestoringInitialLayout,
-                      isOutlineSidebarVisible,
-                      width >= Self.minimumOutlineSidebarWidth,
-                      abs(restorationStore.state.outlineSidebar.width - Double(width)) > 1
-                else { return }
-                restorationStore.updateOutlineWidth(Double(width))
             }
         } detail: {
             ZStack(alignment: .bottom) {
@@ -253,14 +247,6 @@ struct ContentView: View {
         }
     }
 
-}
-
-private struct OutlineSidebarWidthPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
 }
 
 // MARK: - Library Picker Popover

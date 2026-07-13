@@ -150,6 +150,8 @@ Code should stay simple, understandable, maintainable, iterable, and free of avo
 - Classify window state as stable or transient before implementation. Persist user-adjusted stable state such as the main window frame, split visibility and split widths, and each document's reader viewport (zoom mode, scale, horizontal offset, and vertical offset); do not restore transient selections, action bars, loading overlays, or editors.
 - Collect the complete stable reading workspace in one versioned state model and one persistence manager. Views, view models, window bridges, and PDFKit coordinators may report changes or apply restored values, but must not create parallel `UserDefaults` keys for window frame, split widths, split visibility, active tab, last document, inspector mode, or PDF viewport.
 - Treat restoration as an ordered phase, not independent property initialization. While the saved window and split geometry are being applied, initial layout measurements must not overwrite persisted values; only enable geometry capture after the restored layout has settled.
+- Split-width capture must read the actual native pane after layout, not assume a guarded SwiftUI geometry preference will emit again after the restoration lock is released. The same observer must support both applying the saved divider position and reporting later user-driven changes.
+- Window minimization is a restoration boundary. Freeze stable-layout writes before miniaturization, closing, and termination; keep the last visible split widths unchanged while hidden; then reapply the complete saved layout before reopening width capture after deminiaturization.
 
 ### UI Runtime Verification Gate (Strict)
 

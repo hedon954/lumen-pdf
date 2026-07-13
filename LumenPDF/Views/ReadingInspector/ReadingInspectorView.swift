@@ -13,16 +13,15 @@ struct ReadingInspectorView: View {
         }
         .frame(minWidth: CGFloat(ReadingInspectorModel.minimumWidth))
         .background(.background)
-        .onPreferenceChange(InspectorWidthPreferenceKey.self) { size in
-            guard !restorationStore.isRestoringInitialLayout,
-                  size.width > 0 else { return }
-            model.setWidth(size.width)
-        }
-        .background(
-            GeometryReader { proxy in
-                Color.clear.preference(key: InspectorWidthPreferenceKey.self, value: proxy.size)
+        .background {
+            SplitPaneWidthObserver(
+                edge: .trailing,
+                restoredWidth: CGFloat(model.width),
+                isRestoring: restorationStore.isRestoringLayout
+            ) { width in
+                model.setWidth(width)
             }
-        )
+        }
     }
 
     private var header: some View {
@@ -85,13 +84,5 @@ struct ReadingInspectorEmptyState: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
-
-private struct InspectorWidthPreferenceKey: PreferenceKey {
-    static var defaultValue: CGSize = .zero
-
-    static func reduce(value: inout CGSize, nextValue: () -> CGSize) {
-        value = nextValue()
     }
 }

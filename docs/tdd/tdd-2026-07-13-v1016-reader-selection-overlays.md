@@ -146,6 +146,8 @@ Coordinator 观察：
 - `NSWindow.didMoveNotification`：保存窗口位置。
 - `NSWindow.didExitFullScreenNotification`：退出全屏后保存普通窗口 frame。
 - `NSWindow.willCloseNotification` 与 `NSApplication.willTerminateNotification`：补齐关闭和退出路径。
+- `NSWindow.willMiniaturizeNotification`：在窗口隐藏前保存普通 frame，并冻结左右栏宽度写入。
+- `NSWindow.didDeminiaturizeNotification`：窗口重新显示后进入布局恢复阶段，重新应用保存的分隔线位置，稳定后再开放宽度采集。
 
 全屏期间不把全屏 frame 写入普通窗口记录。观察 token 由 Coordinator 持有，并在窗口切换、view dismantle 和 deinit 时移除。
 
@@ -178,14 +180,16 @@ PDFKit 在文档赋值、窗口 frame 恢复和内部 scroll view 布局期间�
 
 ### 8.6 分栏宽度恢复锁
 
-SwiftUI 的 `GeometryReader` 会在首轮窗口和 split view 尚未稳定时上报临时宽度。旧实现立即把这个临时值写回，导致正确保存的左右栏宽度在启动阶段被覆盖。
+SwiftUI 的 `GeometryReader` 会在首轮窗口和 split view 尚未稳定时上报临时宽度；如果恢复锁忽略了这次回调，解锁后尺寸未变化又不会再次触发。前一种情况会覆盖正确值，后一种情况会让宽度永远停留在默认值。
 
-`ReadingRestorationStore.isRestoringInitialLayout` 为真时：
+`ReadingRestorationStore.isRestoringLayout` 为真时：
 
 1. 左侧 `NavigationSplitView` 和右侧 `HSplitView` 将 min、ideal、max 暂时收敛到已保存宽度，强制首轮布局使用目标尺寸。
-2. 左右栏的 Geometry preference 只参与显示，不允许写回状态。
+2. `SplitPaneWidthObserver` 把保存宽度应用到原生 divider，但不把恢复过程中的 pane frame 写回状态。
 3. 主窗口 frame 应用并等待 split view 布局稳定后，窗口 coordinator 结束恢复阶段。
 4. 两侧恢复正常 min/max 约束和用户拖拽，后续真实宽度变化再写回统一状态。
+
+SwiftUI preference 在恢复锁期间可能只上报一次；如果该值被正确忽略，解锁后尺寸未变化便不会再次触发，从而让持久化宽度永远停留在默认值。左右栏因此改用同一个 `SplitPaneWidthObserver`：它定位最近的原生 `NSSplitView` pane，恢复阶段直接设置对应 divider，稳定阶段从 pane frame 读取真实宽度。窗口最小化、关闭与退出期间 store 保持恢复锁，避免隐藏动画和 teardown 布局污染最后一次可见快照。
 
 ## 9. 工程约束
 
@@ -230,6 +234,7 @@ xcodebuild \
 10. 切换主功能页，并对 PDF 手动缩放、横向平移和纵向滚动后退出，检查主标签、文档、缩放比例与可见区域恢复。
 11. 在外接显示器保存窗口后断开显示器，检查重开窗口完整落在当前可见区域。
 12. 从已有版本直接升级，检查旧窗口、分栏和 PDF 视口偏好迁移到统一状态后仍保持一致。
+13. 分别调整左右栏宽度，最小化后从 Dock 恢复，检查两个 divider 仍位于最小化前的位置。
 
 ## 11. 风险与后续
 

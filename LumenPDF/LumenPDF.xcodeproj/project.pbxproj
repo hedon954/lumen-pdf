@@ -35,6 +35,7 @@
 		848778EA79429D8021B4DD18 /* ReadingSessionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 809C1E40B8B6298D0717419D /* ReadingSessionService.swift */; };
 		8EA1E0ACAFE101E377E75E1F /* UnderlineNoteMergePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A0EBC40C3F33282D857841 /* UnderlineNoteMergePolicy.swift */; };
 		9257B0414A31CB31C2441A29 /* liblumen_pdf_core.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = FDAFB107C96F1EAEFC542766 /* liblumen_pdf_core.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		A77220337E850506BABA4F04 /* SplitPaneWidthObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 728A21B45C88A4C44E504D01 /* SplitPaneWidthObserver.swift */; };
 		A92D3D70F398A821E827184F /* ReadingGuidePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73952626C8655E4B82D4990F /* ReadingGuidePanel.swift */; };
 		AF82E5794BAC9B20BC7C6746 /* TranslationErrorFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64617D1512820E56274C1747 /* TranslationErrorFormatter.swift */; };
 		AF88A75629B32ADB7429FA33 /* ReadingOverlayWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6FB1A1B40FC7F240DF1E0F7 /* ReadingOverlayWindow.swift */; };
@@ -85,6 +86,7 @@
 		66589F46D22ED6A1DCCCB8A8 /* LumenPDFApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LumenPDFApp.swift; sourceTree = "<group>"; };
 		6849D949F96FCFFC588C81A4 /* ReadingNotesPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingNotesPanel.swift; sourceTree = "<group>"; };
 		6F354BA18B527FD479DEB166 /* lumen_pdf_coreFFI.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = lumen_pdf_coreFFI.h; sourceTree = "<group>"; };
+		728A21B45C88A4C44E504D01 /* SplitPaneWidthObserver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplitPaneWidthObserver.swift; sourceTree = "<group>"; };
 		73952626C8655E4B82D4990F /* ReadingGuidePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingGuidePanel.swift; sourceTree = "<group>"; };
 		77CB4826E258185E036A900E /* ReadingInspectorModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingInspectorModel.swift; sourceTree = "<group>"; };
 		7EB370CA870617D926A8D892 /* lumen_pdf_core.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = lumen_pdf_core.swift; sourceTree = "<group>"; };
@@ -204,6 +206,7 @@
 				E6FB1A1B40FC7F240DF1E0F7 /* ReadingOverlayWindow.swift */,
 				5B07FBCAEAFAEECD88CFE576 /* ReadingRestorationState.swift */,
 				BEED3A291C974F7E4E2DB11A /* SelectionActionBar.swift */,
+				728A21B45C88A4C44E504D01 /* SplitPaneWidthObserver.swift */,
 				C5D204492B4D1E54DC478CF6 /* UnderlineNoteDraftView.swift */,
 				E5A0EBC40C3F33282D857841 /* UnderlineNoteMergePolicy.swift */,
 			);
@@ -366,6 +369,7 @@
 				CB5B8EE514E3A1A44E8623B3 /* SelectionActionBar.swift in Sources */,
 				532FBE970AD9739D7C6E794E /* SettingsRuntimeService.swift in Sources */,
 				2A814A39F2654BC077AF664E /* SettingsView.swift in Sources */,
+				A77220337E850506BABA4F04 /* SplitPaneWidthObserver.swift in Sources */,
 				B308BE40E9C7A5E667FB725E /* TranslationBubble.swift in Sources */,
 				AF82E5794BAC9B20BC7C6746 /* TranslationErrorFormatter.swift in Sources */,
 				6986D8C59A85F24C07531810 /* UnderlineNoteDraftView.swift in Sources */,
