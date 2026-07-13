@@ -27,14 +27,14 @@ PDF 缩放会更新 PDFKit 内部视图和选区状态，但独立面板及其�
 
 根因不是单个 `zIndex` 或关闭条件错误，而是窗口内上下文控件被错误拆成了第二个窗口所有权边界。
 
-窗口恢复问题同样来自所有权和时序不完整：旧逻辑只监听 `didEndLiveResize`，无法覆盖窗口缩放按钮和其他非拖拽 resize；异步背景视图不保证在 SwiftUI 首轮窗口布局之后恢复；左侧目录只有临时 `@State` 和固定 ideal width，退出后必然丢失。
+窗口恢复问题同样来自所有权和时序不完整：旧逻辑只监听 `didEndLiveResize`，无法覆盖窗口缩放按钮和其他非拖拽 resize；异步背景视图不保证在 SwiftUI 首轮窗口布局之后恢复；左侧目录只有临时 `@State` 和固定 ideal width，退出后必然丢失。进一步地，文档、页码和单一纵向 offset 不是完整的 PDF 阅读现场；PDFKit 的自动/手动缩放模式、缩放比例和横向平移如果没有统一保存，重开后仍会看到不同大小和不同区域的正文。
 
 ## 3. 影响范围
 
 | 文件 / 模块 | 职责 |
 | --- | --- |
 | `LumenPDF/Reader/PDFReaderModels.swift` | `NoteAnchorPlacementPolicy` 纯定位策略与结果模型。 |
-| `LumenPDF/Reader/PDFKitView.swift` | 收集划线矩形和页面正文行矩形，生成笔记按钮锚点。 |
+| `LumenPDF/Reader/PDFKitView.swift` | 收集笔记按钮锚点，并按文档保存、恢复 PDFKit 缩放模式、比例与横纵视口偏移。 |
 | `LumenPDF/Reader/SelectionActionBar.swift` | 操作栏状态、根层渲染、窗口边界限制和外部点击监听。 |
 | `LumenPDF/Views/PDFReaderView.swift` | 将选区局部坐标转换为根坐标，并转发具体业务动作。 |
 | `LumenPDF/Views/ReadingInspector/ReadingWorkspaceView.swift` | 向阅读器传递根层操作栏模型，并在文档切换时清理状态。 |
@@ -158,7 +158,19 @@ Coordinator 观察：
 - 左侧目录实际宽度：`outline_sidebar_width`，通过 Geometry preference 读取原生 split 拖拽结果。
 - 右侧 Inspector：继续由 `ReadingInspectorModel` 保存 `show_reading_inspector`、`reading_inspector_width` 和 `reading_inspector_mode`。
 - 主功能页：`main_active_tab`；UI 测试覆盖值不写回正常偏好。
-- 最后文档、页码和滚动位置：复用现有 `AppState` 与 `ReaderEventBus` 恢复链路。
+- 最后文档和页码：复用现有 `AppState` 与 `ReaderEventBus` 恢复链路。
+- 每个 PDF 的完整视口：`PDFViewportStateStore` 以文件路径隔离，保存 `autoScales`、`scaleFactor`、归一化横向偏移和归一化纵向偏移。
+
+### 8.5 PDF 视口恢复顺序
+
+PDFKit 在文档赋值、窗口 frame 恢复和内部 scroll view 布局期间可能多次重算页面尺寸，因此不能只调用一次 `go(to:)`。恢复流程为：
+
+1. 读取目标文档的完整视口状态；旧数据缺失时保留现有页码与纵向 offset fallback。
+2. 先恢复自动缩放模式，或关闭 `autoScales` 后限制并设置手动 `scaleFactor`。
+3. 跳转到保存页码，再按布局后的 document bounds 恢复归一化横纵偏移。
+4. 在后续主线程布局阶段重复校准偏移，最后解除恢复锁并重新启用滚动持久化。
+
+缩放、滚动、最小化、显式保存和应用退出都会刷新完整视口。恢复期间产生的 PDFKit 中间通知不得覆盖持久化状态。
 
 ## 9. 工程约束
 
@@ -167,7 +179,7 @@ Coordinator 观察：
 - AppKit 事件监听必须有明确所有者，并在 dismantle 路径确定移除。
 - 操作栏只有一个状态源；不得在 `PDFReaderView` 再保留并行的显示状态。
 - 编译成功不等于交互验收；无法运行原生 UI 时必须明确说明未完成运行时验证。
-- 只恢复稳定、用户主动调整的阅读布局；不恢复选择操作栏、翻译或笔记编辑等瞬时 UI。
+- 只恢复稳定、用户主动调整的阅读布局，包括每个 PDF 的缩放与平移视口；不恢复选择操作栏、翻译或笔记编辑等瞬时 UI。
 - 窗口恢复必须覆盖非 live resize、应用退出和多显示器变化，不能只验证拖拽窗口边缘这一条路径。
 
 ## 10. 验证
@@ -199,7 +211,7 @@ xcodebuild \
 7. 调整主窗口位置和大小后退出并重开，检查 frame 恢复。
 8. 使用绿色缩放按钮或系统窗口平铺改变尺寸后退出，检查非 live resize 也被保存。
 9. 调整并隐藏左右栏后退出，检查显示状态、宽度和 Inspector 模式恢复。
-10. 切换主功能页和阅读位置后退出，检查主标签、文档、页码和滚动位置恢复。
+10. 切换主功能页，并对 PDF 手动缩放、横向平移和纵向滚动后退出，检查主标签、文档、缩放比例与可见区域恢复。
 11. 在外接显示器保存窗口后断开显示器，检查重开窗口完整落在当前可见区域。
 
 ## 11. 风险与后续
@@ -210,6 +222,7 @@ xcodebuild \
 | 密集文本中不存在完全无遮挡位置 | 使用末字右上方 fallback，并限制在阅读区域内。 |
 | 操作栏显示期间缩放导致原锚点过时 | 当前会话保持位置，下一次窗口内点击统一关闭；新选区生成新根坐标。 |
 | SwiftUI 首轮布局覆盖已恢复 frame | 等待真实窗口挂载后的下一轮主线程恢复，再注册保存观察者。 |
+| PDFKit 文档或窗口布局覆盖已恢复视口 | 按缩放、页码、横纵偏移的顺序恢复，并在内部布局完成后分阶段校准。 |
 | 外接显示器断开导致窗口不可见 | 按当前屏幕交集选择目标屏幕并把完整 frame 限制到 `visibleFrame`。 |
 | UI 测试改变上次主功能页 | 测试参数覆盖期间关闭主标签偏好写入。 |
 | 后续重新引入窗口级 workaround | `CLAUDE.md` 固化展示边界和运行时验收门槛。 |
