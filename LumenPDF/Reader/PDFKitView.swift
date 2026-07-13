@@ -1139,6 +1139,7 @@ struct PDFKitView: NSViewRepresentable {
 
             let pdfFrameInWindow = pdfView.convert(pdfView.bounds, to: nil)
             let visibleRect = pdfView.bounds
+            var textRectsByPageIndex: [Int: [CGRect]] = [:]
             let anchors = parent.noteAnchorRequests.compactMap { request -> NoteAnchorPosition? in
                 guard let page = pdfView.document?.page(at: request.pageIndex) else { return nil }
                 let rects = Self.parseAnnotationRects(request.boundsStr)
@@ -1147,10 +1148,24 @@ struct PDFKitView: NSViewRepresentable {
                 let lineInPDFView = pdfView.convert(last, from: page)
                 guard lineInPDFView.intersects(visibleRect.insetBy(dx: -48, dy: -48)) else { return nil }
 
-                let anchorInPDFView = CGPoint(x: lineInPDFView.maxX + 10, y: lineInPDFView.midY)
-                let anchorInWindow = pdfView.convert(anchorInPDFView, to: nil)
-                let x = min(max(anchorInWindow.x - pdfFrameInWindow.minX, 18), pdfView.bounds.width - 18)
-                let y = min(max(pdfFrameInWindow.maxY - anchorInWindow.y, 18), pdfView.bounds.height - 18)
+                let lineRects = rects.map { Self.swiftUIRect(boundsInPage: $0, page: page, pdfView: pdfView) }
+                let textRects = textRectsByPageIndex[request.pageIndex] ?? {
+                    let pageTextSelection = page.selection(for: page.bounds(for: .cropBox))
+                    let pageTextLines = pageTextSelection?.selectionsByLine() ?? []
+                    let converted = pageTextLines.compactMap { selection -> CGRect? in
+                        let rect = selection.bounds(for: page)
+                        guard !rect.isEmpty else { return nil }
+                        return Self.swiftUIRect(boundsInPage: rect, page: page, pdfView: pdfView)
+                    }
+                    textRectsByPageIndex[request.pageIndex] = converted
+                    return converted
+                }()
+                let placement = NoteAnchorPlacementPolicy.place(
+                    lineRects: lineRects,
+                    textRects: textRects,
+                    containerRect: CGRect(origin: .zero, size: pdfView.bounds.size).insetBy(dx: 4, dy: 4)
+                )
+                guard let point = placement?.point else { return nil }
 
                 let union = rects.dropFirst().reduce(rects[0]) { $0.union($1) }
                 let unionInPDFView = pdfView.convert(union, from: page)
@@ -1166,7 +1181,7 @@ struct PDFKitView: NSViewRepresentable {
                     id: request.id,
                     noteId: request.noteId,
                     pageIndex: request.pageIndex,
-                    point: CGPoint(x: x, y: y),
+                    point: point,
                     anchorRect: anchorRect
                 )
             }

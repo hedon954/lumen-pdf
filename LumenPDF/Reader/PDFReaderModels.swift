@@ -208,6 +208,80 @@ struct NoteAnchorPosition: Identifiable, Equatable {
     let anchorRect: CGRect
 }
 
+enum NoteAnchorPlacement: Equatable {
+    case trailing
+    case above
+    case below
+    case leading
+    case upperTrailingFallback
+}
+
+struct NoteAnchorPlacementResult: Equatable {
+    let point: CGPoint
+    let placement: NoteAnchorPlacement
+}
+
+/// Places the compact note button around marked text without covering readable content.
+///
+/// Normal candidates are accepted only when the complete button fits in the viewport and
+/// does not intersect any text line on the page. When a selection sits in the middle of a
+/// dense paragraph and every side is occupied, the explicit fallback keeps the button just
+/// after the final glyph and lifts it into the gap between lines.
+enum NoteAnchorPlacementPolicy {
+    static func place(
+        lineRects: [CGRect],
+        textRects: [CGRect],
+        containerRect: CGRect,
+        buttonSize: CGFloat = 28,
+        gap: CGFloat = 6
+    ) -> NoteAnchorPlacementResult? {
+        guard let first = lineRects.first,
+              let last = lineRects.last,
+              !first.isEmpty,
+              !last.isEmpty,
+              !containerRect.isEmpty else { return nil }
+
+        let union = lineRects.dropFirst().reduce(first) { $0.union($1) }
+        let radius = buttonSize / 2
+        let candidates: [(NoteAnchorPlacement, CGPoint)] = [
+            (.trailing, CGPoint(x: last.maxX + gap + radius, y: last.midY)),
+            (.above, CGPoint(x: union.midX, y: union.minY - gap - radius)),
+            (.below, CGPoint(x: union.midX, y: union.maxY + gap + radius)),
+            (.leading, CGPoint(x: first.minX - gap - radius, y: first.midY))
+        ]
+
+        if let clear = candidates.first(where: { _, point in
+            let buttonRect = CGRect(
+                x: point.x - radius,
+                y: point.y - radius,
+                width: buttonSize,
+                height: buttonSize
+            )
+            return containerRect.contains(buttonRect) && !textRects.contains(where: {
+                $0.intersects(buttonRect.insetBy(dx: -1, dy: -1))
+            })
+        }) {
+            return NoteAnchorPlacementResult(point: clear.1, placement: clear.0)
+        }
+
+        let fallback = CGPoint(
+            x: last.maxX + gap + radius,
+            y: last.minY - 2
+        )
+        return NoteAnchorPlacementResult(
+            point: clamp(fallback, radius: radius, to: containerRect),
+            placement: .upperTrailingFallback
+        )
+    }
+
+    private static func clamp(_ point: CGPoint, radius: CGFloat, to rect: CGRect) -> CGPoint {
+        CGPoint(
+            x: min(max(point.x, rect.minX + radius), rect.maxX - radius),
+            y: min(max(point.y, rect.minY + radius), rect.maxY - radius)
+        )
+    }
+}
+
 struct ActiveNoteReview: Identifiable {
     let id: String
     let anchor: NoteAnchorPosition

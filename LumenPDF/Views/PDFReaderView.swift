@@ -4,6 +4,7 @@ import AppKit
 
 struct PDFReaderView: View {
     let document: PdfDocument
+    @ObservedObject var selectionActionBarModel: SelectionActionBarModel
     let onExplainSelection: (PDFSelectionContext) -> Void
     let onOpenNotes: () -> Void
     @EnvironmentObject private var appState: AppState
@@ -11,7 +12,6 @@ struct PDFReaderView: View {
 
     @State private var translationRequest: TranslationBubbleRequest?
     @State private var isTranslating = false
-    @State private var pendingSelection: SelectionInfo?
     @State private var underlineDraft: UnderlineNoteDraft?
     @State private var noteAnchorPositions: [NoteAnchorPosition] = []
     @State private var activeNoteReview: ActiveNoteReview?
@@ -37,15 +37,27 @@ struct PDFReaderView: View {
                 },
                 onTextSelected: { word, sentence, bounds, boundsStr, page, anchor, selectionAnchorRect in
                     guard !word.isEmpty else { return }
-                    pendingSelection = SelectionInfo(
+                    let selection = SelectionInfo(
                         word: word, sentence: sentence,
                         bounds: bounds, boundsStr: boundsStr,
                         page: page, menuAnchor: anchor,
                         selectionAnchorRect: selectionAnchorRect
                     )
+                    let readerFrame = proxy.frame(in: .named(ReaderRootCoordinateSpace.name))
+                    let rootAnchor = CGPoint(
+                        x: readerFrame.minX + anchor.x,
+                        y: readerFrame.minY + anchor.y
+                    )
+                    selectionActionBarModel.present(
+                        anchor: rootAnchor,
+                        hasExistingNote: exactUnderlineNote(boundsStr: boundsStr, page: page) != nil,
+                        onAction: { action in
+                            handleSelectionAction(action, selection: selection)
+                        }
+                    )
                 },
                 onClearSelection: {
-                    if translationRequest == nil && underlineDraft == nil { pendingSelection = nil }
+                    selectionActionBarModel.dismiss()
                 },
                 onDocumentLoaded: { total in
                     handleDocumentLoaded(totalPages: total)
@@ -58,24 +70,12 @@ struct PDFReaderView: View {
                 }
             )
 
-            // Selection action menu — positioned near the selection
-            if let sel = pendingSelection,
-               translationRequest == nil,
-               underlineDraft == nil,
-               activeNoteReview == nil {
-                selectionActionBar(sel)
-                    .transition(.opacity.combined(with: .scale(scale: 0.88)))
-                    .animation(.spring(duration: 0.18), value: pendingSelection)
-                    .zIndex(5)
-            }
-
             if let draft = underlineDraft {
                 UnderlineNoteDraftView(
                     draft: draft,
                     availableSize: proxy.size,
                     onCancel: {
                         underlineDraft = nil
-                        pendingSelection = nil
                     },
                     onSave: { noteText in
                         let trimmedNoteText = noteText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -98,7 +98,6 @@ struct PDFReaderView: View {
                             )
                         }
                         underlineDraft = nil
-                        pendingSelection = nil
                     }
                 )
                 .transition(.opacity.combined(with: .scale(scale: 0.96)))
@@ -197,7 +196,7 @@ struct PDFReaderView: View {
         guard !notes.isEmpty else { return }
         closeTranslationOverlay()
         underlineDraft = nil
-        pendingSelection = nil
+        selectionActionBarModel.dismiss()
         activeNoteReview = ActiveNoteReview(id: anchor.id, anchor: anchor, notes: notes.sorted { $0.createdAt < $1.createdAt })
     }
 
@@ -213,100 +212,52 @@ struct PDFReaderView: View {
 
     // MARK: - Selection Action Bar
 
-    private func selectionActionBar(_ sel: SelectionInfo) -> some View {
-        HStack(spacing: 0) {
-            actionBarBtn(icon: "character.bubble", label: "翻译") {
-                requestTranslation(word: sel.word, sentence: sel.sentence,
-                                   bounds: sel.bounds, boundsStr: sel.boundsStr,
-                                   page: sel.page,
-                                   selectionAnchorRect: sel.selectionAnchorRect)
-                pendingSelection = nil
-            }
-            Divider().frame(height: 26)
-            actionBarBtn(icon: "text.bubble", label: "解释") {
-                onExplainSelection(
-                    PDFSelectionContext(
-                        pdfPath: document.filePath,
-                        pdfName: document.fileName,
-                        pageIndex: sel.page,
-                        selectedText: sel.word,
-                        surroundingText: sel.sentence,
-                        bounds: sel.bounds,
-                        boundsStr: sel.boundsStr
-                    )
+    private func handleSelectionAction(_ action: SelectionActionBarAction, selection: SelectionInfo) {
+        switch action {
+        case .translate:
+            requestTranslation(
+                word: selection.word,
+                sentence: selection.sentence,
+                bounds: selection.bounds,
+                boundsStr: selection.boundsStr,
+                page: selection.page,
+                selectionAnchorRect: selection.selectionAnchorRect
+            )
+        case .explain:
+            onExplainSelection(
+                PDFSelectionContext(
+                    pdfPath: document.filePath,
+                    pdfName: document.fileName,
+                    pageIndex: selection.page,
+                    selectedText: selection.word,
+                    surroundingText: selection.sentence,
+                    bounds: selection.bounds,
+                    boundsStr: selection.boundsStr
                 )
-                pendingSelection = nil
+            )
+        case .highlight:
+            postFreeAnnotation(type: "highlight", boundsStr: selection.boundsStr, page: selection.page)
+        case .underline:
+            postFreeAnnotation(type: "underline", boundsStr: selection.boundsStr, page: selection.page)
+        case .addNote:
+            closeOtherReadingOverlays()
+            let existingNote = exactUnderlineNote(boundsStr: selection.boundsStr, page: selection.page)
+            underlineDraft = UnderlineNoteDraft(
+                word: selection.word,
+                boundsStr: selection.boundsStr,
+                page: selection.page,
+                anchor: selection.menuAnchor,
+                anchorRect: selection.selectionAnchorRect,
+                appendingNoteId: existingNote?.id,
+                existingNoteText: existingNote?.note ?? ""
+            )
+        case .removeNote:
+            if let existingNote = exactUnderlineNote(boundsStr: selection.boundsStr, page: selection.page) {
+                removeUnderlineNote(existingNote)
             }
-            Divider().frame(height: 26)
-            actionBarBtn(icon: "highlighter", label: "高亮") {
-                postFreeAnnotation(type: "highlight", boundsStr: sel.boundsStr, page: sel.page)
-                pendingSelection = nil
-            }
-            Divider().frame(height: 26)
-            actionBarBtn(icon: "underline", label: "划线") {
-                postFreeAnnotation(type: "underline", boundsStr: sel.boundsStr, page: sel.page)
-                pendingSelection = nil
-            }
-            Divider().frame(height: 26)
-            if let existingNote = exactUnderlineNote(boundsStr: sel.boundsStr, page: sel.page) {
-                actionBarBtn(icon: "plus.bubble", label: "添加笔记") {
-                    closeOtherReadingOverlays()
-                    underlineDraft = UnderlineNoteDraft(
-                        word: sel.word,
-                        boundsStr: sel.boundsStr,
-                        page: sel.page,
-                        anchor: sel.menuAnchor,
-                        anchorRect: sel.selectionAnchorRect,
-                        appendingNoteId: existingNote.id,
-                        existingNoteText: existingNote.note
-                    )
-                }
-                Divider().frame(height: 26)
-                actionBarBtn(icon: "note.text", label: "取消笔记") {
-                    removeUnderlineNote(existingNote)
-                    pendingSelection = nil
-                }
-            } else {
-                actionBarBtn(icon: "note.text", label: "笔记") {
-                    closeOtherReadingOverlays()
-                    underlineDraft = UnderlineNoteDraft(
-                        word: sel.word,
-                        boundsStr: sel.boundsStr,
-                        page: sel.page,
-                        anchor: sel.menuAnchor,
-                        anchorRect: sel.selectionAnchorRect,
-                        appendingNoteId: nil,
-                        existingNoteText: ""
-                    )
-                }
-            }
-            Divider().frame(height: 26)
-            actionBarBtn(icon: "xmark", label: "") {
-                pendingSelection = nil
-            }
+        case .close:
+            break
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 6)
-        .background(.regularMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(.separator, lineWidth: 0.5))
-        .shadow(color: .black.opacity(0.18), radius: 10, x: 0, y: 3)
-        .fixedSize()
-        .position(x: sel.menuAnchor.x, y: sel.menuAnchor.y)
-    }
-
-    private func actionBarBtn(icon: String, label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 5) {
-                Image(systemName: icon).font(.system(size: 14, weight: .medium))
-                if !label.isEmpty {
-                    Text(label).font(.system(size: 13))
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 9)
-        }
-        .buttonStyle(.plain)
-        .contentShape(Rectangle())
     }
 
     private func postFreeAnnotation(type: String, boundsStr: String, page: Int) {

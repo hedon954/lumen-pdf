@@ -8,6 +8,7 @@ struct ContentView: View {
     @State private var showSetupSheet = false
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @StateObject private var inspectorModel = ReadingInspectorModel()
+    @StateObject private var selectionActionBarModel = SelectionActionBarModel()
     @AppStorage("llm_base_url") private var baseURL = ""
     @AppStorage("llm_model") private var model = ""
 
@@ -39,6 +40,7 @@ struct ContentView: View {
                     ReadingWorkspaceView(
                         document: doc,
                         inspectorModel: inspectorModel,
+                        selectionActionBarModel: selectionActionBarModel,
                         setInspectorVisible: setReadingInspectorVisible
                     )
                     .opacity(appState.activeTab == .reader ? 1 : 0)
@@ -61,6 +63,12 @@ struct ContentView: View {
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                         .animation(.easeInOut(duration: 0.3), value: appState.toastMessage)
                 }
+            }
+        }
+        .coordinateSpace(name: ReaderRootCoordinateSpace.name)
+        .overlay {
+            if appState.activeTab == .reader {
+                SelectionActionBarOverlay(model: selectionActionBarModel)
             }
         }
         .toolbar {
@@ -163,6 +171,12 @@ struct ContentView: View {
         .sheet(isPresented: $showSetupSheet) {
             SettingsView(onDismiss: { showSetupSheet = false })
                 .environmentObject(appState)
+        }
+        .onChange(of: appState.activeTab) { _, _ in
+            selectionActionBarModel.dismiss()
+        }
+        .onChange(of: appState.selectedDocument?.id) { _, _ in
+            selectionActionBarModel.dismiss()
         }
     }
     private func setReadingInspectorVisible(_ visible: Bool) {

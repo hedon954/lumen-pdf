@@ -3,6 +3,7 @@ import SwiftUI
 struct ReadingWorkspaceView: View {
     let document: PdfDocument
     @ObservedObject var inspectorModel: ReadingInspectorModel
+    @ObservedObject var selectionActionBarModel: SelectionActionBarModel
     let setInspectorVisible: (Bool) -> Void
 
     @EnvironmentObject private var appState: AppState
@@ -12,6 +13,7 @@ struct ReadingWorkspaceView: View {
         HSplitView {
             PDFReaderView(
                 document: document,
+                selectionActionBarModel: selectionActionBarModel,
                 onExplainSelection: { selection in
                     if !inspectorModel.isVisible {
                         setInspectorVisible(true)
@@ -46,6 +48,7 @@ struct ReadingWorkspaceView: View {
             lastObservedWidth = inspectorModel.width
         }
         .onChange(of: document.id) { _, _ in
+            selectionActionBarModel.dismiss()
             inspectorModel.clearForDocumentChange(pdfPath: document.filePath)
         }
         .onChange(of: inspectorModel.width) { oldValue, newValue in

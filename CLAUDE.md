@@ -140,6 +140,22 @@ Code should stay simple, understandable, maintainable, iterable, and free of avo
 - All UI updates must run on `@MainActor`
 - No direct `URLSession`, `sqlite3` in Views or Coordinators
 
+### SwiftUI / AppKit Presentation Boundaries (Strict)
+
+- Keep in-window UI in one SwiftUI hierarchy whenever possible. When an overlay must appear above multiple `NavigationSplitView` columns, lift its state and rendering to their nearest common SwiftUI ancestor before considering AppKit.
+- Do not inject arbitrary subviews into `NSHostingView`, and do not introduce an `NSPanel` or child window solely to bypass SwiftUI clipping or local `zIndex`. A separate window is allowed only when the feature is semantically a separate window and SwiftUI cannot express the required behavior.
+- Moving a view to another presentation container is a behavioral change, not only a layout change. Before implementation, record and preserve appearance and transparency, coordinate space, hit testing, keyboard focus, inside/outside dismissal, selection ownership, instance uniqueness, attach/update/detach lifecycle, window activation, resizing, moving, minimization, closing, and multi-window behavior.
+- Every AppKit bridge must have one explicit owner and deterministic cleanup. Child windows, event monitors, notification observers, delegates, and hosted views must be removed on every dismissal and teardown path.
+- If a new bridge requires custom event routing, global identifiers, orphan cleanup, and duplicated state merely to reproduce behavior SwiftUI previously provided, stop and reconsider the abstraction boundary.
+
+### UI Runtime Verification Gate (Strict)
+
+- A successful build proves compilation only. Do not report a visual or interaction fix as complete until the affected behavior has been exercised in a running app.
+- For selection overlays, popovers, floating controls, and split-view chrome, runtime verification must cover normal placement; placement near the left sidebar and right inspector; clicking inside the control; clicking PDF content, sidebar, inspector, and toolbar; creating a second selection; zooming and scrolling while the control is visible; resizing and moving the window; app deactivation and reactivation; and transparency and clipping in both light and dark appearance.
+- If runtime or visual verification is unavailable, state that the change is unverified and do not treat compilation as acceptance evidence.
+- After the first regression caused by a new presentation or ownership boundary, stop stacking local patches. Revert or reassess the architecture before adding more lifecycle machinery.
+- Keep feature fixes separate from unrelated development tooling or workspace configuration unless the user explicitly requests both.
+
 ## UniFFI Bridge
 
 The project uses `uniffi::setup_scaffolding!()` in `lib.rs` with proc-macros instead of UDL files:
