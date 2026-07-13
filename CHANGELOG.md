@@ -3,6 +3,21 @@
 LumenPDF 的版本记录由人工/AI 维护。每个版本只记录对用户或后续开发有意义的变化，并为具体变更附上对应的 GitHub commit URL。
 
 ---
+## [1.0.16](https://github.com/hedon954/lumen-pdf/compare/v1.0.15..v1.0.16) - 2026-07-14
+
+这一版聚焦阅读现场的连续性：选区操作更可靠，重新打开或最小化后尽可能恢复上次的窗口、视口和阅读工作区布局。
+
+### 主要变化
+
+- 重构文本选区操作栏：根据可用空间避让正文和左右侧栏、在侧栏之上显示、使用透明背景，并在点击其他位置、滚动或缩放后统一关闭，避免浮层残留或遮挡阅读内容（[392dde5](https://github.com/hedon954/lumen-pdf/commit/392dde5032a95ad9b015998d5ef429b9b77d06e1)）。
+- 增加完整阅读现场恢复：记住窗口位置和尺寸、PDF 缩放与视口、左右侧栏的显示状态和实际宽度；最小化与退出后重新打开均优先还原这些状态（[4afd8e0](https://github.com/hedon954/lumen-pdf/commit/4afd8e0e7aa360602c522284a60a2fdd627624aa)，[b7b5b36](https://github.com/hedon954/lumen-pdf/commit/b7b5b36b9f33968904ee947dad0afa5043d90395)，[c24e2c9](https://github.com/hedon954/lumen-pdf/commit/c24e2c9bdec2b523e930ac7b49a96a3edab10b9b)，[f79c3b1](https://github.com/hedon954/lumen-pdf/commit/f79c3b13f835bc7d82ac776e9b95febecf4d5517)，[acf4bbd](https://github.com/hedon954/lumen-pdf/commit/acf4bbd0d42dda933913c3c73af0d8216a79c277)）。
+
+### 修复与发布
+
+- 调整 Keychain 存储与签名策略，避免重装时的无效 ACL 访问授权提示；本地和 Release 打包保留 ad-hoc 路径，并确保导出应用的 App Sandbox entitlement 被正确校验（[acf4bbd](https://github.com/hedon954/lumen-pdf/commit/acf4bbd0d42dda933913c3c73af0d8216a79c277)，[8365630](https://github.com/hedon954/lumen-pdf/commit/8365630e4f5f9a11129d18ee289e0aa7e2307d5f)）。
+- 对齐发布 tag 摘要与 GitHub Release 页面，并更新提交信息约束，保证发布记录保持面向读者且可追溯（[adbc126](https://github.com/hedon954/lumen-pdf/commit/adbc12649af8e99ba40145ee3c6454805946d686)，[398fb95](https://github.com/hedon954/lumen-pdf/commit/398fb95c3b0c0cea68be16dfa58de9b0be6b442b)）。
+
+---
 ## [1.0.15](https://github.com/hedon954/lumen-pdf/compare/v1.0.14..v1.0.15) - 2026-07-11
 
 这一版集中修复翻译与笔记浮层在长内容、选区避让和窗口定位上的交互问题，并补齐右侧阅读工作区的笔记与单词管理能力。
