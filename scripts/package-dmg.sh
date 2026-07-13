@@ -165,8 +165,11 @@ codesign "${CODESIGN_ARGS[@]}" \
 
 codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 SIGNED_ENTITLEMENTS="$(mktemp /tmp/lumenpdf-entitlements.XXXXXX.plist)"
-codesign -d --entitlements "$SIGNED_ENTITLEMENTS" "$APP_PATH" 2>/dev/null
-if [ "$(plutil -extract com.apple.security.app-sandbox raw "$SIGNED_ENTITLEMENTS" 2>/dev/null || true)" != "true" ]; then
+# `codesign -d --entitlements :-` writes the plist to stdout.  Do not use
+# `plutil -extract` here: entitlement names contain dots, which plutil treats
+# as a nested key path. PlistBuddy's colon notation preserves the raw key.
+codesign -d --entitlements :- "$APP_PATH" >"$SIGNED_ENTITLEMENTS" 2>/dev/null
+if [ "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.app-sandbox' "$SIGNED_ENTITLEMENTS" 2>/dev/null || true)" != "true" ]; then
     rm -f "$SIGNED_ENTITLEMENTS"
     echo "✗ 最终应用缺少 App Sandbox entitlement，拒绝继续打包。"
     exit 1
