@@ -6,14 +6,15 @@ struct ContentView: View {
     @EnvironmentObject private var appState: AppState
     @State private var showLibrary = false
     @State private var showSetupSheet = false
-    @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @StateObject private var inspectorModel = ReadingInspectorModel()
     @StateObject private var selectionActionBarModel = SelectionActionBarModel()
+    @AppStorage("show_outline_sidebar") private var isOutlineSidebarVisible = true
+    @AppStorage("outline_sidebar_width") private var outlineSidebarWidth = 220.0
     @AppStorage("llm_base_url") private var baseURL = ""
     @AppStorage("llm_model") private var model = ""
 
     var body: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
+        NavigationSplitView(columnVisibility: outlineColumnVisibility) {
             // Left sidebar: PDF outline TOC (only when a document is open)
             Group {
                 if let kitDoc = appState.kitDocument {
@@ -31,7 +32,27 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
-            .frame(minWidth: 200, idealWidth: 220)
+            .navigationSplitViewColumnWidth(
+                min: Self.minimumOutlineSidebarWidth,
+                ideal: clampedOutlineSidebarWidth,
+                max: Self.maximumOutlineSidebarWidth
+            )
+            .background {
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: OutlineSidebarWidthPreferenceKey.self,
+                        value: proxy.size.width
+                    )
+                }
+            }
+            .onPreferenceChange(OutlineSidebarWidthPreferenceKey.self) { width in
+                guard isOutlineSidebarVisible,
+                      width >= Self.minimumOutlineSidebarWidth,
+                      abs(outlineSidebarWidth - Double(width)) > 1 else { return }
+                outlineSidebarWidth = Double(
+                    min(max(width, Self.minimumOutlineSidebarWidth), Self.maximumOutlineSidebarWidth)
+                )
+            }
         } detail: {
             ZStack(alignment: .bottom) {
                 // Keep PDFReaderView alive (never destroyed on tab switch),
@@ -179,6 +200,24 @@ struct ContentView: View {
             selectionActionBarModel.dismiss()
         }
     }
+
+    private static let minimumOutlineSidebarWidth: CGFloat = 200
+    private static let maximumOutlineSidebarWidth: CGFloat = 420
+
+    private var clampedOutlineSidebarWidth: CGFloat {
+        min(
+            max(CGFloat(outlineSidebarWidth), Self.minimumOutlineSidebarWidth),
+            Self.maximumOutlineSidebarWidth
+        )
+    }
+
+    private var outlineColumnVisibility: Binding<NavigationSplitViewVisibility> {
+        Binding(
+            get: { isOutlineSidebarVisible ? .all : .detailOnly },
+            set: { isOutlineSidebarVisible = $0 != .detailOnly }
+        )
+    }
+
     private func setReadingInspectorVisible(_ visible: Bool) {
         guard inspectorModel.isVisible != visible else { return }
         guard let doc = appState.selectedDocument else {
@@ -200,6 +239,14 @@ struct ContentView: View {
         }
     }
 
+}
+
+private struct OutlineSidebarWidthPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
 }
 
 // MARK: - Library Picker Popover

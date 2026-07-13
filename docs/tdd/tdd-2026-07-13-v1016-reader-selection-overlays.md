@@ -1,4 +1,4 @@
-# LumenPDF — 阅读选择控件优化 TDD
+# LumenPDF — 阅读选择控件与窗口延续性优化 TDD
 
 **版本**: v1.0.16 · **日期**: 2026-07-13
 
@@ -11,6 +11,8 @@
 笔记按钮位置由 UI 无关的纯策略计算。选择操作栏则恢复单一 SwiftUI 所有权：`PDFReaderView` 负责生成选区信息和根坐标锚点，`ContentView` 持有唯一展示状态，并在整个 `NavigationSplitView` 之上渲染操作栏。
 
 操作栏不使用 `NSPanel`。AppKit 只保留一个窄桥接，用于观察主窗口内鼠标按下事件；监听器与操作栏视图实例共同创建和销毁。
+
+主窗口使用系统 frame autosave 名称作为事实来源，并兼容已有 `main_window_frame` 数据。窗口挂载视图通过 `viewDidMoveToWindow` 获取真实 `NSWindow`，在下一轮主线程恢复 frame，随后才开始监听 resize、move、close 和 terminate。稳定布局状态通过 `UserDefaults` 分别持久化，瞬时浮层不恢复。
 
 ## 2. 根因
 
@@ -25,6 +27,8 @@ PDF 缩放会更新 PDFKit 内部视图和选区状态，但独立面板及其�
 
 根因不是单个 `zIndex` 或关闭条件错误，而是窗口内上下文控件被错误拆成了第二个窗口所有权边界。
 
+窗口恢复问题同样来自所有权和时序不完整：旧逻辑只监听 `didEndLiveResize`，无法覆盖窗口缩放按钮和其他非拖拽 resize；异步背景视图不保证在 SwiftUI 首轮窗口布局之后恢复；左侧目录只有临时 `@State` 和固定 ideal width，退出后必然丢失。
+
 ## 3. 影响范围
 
 | 文件 / 模块 | 职责 |
@@ -35,6 +39,9 @@ PDF 缩放会更新 PDFKit 内部视图和选区状态，但独立面板及其�
 | `LumenPDF/Views/PDFReaderView.swift` | 将选区局部坐标转换为根坐标，并转发具体业务动作。 |
 | `LumenPDF/Views/ReadingInspector/ReadingWorkspaceView.swift` | 向阅读器传递根层操作栏模型，并在文档切换时清理状态。 |
 | `LumenPDF/Views/ContentView.swift` | 持有唯一操作栏模型，在整个 split view 之上渲染。 |
+| `LumenPDF/App/LumenPDFApp.swift` | 在真实窗口挂载后恢复 frame，完整观察保存时机，并处理多显示器可见区域。 |
+| `LumenPDF/App/AppState.swift` | 持久化并恢复主功能页，隔离 UI 测试启动参数。 |
+| `LumenPDF/Views/ReadingInspector/ReadingInspectorModel.swift` | 继续持久化右侧 Inspector 显示状态、宽度和模式。 |
 | `LumenPDF/LumenPDF.xcodeproj/project.pbxproj` | 将新源文件加入应用 target。 |
 | `LumenPDF/Info.plist` | 启动 v1.0.16，版本更新为 `1.0.16` / `16`。 |
 | `CLAUDE.md` | 固化 SwiftUI/AppKit 展示边界与 UI 运行时验收约束。 |
@@ -118,15 +125,52 @@ ContentView 在 NavigationSplitView 根层 overlay 中渲染
 
 操作栏使用 `regularMaterial`、Capsule 细描边和固定内容尺寸，不添加 shadow。透明区域只由主窗口 SwiftUI 合成，不存在独立面板的矩形投影或底色。
 
-## 8. 工程约束
+## 8. 窗口与布局恢复
+
+### 8.1 主窗口挂载与恢复顺序
+
+`WindowFramePersistence.WindowAttachmentView` 在 `viewDidMoveToWindow` 中上报真实 `NSWindow`。Coordinator 切换窗口时先清理旧观察者，再在下一轮主线程执行：
+
+1. 设置 `LumenPDFMainWindow` frame autosave name。
+2. 显式调用 `setFrameUsingName` 恢复系统 autosave 数据。
+3. 系统数据不存在时读取旧版 `main_window_frame`，完成兼容迁移。
+4. 使用当前 `NSScreen.visibleFrame` 修正位置和尺寸。
+5. 恢复完成后注册窗口事件，防止首轮布局把默认 frame 提前覆盖到持久化数据。
+
+### 8.2 保存覆盖面
+
+Coordinator 观察：
+
+- `NSWindow.didResizeNotification`：覆盖手动拖拽、缩放按钮和程序化 resize。
+- `NSWindow.didMoveNotification`：保存窗口位置。
+- `NSWindow.didExitFullScreenNotification`：退出全屏后保存普通窗口 frame。
+- `NSWindow.willCloseNotification` 与 `NSApplication.willTerminateNotification`：补齐关闭和退出路径。
+
+全屏期间不把全屏 frame 写入普通窗口记录。观察 token 由 Coordinator 持有，并在窗口切换、view dismantle 和 deinit 时移除。
+
+### 8.3 多显示器约束
+
+`MainWindowFramePolicy` 选择与保存 frame 相交面积最大的当前显示器；完全不相交时回退到主显示器。窗口尺寸限制在目标 `visibleFrame` 内，origin 同时 clamp，确保断开外接显示器后仍能看到完整窗口。
+
+### 8.4 稳定布局状态
+
+- 左侧目录显示状态：`show_outline_sidebar`。
+- 左侧目录实际宽度：`outline_sidebar_width`，通过 Geometry preference 读取原生 split 拖拽结果。
+- 右侧 Inspector：继续由 `ReadingInspectorModel` 保存 `show_reading_inspector`、`reading_inspector_width` 和 `reading_inspector_mode`。
+- 主功能页：`main_active_tab`；UI 测试覆盖值不写回正常偏好。
+- 最后文档、页码和滚动位置：复用现有 `AppState` 与 `ReaderEventBus` 恢复链路。
+
+## 9. 工程约束
 
 - 窗口内上下文控件优先提升到共同 SwiftUI 祖先，不使用 `NSPanel` 绕过 split view 裁切。
 - 位置算法保持为 UI 无关纯函数。
 - AppKit 事件监听必须有明确所有者，并在 dismantle 路径确定移除。
 - 操作栏只有一个状态源；不得在 `PDFReaderView` 再保留并行的显示状态。
 - 编译成功不等于交互验收；无法运行原生 UI 时必须明确说明未完成运行时验证。
+- 只恢复稳定、用户主动调整的阅读布局；不恢复选择操作栏、翻译或笔记编辑等瞬时 UI。
+- 窗口恢复必须覆盖非 live resize、应用退出和多显示器变化，不能只验证拖拽窗口边缘这一条路径。
 
-## 9. 验证
+## 10. 验证
 
 ### 自动检查
 
@@ -152,12 +196,20 @@ xcodebuild \
 4. 操作栏出现后缩放或滚动 PDF，再点击其他区域，检查操作栏仍关闭。
 5. 连续选择两段文本，检查始终只有一个操作栏且按钮作用于最新选区。
 6. 切换文档、切换主功能页和停用应用，检查操作栏被清理。
+7. 调整主窗口位置和大小后退出并重开，检查 frame 恢复。
+8. 使用绿色缩放按钮或系统窗口平铺改变尺寸后退出，检查非 live resize 也被保存。
+9. 调整并隐藏左右栏后退出，检查显示状态、宽度和 Inspector 模式恢复。
+10. 切换主功能页和阅读位置后退出，检查主标签、文档、页码和滚动位置恢复。
+11. 在外接显示器保存窗口后断开显示器，检查重开窗口完整落在当前可见区域。
 
-## 10. 风险与后续
+## 11. 风险与后续
 
 | 风险 | 当前处理 |
 | --- | --- |
 | PDF 页面正文行提取增加锚点计算成本 | 同一轮计算按页缓存正文行矩形。 |
 | 密集文本中不存在完全无遮挡位置 | 使用末字右上方 fallback，并限制在阅读区域内。 |
 | 操作栏显示期间缩放导致原锚点过时 | 当前会话保持位置，下一次窗口内点击统一关闭；新选区生成新根坐标。 |
+| SwiftUI 首轮布局覆盖已恢复 frame | 等待真实窗口挂载后的下一轮主线程恢复，再注册保存观察者。 |
+| 外接显示器断开导致窗口不可见 | 按当前屏幕交集选择目标屏幕并把完整 frame 限制到 `visibleFrame`。 |
+| UI 测试改变上次主功能页 | 测试参数覆盖期间关闭主标签偏好写入。 |
 | 后续重新引入窗口级 workaround | `CLAUDE.md` 固化展示边界和运行时验收门槛。 |

@@ -30,55 +30,197 @@ struct LumenPDFApp: App {
 
 
 private struct WindowFramePersistence: NSViewRepresentable {
-    private let frameKey = "main_window_frame"
+    private let autosaveName = "LumenPDFMainWindow"
+    private let legacyFrameKey = "main_window_frame"
 
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        DispatchQueue.main.async { context.coordinator.attach(to: view.window) }
+    func makeNSView(context: Context) -> WindowAttachmentView {
+        let view = WindowAttachmentView()
+        view.onWindowChange = { [weak coordinator = context.coordinator] window in
+            coordinator?.attach(to: window)
+        }
         return view
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {
-        DispatchQueue.main.async { context.coordinator.attach(to: nsView.window) }
+    func updateNSView(_ nsView: WindowAttachmentView, context: Context) {
+        nsView.onWindowChange = { [weak coordinator = context.coordinator] window in
+            coordinator?.attach(to: window)
+        }
+        context.coordinator.attach(to: nsView.window)
     }
 
-    func makeCoordinator() -> Coordinator { Coordinator(frameKey: frameKey) }
+    static func dismantleNSView(_ nsView: WindowAttachmentView, coordinator: Coordinator) {
+        nsView.onWindowChange = nil
+        coordinator.detach()
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(autosaveName: autosaveName, legacyFrameKey: legacyFrameKey)
+    }
+
+    final class WindowAttachmentView: NSView {
+        var onWindowChange: ((NSWindow?) -> Void)?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            onWindowChange?(window)
+        }
+    }
 
     final class Coordinator: NSObject {
-        private let frameKey: String
+        private let autosaveName: String
+        private let legacyFrameKey: String
         private weak var window: NSWindow?
+        private var observers: [NSObjectProtocol] = []
+        private var restoreWorkItem: DispatchWorkItem?
 
-        init(frameKey: String) { self.frameKey = frameKey }
+        init(autosaveName: String, legacyFrameKey: String) {
+            self.autosaveName = autosaveName
+            self.legacyFrameKey = legacyFrameKey
+        }
 
         func attach(to window: NSWindow?) {
-            guard let window, self.window !== window else { return }
+            guard self.window !== window else { return }
+            detach()
+            guard let window else { return }
             self.window = window
-            window.setFrameAutosaveName("LumenPDFMainWindow")
-            if let saved = UserDefaults.standard.string(forKey: frameKey) {
-                let frame = NSRectFromString(saved)
-                if !frame.isEmpty {
-                    window.setFrame(frame, display: true)
+
+            let workItem = DispatchWorkItem { [weak self, weak window] in
+                guard let self, let window, self.window === window else { return }
+                self.restoreFrame(of: window)
+                self.startObserving(window)
+            }
+            restoreWorkItem = workItem
+            DispatchQueue.main.async(execute: workItem)
+        }
+
+        func detach() {
+            restoreWorkItem?.cancel()
+            restoreWorkItem = nil
+            observers.forEach(NotificationCenter.default.removeObserver)
+            observers.removeAll()
+            if let window {
+                saveFrame(of: window)
+            }
+            window = nil
+        }
+
+        private func restoreFrame(of window: NSWindow) {
+            _ = window.setFrameAutosaveName(autosaveName)
+
+            var restored = window.setFrameUsingName(autosaveName, force: true)
+            if !restored,
+               let saved = UserDefaults.standard.string(forKey: legacyFrameKey) {
+                let legacyFrame = NSRectFromString(saved)
+                if !legacyFrame.isEmpty,
+                   let visibleFrame = MainWindowFramePolicy.visibleFrame(
+                       for: legacyFrame,
+                       minimumSize: window.minSize,
+                       screenFrames: NSScreen.screens.map(\.visibleFrame),
+                       fallbackScreenFrame: NSScreen.main?.visibleFrame
+                   ) {
+                    window.setFrame(visibleFrame, display: false)
+                    restored = true
                 }
             }
-            NotificationCenter.default.addObserver(
-                self, selector: #selector(saveFrame(_:)),
-                name: NSWindow.willCloseNotification, object: window
-            )
-            NotificationCenter.default.addObserver(
-                self, selector: #selector(saveFrame(_:)),
-                name: NSWindow.didEndLiveResizeNotification, object: window
-            )
-            NotificationCenter.default.addObserver(
-                self, selector: #selector(saveFrame(_:)),
-                name: NSWindow.didMoveNotification, object: window
+
+            guard restored,
+                  let visibleFrame = MainWindowFramePolicy.visibleFrame(
+                      for: window.frame,
+                      minimumSize: window.minSize,
+                      screenFrames: NSScreen.screens.map(\.visibleFrame),
+                      fallbackScreenFrame: NSScreen.main?.visibleFrame
+                  ) else { return }
+            window.setFrame(visibleFrame, display: true)
+        }
+
+        private func startObserving(_ window: NSWindow) {
+            let center = NotificationCenter.default
+            let windowNotifications: [Notification.Name] = [
+                NSWindow.didResizeNotification,
+                NSWindow.didMoveNotification,
+                NSWindow.didExitFullScreenNotification,
+                NSWindow.willCloseNotification
+            ]
+            observers += windowNotifications.map { name in
+                center.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                    self?.saveFrame(of: window)
+                }
+            }
+            observers.append(
+                center.addObserver(
+                    forName: NSApplication.willTerminateNotification,
+                    object: nil,
+                    queue: .main
+                ) { [weak self, weak window] _ in
+                    guard let window else { return }
+                    self?.saveFrame(of: window)
+                }
             )
         }
 
-        @objc private func saveFrame(_ notification: Notification) {
-            guard let window = notification.object as? NSWindow else { return }
-            UserDefaults.standard.set(NSStringFromRect(window.frame), forKey: frameKey)
+        private func saveFrame(of window: NSWindow) {
+            guard !window.styleMask.contains(.fullScreen) else { return }
+            window.saveFrame(usingName: autosaveName)
+            UserDefaults.standard.set(
+                NSStringFromRect(window.frame),
+                forKey: legacyFrameKey
+            )
         }
 
-        deinit { NotificationCenter.default.removeObserver(self) }
+        deinit {
+            restoreWorkItem?.cancel()
+            observers.forEach(NotificationCenter.default.removeObserver)
+        }
+    }
+}
+
+private enum MainWindowFramePolicy {
+    static func visibleFrame(
+        for savedFrame: NSRect,
+        minimumSize: NSSize,
+        screenFrames: [NSRect],
+        fallbackScreenFrame: NSRect?
+    ) -> NSRect? {
+        guard !savedFrame.isEmpty else { return nil }
+        let fallback = fallbackScreenFrame ?? screenFrames.first
+        guard let targetScreen = bestScreen(
+            for: savedFrame,
+            screenFrames: screenFrames,
+            fallback: fallback
+        ) else { return nil }
+
+        let width = min(
+            max(savedFrame.width, minimumSize.width),
+            targetScreen.width
+        )
+        let height = min(
+            max(savedFrame.height, minimumSize.height),
+            targetScreen.height
+        )
+        return NSRect(
+            x: min(max(savedFrame.minX, targetScreen.minX), targetScreen.maxX - width),
+            y: min(max(savedFrame.minY, targetScreen.minY), targetScreen.maxY - height),
+            width: width,
+            height: height
+        )
+    }
+
+    private static func bestScreen(
+        for frame: NSRect,
+        screenFrames: [NSRect],
+        fallback: NSRect?
+    ) -> NSRect? {
+        let intersections = screenFrames.map { screen in
+            (screen: screen, area: intersectionArea(frame, screen))
+        }
+        guard let best = intersections.max(by: { $0.area < $1.area }),
+              best.area > 0 else { return fallback }
+        return best.screen
+    }
+
+    private static func intersectionArea(_ lhs: NSRect, _ rhs: NSRect) -> CGFloat {
+        let intersection = lhs.intersection(rhs)
+        guard !intersection.isNull else { return 0 }
+        return intersection.width * intersection.height
     }
 }

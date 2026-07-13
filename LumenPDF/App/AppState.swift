@@ -3,7 +3,7 @@ import AppKit
 import PDFKit
 import Combine
 
-enum MainTab { case reader, vocabulary, notes }
+enum MainTab: String { case reader, vocabulary, notes }
 
 @MainActor
 final class AppState: ObservableObject {
@@ -32,7 +32,12 @@ final class AppState: ObservableObject {
     }
     @Published var vocabulary: [VocabularyEntry] = []
     @Published var notes: [NoteEntry] = []
-    @Published var activeTab: MainTab = .reader
+    @Published var activeTab: MainTab = .reader {
+        didSet {
+            guard shouldPersistActiveTab else { return }
+            UserDefaults.standard.set(activeTab.rawValue, forKey: Self.activeTabKey)
+        }
+    }
     @Published var toastMessage: String?
 
     /// PDFKit document object – used for TOC sidebar.
@@ -45,17 +50,25 @@ final class AppState: ObservableObject {
     @Published var totalPages: Int = 0
 
     private let bridge = BridgeService.shared
+    private var shouldPersistActiveTab = true
+    private static let activeTabKey = "main_active_tab"
 
     init() {
+        let args = ProcessInfo.processInfo.arguments
+        if args.contains("--uitesting-vocabulary") {
+            shouldPersistActiveTab = false
+            activeTab = .vocabulary
+        } else if args.contains("--uitesting-notes") {
+            shouldPersistActiveTab = false
+            activeTab = .notes
+        } else if let storedTab = UserDefaults.standard.string(forKey: Self.activeTabKey),
+                  let tab = MainTab(rawValue: storedTab) {
+            activeTab = tab
+        }
+
         bridge.initializeIfNeeded()
         refreshLibrary()
         restoreLastDocument()
-        let args = ProcessInfo.processInfo.arguments
-        if args.contains("--uitesting-vocabulary") {
-            activeTab = .vocabulary
-        } else if args.contains("--uitesting-notes") {
-            activeTab = .notes
-        }
     }
 
     // MARK: - Library
