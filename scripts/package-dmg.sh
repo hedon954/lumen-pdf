@@ -2,8 +2,8 @@
 # 将 LumenPDF 打包为可分发的 .dmg 文件
 #
 # 用法：
-#   ./scripts/package-dmg.sh                    # 本地开发包（不签名）
-#   TEAM_ID=XXXXXXXXXX ./scripts/package-dmg.sh # 使用 Developer ID 签名
+#   ./scripts/package-dmg.sh                    # 使用 ad-hoc 签名
+#   SIGN_IDENTITY=<hash-or-name> make dmg       # 可选：显式指定签名身份
 #
 # 产物：build/LumenPDF-<version>.dmg
 set -euo pipefail
@@ -17,7 +17,6 @@ GENERATED_DIR="$XCODE_DIR/Generated"
 INFO_PLIST="$XCODE_DIR/Info.plist"
 
 APP_NAME="LumenPDF"
-BUNDLE_ID="com.LumenPDF.app"
 PLIST_VERSION="$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$INFO_PLIST")"
 VERSION="${VERSION:-$PLIST_VERSION}"
 ARCHIVE_PATH="$BUILD_DIR/$APP_NAME.xcarchive"
@@ -25,14 +24,25 @@ EXPORT_DIR="$BUILD_DIR/export"
 DMG_STAGING="$BUILD_DIR/dmg-staging"
 DMG_PATH="$BUILD_DIR/${APP_NAME}-${VERSION}.dmg"
 
-# 是否使用 Developer ID 签名（仅当提供了 TEAM_ID 时）
-TEAM_ID="${TEAM_ID:-}"
+SIGNING_KEYCHAIN="${SIGNING_KEYCHAIN:-}"
 
 echo "╔══════════════════════════════════════════╗"
 echo "║   LumenPDF DMG 打包脚本                ║"
 echo "╚══════════════════════════════════════════╝"
 echo "版本: $VERSION"
 echo "产物: $DMG_PATH"
+echo ""
+
+SIGN_IDENTITY="${SIGN_IDENTITY:--}"
+SIGN_IDENTITY_NAME="$SIGN_IDENTITY"
+if [ "$SIGN_IDENTITY" = "-" ]; then
+    SIGN_IDENTITY_NAME="ad-hoc"
+fi
+
+echo "签名身份: $SIGN_IDENTITY_NAME"
+if [ -n "$SIGNING_KEYCHAIN" ]; then
+    echo "签名钥匙串: $SIGNING_KEYCHAIN"
+fi
 echo ""
 
 # ── 0. 确保 xcodebuild 指向完整 Xcode（而非 CommandLineTools）───────────────
@@ -93,23 +103,6 @@ echo "   ✓ Xcode 项目已更新"
 echo "→ [3/6] xcodebuild archive..."
 mkdir -p "$BUILD_DIR"
 
-SIGN_ARGS=()
-if [ -n "$TEAM_ID" ]; then
-    SIGN_ARGS=(
-        CODE_SIGN_STYLE=Manual
-        CODE_SIGN_IDENTITY="Developer ID Application"
-        DEVELOPMENT_TEAM="$TEAM_ID"
-    )
-    echo "   签名模式: Developer ID（TEAM_ID=$TEAM_ID）"
-else
-    SIGN_ARGS=(
-        CODE_SIGN_IDENTITY="-"
-        CODE_SIGNING_REQUIRED=NO
-        CODE_SIGNING_ALLOWED=NO
-    )
-    echo "   签名模式: 不签名（本地开发）"
-fi
-
 xcodebuild archive \
     -project "$XCODE_DIR/$APP_NAME.xcodeproj" \
     -scheme "$APP_NAME" \
@@ -117,7 +110,9 @@ xcodebuild archive \
     -archivePath "$ARCHIVE_PATH" \
     -destination "generic/platform=macOS" \
     SKIP_INSTALL=NO \
-    "${SIGN_ARGS[@]}"
+    CODE_SIGN_IDENTITY="" \
+    CODE_SIGNING_REQUIRED=NO \
+    CODE_SIGNING_ALLOWED=NO
 
 if [ ! -d "$ARCHIVE_PATH" ]; then
     echo "✗ archive 失败，请检查 Xcode 输出"
@@ -129,33 +124,9 @@ echo "   ✓ Archive: $ARCHIVE_PATH"
 echo "→ [4/6] 导出 .app..."
 rm -rf "$EXPORT_DIR"
 
-if [ -n "$TEAM_ID" ]; then
-    # 使用 Developer ID 导出选项
-    EXPORT_PLIST=$(mktemp /tmp/export-options.XXXXXX.plist)
-    cat > "$EXPORT_PLIST" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>method</key>
-    <string>developer-id</string>
-    <key>teamID</key>
-    <string>${TEAM_ID}</string>
-    <key>signingStyle</key>
-    <string>manual</string>
-</dict>
-</plist>
-PLIST
-    xcodebuild -exportArchive \
-        -archivePath "$ARCHIVE_PATH" \
-        -exportPath "$EXPORT_DIR" \
-        -exportOptionsPlist "$EXPORT_PLIST"
-    rm -f "$EXPORT_PLIST"
-else
-    # 直接从 archive 复制 .app（跳过 exportArchive，避免签名校验）
-    mkdir -p "$EXPORT_DIR"
-    cp -R "$ARCHIVE_PATH/Products/Applications/$APP_NAME.app" "$EXPORT_DIR/"
-fi
+# 二进制仍要嵌入最终 dylib，因此先导出未签名 bundle，最后统一从内到外签名。
+mkdir -p "$EXPORT_DIR"
+cp -R "$ARCHIVE_PATH/Products/Applications/$APP_NAME.app" "$EXPORT_DIR/"
 
 APP_PATH="$EXPORT_DIR/$APP_NAME.app"
 if [ ! -d "$APP_PATH" ]; then
@@ -182,15 +153,26 @@ fi
 # 确保 rpath 包含 @executable_path/../Frameworks（多次 add 会静默报错，用 || true 忽略）
 install_name_tool -add_rpath "@executable_path/../Frameworks" "$BINARY" 2>/dev/null || true
 
-# 重新签名（修改二进制后必须重签，否则 Gatekeeper 会拒绝）
-if [ -n "$TEAM_ID" ]; then
-    SIGN_IDENTITY="Developer ID Application: $TEAM_ID"
-else
-    SIGN_IDENTITY="-"
+# 修改嵌套代码后必须从内到外使用同一身份签名；主应用显式保留 sandbox entitlements。
+CODESIGN_ARGS=(--force --sign "$SIGN_IDENTITY")
+if [ -n "$SIGNING_KEYCHAIN" ]; then
+    CODESIGN_ARGS+=(--keychain "$SIGNING_KEYCHAIN")
 fi
-codesign --force --sign "$SIGN_IDENTITY" "$FRAMEWORKS_DIR/liblumen_pdf_core.dylib"
-codesign --force --deep --sign "$SIGN_IDENTITY" "$APP_PATH"
-echo "   ✓ 已重签名"
+codesign "${CODESIGN_ARGS[@]}" "$FRAMEWORKS_DIR/liblumen_pdf_core.dylib"
+codesign "${CODESIGN_ARGS[@]}" \
+    --entitlements "$XCODE_DIR/LumenPDF.entitlements" \
+    "$APP_PATH"
+
+codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+SIGNED_ENTITLEMENTS="$(mktemp /tmp/lumenpdf-entitlements.XXXXXX.plist)"
+codesign -d --entitlements "$SIGNED_ENTITLEMENTS" "$APP_PATH" 2>/dev/null
+if [ "$(plutil -extract com.apple.security.app-sandbox raw "$SIGNED_ENTITLEMENTS" 2>/dev/null || true)" != "true" ]; then
+    rm -f "$SIGNED_ENTITLEMENTS"
+    echo "✗ 最终应用缺少 App Sandbox entitlement，拒绝继续打包。"
+    exit 1
+fi
+rm -f "$SIGNED_ENTITLEMENTS"
+echo "   ✓ 嵌套 dylib 与主应用已按同一身份签名，并保留 sandbox entitlements"
 
 # ── 4. 制作 DMG（hdiutil，macOS 内置）───────────────────────────────────────
 echo "→ [6/6] 制作 DMG..."
@@ -214,8 +196,3 @@ echo "║  ✓ 打包完成！                            ║"
 echo "╚══════════════════════════════════════════╝"
 echo "DMG: $DMG_PATH"
 echo ""
-if [ -z "$TEAM_ID" ]; then
-    echo "提示：已使用 ad-hoc 签名（sign -），可在同机运行。"
-    echo "若需分发给他人（不同机器），请提供 TEAM_ID 使用 Developer ID 正式签名："
-    echo "  TEAM_ID=XXXXXXXXXX ./scripts/package-dmg.sh"
-fi

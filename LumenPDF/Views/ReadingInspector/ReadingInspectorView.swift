@@ -2,7 +2,6 @@ import SwiftUI
 
 struct ReadingInspectorView: View {
     @ObservedObject var model: ReadingInspectorModel
-    @ObservedObject private var restorationStore = ReadingRestorationStore.shared
     let onClose: () -> Void
 
     var body: some View {
@@ -13,15 +12,6 @@ struct ReadingInspectorView: View {
         }
         .frame(minWidth: CGFloat(ReadingInspectorModel.minimumWidth))
         .background(.background)
-        .background {
-            SplitPaneWidthObserver(
-                edge: .trailing,
-                restoredWidth: CGFloat(model.width),
-                isRestoring: restorationStore.isRestoringLayout
-            ) { width in
-                model.setWidth(width)
-            }
-        }
     }
 
     private var header: some View {

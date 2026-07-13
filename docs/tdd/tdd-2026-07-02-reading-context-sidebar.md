@@ -190,23 +190,11 @@ PDF annotation 同步：
 
 ## 9. Keychain
 
-`KeychainService` 同时维护两个 service：
+`KeychainService` 只维护 `com.LumenPDF.app` 的 data-protection Keychain 条目，并使用 `kSecAttrAccessibleWhenUnlocked`。应用自身的稳定签名 designated requirement 决定升级后的身份延续，不再通过 file-based Keychain ACL 模拟“跨重装稳定”。
 
-- `com.LumenPDF.app.reinstall-stable`
-- `com.LumenPDF.app`
+读取时先访问正式 data-protection 条目；仅在不弹认证 UI 的前提下尝试读取旧 `com.LumenPDF.app.reinstall-stable` 和旧 file-based 条目。能直接读取时迁移到正式条目并删除旧值；旧 ACL 不再信任当前签名则返回空值，由用户在设置页重新输入一次，绝不自动弹出钥匙串密码框，也不把访问权限扩大到其他本机应用。
 
-写入策略：
-
-1. 优先写入 reinstall-stable service，并使用 `SecAccessCreate` 创建不绑定当前 ad-hoc 签名的访问控制。
-2. 同时尝试写入 data-protection keychain 的原 service。
-3. 两者至少一个成功即视为保存成功。
-
-读取策略：
-
-1. 先读 reinstall-stable service，且禁止认证 UI。
-2. 再读 data-protection keychain 的原 service。
-3. 最后读非 data-protection 的旧 service。
-4. 读到旧值后迁移到 reinstall-stable service。
+打包链路嵌套 dylib 先签、主应用后签，并在最终主应用签名中显式附加 `LumenPDF.entitlements`。默认 ad-hoc 签名可正常打包；若使用稳定身份则应用到全部嵌套代码。ad-hoc 包不保证 Keychain 跨重装延续，系统可再次要求授权。
 
 ## 10. 架构约束
 

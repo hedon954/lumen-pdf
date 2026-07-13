@@ -184,12 +184,20 @@ SwiftUI 的 `GeometryReader` 会在首轮窗口和 split view 尚未稳定时上
 
 `ReadingRestorationStore.isRestoringLayout` 为真时：
 
-1. 左侧 `NavigationSplitView` 和右侧 `HSplitView` 将 min、ideal、max 暂时收敛到已保存宽度，强制首轮布局使用目标尺寸。
-2. `SplitPaneWidthObserver` 把保存宽度应用到原生 divider，但不把恢复过程中的 pane frame 写回状态。
+1. 左侧 `NavigationSplitView` 暂时收敛到已保存宽度，`SplitPaneWidthObserver` 负责读取并恢复其原生 pane。
+2. 右侧 Inspector 的 frame 与自有 divider 直接绑定 `ReadingInspectorModel.width`；拖拽修改的就是持久化状态，不再经过几何测量。
 3. 主窗口 frame 应用并等待 split view 布局稳定后，窗口 coordinator 结束恢复阶段。
 4. 两侧恢复正常 min/max 约束和用户拖拽，后续真实宽度变化再写回统一状态。
 
-SwiftUI preference 在恢复锁期间可能只上报一次；如果该值被正确忽略，解锁后尺寸未变化便不会再次触发，从而让持久化宽度永远停留在默认值。左右栏因此改用同一个 `SplitPaneWidthObserver`：它定位最近的原生 `NSSplitView` pane，恢复阶段直接设置对应 divider，稳定阶段从 pane frame 读取真实宽度。窗口最小化、关闭与退出期间 store 保持恢复锁，避免隐藏动画和 teardown 布局污染最后一次可见快照。
+SwiftUI preference 在恢复锁期间可能只上报一次；如果该值被正确忽略，解锁后尺寸未变化便不会再次触发，从而让持久化宽度永远停留在默认值。进一步验证发现，`HSplitView` 内的观察视图还可能只能读到 Inspector 内容的最小宽度 `300`，而不是用户移动后的 divider 位置。右栏因此改成显式 frame + divider binding，消除私有层级探测；左栏保留窄原生观察器。窗口最小化、关闭与退出期间 store 继续保持恢复锁，避免隐藏动画和 teardown 布局污染最后一次可见快照。
+
+### 8.7 Keychain 与签名闭环
+
+`KeychainService` 只读写 `com.LumenPDF.app` 的 data-protection 条目，并禁止查询过程弹出认证 UI。旧 `reinstall-stable` / file-based 条目仅作为无 UI 的一次性迁移来源；迁移成功后删除，失败则等待用户在设置页重新输入。
+
+`package-dmg.sh` 默认使用 ad-hoc，或接受显式指定的签名身份。最终 bundle 先签 `liblumen_pdf_core.dylib`，再以同一身份和 `LumenPDF.entitlements` 签主应用，不使用 `codesign --deep` 代替签名顺序。签名后同时执行 strict verification 与 sandbox entitlement 检查。
+
+Release workflow 复用默认 ad-hoc 打包路径，不因缺少签名身份阻塞发布。
 
 ## 9. 工程约束
 
