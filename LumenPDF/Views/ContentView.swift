@@ -8,8 +8,7 @@ struct ContentView: View {
     @State private var showSetupSheet = false
     @StateObject private var inspectorModel = ReadingInspectorModel()
     @StateObject private var selectionActionBarModel = SelectionActionBarModel()
-    @AppStorage("show_outline_sidebar") private var isOutlineSidebarVisible = true
-    @AppStorage("outline_sidebar_width") private var outlineSidebarWidth = 220.0
+    @ObservedObject private var restorationStore = ReadingRestorationStore.shared
     @AppStorage("llm_base_url") private var baseURL = ""
     @AppStorage("llm_model") private var model = ""
 
@@ -33,9 +32,13 @@ struct ContentView: View {
                 }
             }
             .navigationSplitViewColumnWidth(
-                min: Self.minimumOutlineSidebarWidth,
+                min: restorationStore.isRestoringInitialLayout
+                    ? clampedOutlineSidebarWidth
+                    : Self.minimumOutlineSidebarWidth,
                 ideal: clampedOutlineSidebarWidth,
-                max: Self.maximumOutlineSidebarWidth
+                max: restorationStore.isRestoringInitialLayout
+                    ? clampedOutlineSidebarWidth
+                    : Self.maximumOutlineSidebarWidth
             )
             .background {
                 GeometryReader { proxy in
@@ -46,12 +49,12 @@ struct ContentView: View {
                 }
             }
             .onPreferenceChange(OutlineSidebarWidthPreferenceKey.self) { width in
-                guard isOutlineSidebarVisible,
+                guard !restorationStore.isRestoringInitialLayout,
+                      isOutlineSidebarVisible,
                       width >= Self.minimumOutlineSidebarWidth,
-                      abs(outlineSidebarWidth - Double(width)) > 1 else { return }
-                outlineSidebarWidth = Double(
-                    min(max(width, Self.minimumOutlineSidebarWidth), Self.maximumOutlineSidebarWidth)
-                )
+                      abs(restorationStore.state.outlineSidebar.width - Double(width)) > 1
+                else { return }
+                restorationStore.updateOutlineWidth(Double(width))
             }
         } detail: {
             ZStack(alignment: .bottom) {
@@ -201,12 +204,23 @@ struct ContentView: View {
         }
     }
 
-    private static let minimumOutlineSidebarWidth: CGFloat = 200
-    private static let maximumOutlineSidebarWidth: CGFloat = 420
+    private static let minimumOutlineSidebarWidth = CGFloat(
+        ReadingRestorationState.minimumOutlineWidth
+    )
+    private static let maximumOutlineSidebarWidth = CGFloat(
+        ReadingRestorationState.maximumOutlineWidth
+    )
+
+    private var isOutlineSidebarVisible: Bool {
+        restorationStore.state.outlineSidebar.isVisible
+    }
 
     private var clampedOutlineSidebarWidth: CGFloat {
         min(
-            max(CGFloat(outlineSidebarWidth), Self.minimumOutlineSidebarWidth),
+            max(
+                CGFloat(restorationStore.state.outlineSidebar.width),
+                Self.minimumOutlineSidebarWidth
+            ),
             Self.maximumOutlineSidebarWidth
         )
     }
@@ -214,7 +228,7 @@ struct ContentView: View {
     private var outlineColumnVisibility: Binding<NavigationSplitViewVisibility> {
         Binding(
             get: { isOutlineSidebarVisible ? .all : .detailOnly },
-            set: { isOutlineSidebarVisible = $0 != .detailOnly }
+            set: { restorationStore.updateOutlineVisibility($0 != .detailOnly) }
         )
     }
 

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ReadingInspectorView: View {
     @ObservedObject var model: ReadingInspectorModel
+    @ObservedObject private var restorationStore = ReadingRestorationStore.shared
     let onClose: () -> Void
 
     var body: some View {
@@ -13,7 +14,8 @@ struct ReadingInspectorView: View {
         .frame(minWidth: CGFloat(ReadingInspectorModel.minimumWidth))
         .background(.background)
         .onPreferenceChange(InspectorWidthPreferenceKey.self) { size in
-            guard size.width > 0 else { return }
+            guard !restorationStore.isRestoringInitialLayout,
+                  size.width > 0 else { return }
             model.setWidth(size.width)
         }
         .background(

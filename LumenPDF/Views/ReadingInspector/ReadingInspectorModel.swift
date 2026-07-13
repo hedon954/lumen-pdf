@@ -3,39 +3,31 @@ import Foundation
 @MainActor
 final class ReadingInspectorModel: ObservableObject {
     @Published var isVisible: Bool {
-        didSet { UserDefaults.standard.set(isVisible, forKey: Self.visibleKey) }
+        didSet { restorationStore.updateInspectorVisibility(isVisible) }
     }
     @Published var width: Double {
-        didSet { UserDefaults.standard.set(Self.clampedWidth(width), forKey: Self.widthKey) }
+        didSet { restorationStore.updateInspectorWidth(Self.clampedWidth(width)) }
     }
     @Published var mode: ReadingInspectorMode {
-        didSet { UserDefaults.standard.set(mode.rawValue, forKey: Self.modeKey) }
+        didSet { restorationStore.updateInspectorMode(mode.rawValue) }
     }
     @Published var selection: PDFSelectionContext?
     @Published var guideSession: ExplanationSession?
 
     private let guideService = ReadingGuideService()
+    private let restorationStore: ReadingRestorationStore
 
-    static let minimumWidth: Double = 300
-    static let defaultWidth: Double = 360
-    static let maximumWidth: Double = 460
+    static let minimumWidth = ReadingRestorationState.minimumInspectorWidth
+    static let defaultWidth = ReadingRestorationState.defaultInspectorWidth
+    static let maximumWidth = ReadingRestorationState.maximumInspectorWidth
 
-    private static let visibleKey = "show_reading_inspector"
-    private static let widthKey = "reading_inspector_width"
-    private static let modeKey = "reading_inspector_mode"
+    init(restorationStore: ReadingRestorationStore = .shared) {
+        self.restorationStore = restorationStore
+        let inspector = restorationStore.state.inspector
+        isVisible = inspector.isVisible
+        width = Self.clampedWidth(inspector.width)
 
-    init() {
-        if UserDefaults.standard.object(forKey: Self.visibleKey) == nil {
-            isVisible = true
-        } else {
-            isVisible = UserDefaults.standard.bool(forKey: Self.visibleKey)
-        }
-
-        let storedWidth = UserDefaults.standard.double(forKey: Self.widthKey)
-        width = Self.clampedWidth(storedWidth == 0 ? Self.defaultWidth : storedWidth)
-
-        if let rawMode = UserDefaults.standard.string(forKey: Self.modeKey),
-           let storedMode = ReadingInspectorMode.storedMode(from: rawMode) {
+        if let storedMode = ReadingInspectorMode.storedMode(from: inspector.mode) {
             mode = storedMode
         } else {
             mode = .words

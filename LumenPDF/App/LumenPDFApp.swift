@@ -10,7 +10,9 @@ struct LumenPDFApp: App {
             ContentView()
                 .environmentObject(appState)
                 .frame(minWidth: 900, minHeight: 600)
-                .background(WindowFramePersistence())
+                .background(
+                    WindowFramePersistence(restorationStore: .shared)
+                )
         }
         .commands {
             CommandGroup(replacing: .newItem) {
@@ -30,8 +32,8 @@ struct LumenPDFApp: App {
 
 
 private struct WindowFramePersistence: NSViewRepresentable {
+    let restorationStore: ReadingRestorationStore
     private let autosaveName = "LumenPDFMainWindow"
-    private let legacyFrameKey = "main_window_frame"
 
     func makeNSView(context: Context) -> WindowAttachmentView {
         let view = WindowAttachmentView()
@@ -54,7 +56,7 @@ private struct WindowFramePersistence: NSViewRepresentable {
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(autosaveName: autosaveName, legacyFrameKey: legacyFrameKey)
+        Coordinator(autosaveName: autosaveName, restorationStore: restorationStore)
     }
 
     final class WindowAttachmentView: NSView {
@@ -68,14 +70,14 @@ private struct WindowFramePersistence: NSViewRepresentable {
 
     final class Coordinator: NSObject {
         private let autosaveName: String
-        private let legacyFrameKey: String
+        private let restorationStore: ReadingRestorationStore
         private weak var window: NSWindow?
         private var observers: [NSObjectProtocol] = []
         private var restoreWorkItem: DispatchWorkItem?
 
-        init(autosaveName: String, legacyFrameKey: String) {
+        init(autosaveName: String, restorationStore: ReadingRestorationStore) {
             self.autosaveName = autosaveName
-            self.legacyFrameKey = legacyFrameKey
+            self.restorationStore = restorationStore
         }
 
         func attach(to window: NSWindow?) {
@@ -83,11 +85,16 @@ private struct WindowFramePersistence: NSViewRepresentable {
             detach()
             guard let window else { return }
             self.window = window
+            restorationStore.beginInitialLayoutRestore()
 
             let workItem = DispatchWorkItem { [weak self, weak window] in
                 guard let self, let window, self.window === window else { return }
                 self.restoreFrame(of: window)
                 self.startObserving(window)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self, weak window] in
+                    guard let self, let window, self.window === window else { return }
+                    self.restorationStore.finishInitialLayoutRestore()
+                }
             }
             restoreWorkItem = workItem
             DispatchQueue.main.async(execute: workItem)
@@ -107,20 +114,19 @@ private struct WindowFramePersistence: NSViewRepresentable {
         private func restoreFrame(of window: NSWindow) {
             _ = window.setFrameAutosaveName(autosaveName)
 
-            var restored = window.setFrameUsingName(autosaveName, force: true)
-            if !restored,
-               let saved = UserDefaults.standard.string(forKey: legacyFrameKey) {
-                let legacyFrame = NSRectFromString(saved)
-                if !legacyFrame.isEmpty,
-                   let visibleFrame = MainWindowFramePolicy.visibleFrame(
-                       for: legacyFrame,
+            var restored = false
+            if let savedFrame = restorationStore.state.windowFrame?.nsRect,
+               let visibleFrame = MainWindowFramePolicy.visibleFrame(
+                       for: savedFrame,
                        minimumSize: window.minSize,
                        screenFrames: NSScreen.screens.map(\.visibleFrame),
                        fallbackScreenFrame: NSScreen.main?.visibleFrame
-                   ) {
-                    window.setFrame(visibleFrame, display: false)
-                    restored = true
-                }
+               ) {
+                window.setFrame(visibleFrame, display: false)
+                restored = true
+            }
+            if !restored {
+                restored = window.setFrameUsingName(autosaveName, force: true)
             }
 
             guard restored,
@@ -161,10 +167,7 @@ private struct WindowFramePersistence: NSViewRepresentable {
         private func saveFrame(of window: NSWindow) {
             guard !window.styleMask.contains(.fullScreen) else { return }
             window.saveFrame(usingName: autosaveName)
-            UserDefaults.standard.set(
-                NSStringFromRect(window.frame),
-                forKey: legacyFrameKey
-            )
+            restorationStore.updateWindowFrame(window.frame)
         }
 
         deinit {

@@ -12,7 +12,7 @@ final class AppState: ObservableObject {
         didSet {
             // Persist last opened file path for auto-restore on launch
             if let path = selectedDocument?.filePath {
-                UserDefaults.standard.set(path, forKey: "lastOpenedFilePath")
+                restorationStore.updateLastOpenedFilePath(path)
             }
             // Pre-set currentPageIndex from the stored lastPage so the TOC can
             // scroll to the correct chapter immediately, before the PDF finishes loading.
@@ -35,7 +35,7 @@ final class AppState: ObservableObject {
     @Published var activeTab: MainTab = .reader {
         didSet {
             guard shouldPersistActiveTab else { return }
-            UserDefaults.standard.set(activeTab.rawValue, forKey: Self.activeTabKey)
+            restorationStore.updateActiveTab(activeTab.rawValue)
         }
     }
     @Published var toastMessage: String?
@@ -50,10 +50,11 @@ final class AppState: ObservableObject {
     @Published var totalPages: Int = 0
 
     private let bridge = BridgeService.shared
+    private let restorationStore: ReadingRestorationStore
     private var shouldPersistActiveTab = true
-    private static let activeTabKey = "main_active_tab"
 
-    init() {
+    init(restorationStore: ReadingRestorationStore = .shared) {
+        self.restorationStore = restorationStore
         let args = ProcessInfo.processInfo.arguments
         if args.contains("--uitesting-vocabulary") {
             shouldPersistActiveTab = false
@@ -61,8 +62,7 @@ final class AppState: ObservableObject {
         } else if args.contains("--uitesting-notes") {
             shouldPersistActiveTab = false
             activeTab = .notes
-        } else if let storedTab = UserDefaults.standard.string(forKey: Self.activeTabKey),
-                  let tab = MainTab(rawValue: storedTab) {
+        } else if let tab = MainTab(rawValue: restorationStore.state.activeTab) {
             activeTab = tab
         }
 
@@ -146,7 +146,7 @@ final class AppState: ObservableObject {
     }
 
     private func restoreLastDocument() {
-        guard let path = UserDefaults.standard.string(forKey: "lastOpenedFilePath"),
+        guard let path = restorationStore.state.lastOpenedFilePath,
               let doc = library.first(where: { $0.filePath == path }) else { return }
         selectedDocument = doc
     }

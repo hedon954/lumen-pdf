@@ -7,6 +7,7 @@ struct ReadingWorkspaceView: View {
     let setInspectorVisible: (Bool) -> Void
 
     @EnvironmentObject private var appState: AppState
+    @ObservedObject private var restorationStore = ReadingRestorationStore.shared
     @State private var lastObservedWidth: Double = ReadingInspectorModel.defaultWidth
 
     var body: some View {
@@ -37,9 +38,13 @@ struct ReadingWorkspaceView: View {
                 }
                 .environmentObject(appState)
                 .frame(
-                    minWidth: CGFloat(ReadingInspectorModel.minimumWidth),
+                    minWidth: restorationStore.isRestoringInitialLayout
+                        ? CGFloat(inspectorModel.width)
+                        : CGFloat(ReadingInspectorModel.minimumWidth),
                     idealWidth: CGFloat(inspectorModel.width),
-                    maxWidth: CGFloat(ReadingInspectorModel.maximumWidth)
+                    maxWidth: restorationStore.isRestoringInitialLayout
+                        ? CGFloat(inspectorModel.width)
+                        : CGFloat(ReadingInspectorModel.maximumWidth)
                 )
             }
         }

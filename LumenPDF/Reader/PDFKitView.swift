@@ -2,33 +2,6 @@ import SwiftUI
 import PDFKit
 import AppKit
 
-private struct StoredPDFViewportState: Codable, Equatable {
-    let autoScales: Bool
-    let scaleFactor: Double
-    let horizontalOffset: Double
-    let verticalOffset: Double
-}
-
-private enum PDFViewportStateStore {
-    private static let keyPrefix = "pdf_viewport_state_"
-
-    static func load(filePath: String) -> StoredPDFViewportState? {
-        guard let data = UserDefaults.standard.data(forKey: keyPrefix + filePath) else {
-            return nil
-        }
-        return try? JSONDecoder().decode(StoredPDFViewportState.self, from: data)
-    }
-
-    static func save(_ state: StoredPDFViewportState, filePath: String) {
-        guard state.scaleFactor.isFinite,
-              state.scaleFactor > 0,
-              state.horizontalOffset.isFinite,
-              state.verticalOffset.isFinite,
-              let data = try? JSONEncoder().encode(state) else { return }
-        UserDefaults.standard.set(data, forKey: keyPrefix + filePath)
-    }
-}
-
 // MARK: - PDFKit NSViewRepresentable
 struct PDFKitView: NSViewRepresentable {
     let filePath: String
@@ -103,9 +76,9 @@ struct PDFKitView: NSViewRepresentable {
         guard let doc = Self.loadDocument(filePath: filePath) else { return }
         context.coordinator.persistViewportState()
         context.coordinator.currentFilePath = filePath
-        let storedViewport = PDFViewportStateStore.load(filePath: filePath)
+        let storedViewport = ReadingRestorationStore.shared.viewport(for: filePath)
         context.coordinator.beginViewportRestore(
-            pageIndex: savedPage,
+            pageIndex: storedViewport?.pageIndex ?? savedPage,
             scrollOffset: savedScrollOffset,
             viewportState: storedViewport
         )
@@ -167,7 +140,7 @@ struct PDFKitView: NSViewRepresentable {
         /// Normalized vertical scroll (0…1), kept in sync with saves.
         var lastScrollOffset: Double = 0
         /// Complete per-document PDFKit viewport state, including manual zoom and horizontal pan.
-        private var lastViewportState: StoredPDFViewportState?
+        private var lastViewportState: ReadingRestorationState.PDFViewport?
         private var isRestoringViewport = false
         /// While non-nil, ignore spurious `pageChanged` / scroll-save until we reach this page (document load).
         var pendingRestoreTargetPage: Int?
@@ -278,7 +251,7 @@ struct PDFKitView: NSViewRepresentable {
         fileprivate func beginViewportRestore(
             pageIndex: Int,
             scrollOffset: Double,
-            viewportState: StoredPDFViewportState?
+            viewportState: ReadingRestorationState.PDFViewport?
         ) {
             pendingRestoreTargetPage = pageIndex
             lastKnownPageIndex = pageIndex
@@ -316,7 +289,7 @@ struct PDFKitView: NSViewRepresentable {
                   !currentFilePath.isEmpty,
                   let state = Self.captureViewportState(from: pdfView) else { return }
             lastViewportState = state
-            PDFViewportStateStore.save(state, filePath: currentFilePath)
+            ReadingRestorationStore.shared.updateViewport(state, for: currentFilePath)
         }
 
         private func finishViewportRestore(in pdfView: PDFView) {
@@ -343,7 +316,10 @@ struct PDFKitView: NSViewRepresentable {
             }
         }
 
-        private func applyZoomState(_ state: StoredPDFViewportState?, to pdfView: PDFView) {
+        private func applyZoomState(
+            _ state: ReadingRestorationState.PDFViewport?,
+            to pdfView: PDFView
+        ) {
             guard let state else {
                 pdfView.autoScales = true
                 return
@@ -359,13 +335,19 @@ struct PDFKitView: NSViewRepresentable {
             pdfView.scaleFactor = min(max(CGFloat(state.scaleFactor), minimum), maximum)
         }
 
-        private static func captureViewportState(from pdfView: PDFView) -> StoredPDFViewportState? {
+        private static func captureViewportState(
+            from pdfView: PDFView
+        ) -> ReadingRestorationState.PDFViewport? {
             guard let scrollView = scrollView(for: pdfView),
                   let documentView = scrollView.documentView else { return nil }
             let visibleRect = scrollView.documentVisibleRect
             let maxX = max(0, documentView.bounds.width - visibleRect.width)
             let maxY = max(0, documentView.bounds.height - visibleRect.height)
-            return StoredPDFViewportState(
+            let pageIndex = pdfView.currentPage.flatMap { page in
+                pdfView.document?.index(for: page)
+            }
+            return ReadingRestorationState.PDFViewport(
+                pageIndex: pageIndex,
                 autoScales: pdfView.autoScales,
                 scaleFactor: Double(pdfView.scaleFactor),
                 horizontalOffset: maxX > 0 ? Double(visibleRect.minX / maxX) : 0,
@@ -374,7 +356,7 @@ struct PDFKitView: NSViewRepresentable {
         }
 
         private static func applyViewportOffsets(
-            _ state: StoredPDFViewportState,
+            _ state: ReadingRestorationState.PDFViewport,
             to pdfView: PDFView
         ) {
             guard let scrollView = scrollView(for: pdfView),

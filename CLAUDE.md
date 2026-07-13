@@ -148,6 +148,8 @@ Code should stay simple, understandable, maintainable, iterable, and free of avo
 - Every AppKit bridge must have one explicit owner and deterministic cleanup. Child windows, event monitors, notification observers, delegates, and hosted views must be removed on every dismissal and teardown path.
 - If a new bridge requires custom event routing, global identifiers, orphan cleanup, and duplicated state merely to reproduce behavior SwiftUI previously provided, stop and reconsider the abstraction boundary.
 - Classify window state as stable or transient before implementation. Persist user-adjusted stable state such as the main window frame, split visibility and split widths, and each document's reader viewport (zoom mode, scale, horizontal offset, and vertical offset); do not restore transient selections, action bars, loading overlays, or editors.
+- Collect the complete stable reading workspace in one versioned state model and one persistence manager. Views, view models, window bridges, and PDFKit coordinators may report changes or apply restored values, but must not create parallel `UserDefaults` keys for window frame, split widths, split visibility, active tab, last document, inspector mode, or PDF viewport.
+- Treat restoration as an ordered phase, not independent property initialization. While the saved window and split geometry are being applied, initial layout measurements must not overwrite persisted values; only enable geometry capture after the restored layout has settled.
 
 ### UI Runtime Verification Gate (Strict)
 
