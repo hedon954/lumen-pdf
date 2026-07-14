@@ -2,8 +2,13 @@ import SwiftUI
 import PDFKit
 import AppKit
 
+enum ReaderViewportTransitionMode {
+    case animatedChrome
+    case interactiveResize
+}
+
 protocol ReaderViewportTransitionHandling: AnyObject {
-    func beginReadingViewportTransition()
+    func beginReadingViewportTransition(mode: ReaderViewportTransitionMode)
     func endReadingViewportTransition()
 }
 
@@ -11,8 +16,8 @@ protocol ReaderViewportTransitionHandling: AnyObject {
 final class ReaderViewportTransitionController: ObservableObject {
     weak var handler: ReaderViewportTransitionHandling?
 
-    func begin() {
-        handler?.beginReadingViewportTransition()
+    func begin(_ mode: ReaderViewportTransitionMode = .animatedChrome) {
+        handler?.beginReadingViewportTransition(mode: mode)
     }
 
     func end() {
@@ -166,6 +171,7 @@ struct PDFKitView: NSViewRepresentable {
         /// Viewport captured before a reader chrome resize. While it is present,
         /// PDFKit layout changes are kept pinned to the same normalized region.
         private var layoutTransitionViewport: ReadingRestorationState.PDFViewport?
+        private var layoutTransitionMode: ReaderViewportTransitionMode?
         private var isApplyingLayoutTransitionViewport = false
         /// While non-nil, ignore spurious `pageChanged` / scroll-save until we reach this page (document load).
         var pendingRestoreTargetPage: Int?
@@ -393,6 +399,9 @@ struct PDFKitView: NSViewRepresentable {
                 x: CGFloat(max(0, min(1, state.horizontalOffset))) * maxX,
                 y: CGFloat(max(0, min(1, state.verticalOffset))) * maxY
             )
+            let currentPoint = scrollView.contentView.bounds.origin
+            guard abs(currentPoint.x - point.x) > 0.5
+                    || abs(currentPoint.y - point.y) > 0.5 else { return }
             scrollView.contentView.scroll(to: point)
             scrollView.reflectScrolledClipView(scrollView.contentView)
         }
@@ -1024,14 +1033,17 @@ struct PDFKitView: NSViewRepresentable {
             }
         }
 
-        func beginReadingViewportTransition() {
+        func beginReadingViewportTransition(mode: ReaderViewportTransitionMode) {
             guard let pdfView,
                   let viewport = Self.captureViewportState(from: pdfView)
             else { return }
 
             scrollDebounce?.invalidate()
             layoutTransitionViewport = viewport
-            maintainLayoutTransitionViewport(in: pdfView)
+            layoutTransitionMode = mode
+            if mode == .animatedChrome {
+                maintainLayoutTransitionViewport(in: pdfView)
+            }
         }
 
         func endReadingViewportTransition() {
@@ -1042,6 +1054,7 @@ struct PDFKitView: NSViewRepresentable {
             pdfView.layoutSubtreeIfNeeded()
             maintainLayoutTransitionViewport(in: pdfView, restorePageIfNeeded: true)
             layoutTransitionViewport = nil
+            layoutTransitionMode = nil
 
             guard let currentPage = pdfView.currentPage,
                   let document = pdfView.document else { return }
@@ -1153,8 +1166,10 @@ struct PDFKitView: NSViewRepresentable {
                   let doc = pdfView.document else { return }
             let pageIndex = doc.index(for: currentPage)
 
-            if layoutTransitionViewport != nil {
-                maintainLayoutTransitionViewport(in: pdfView)
+            if let layoutTransitionMode {
+                if layoutTransitionMode == .animatedChrome {
+                    maintainLayoutTransitionViewport(in: pdfView)
+                }
                 return
             }
 
@@ -1175,8 +1190,10 @@ struct PDFKitView: NSViewRepresentable {
         /// The PDFKit clip view is the authoritative viewport signal. Unlike
         /// `didLiveScroll`, this also covers momentum and programmatic scrolling.
         @objc func viewportBoundsChanged(_ notification: Notification) {
-            if let pdfView, layoutTransitionViewport != nil {
-                maintainLayoutTransitionViewport(in: pdfView)
+            if let layoutTransitionMode {
+                if layoutTransitionMode == .animatedChrome, let pdfView {
+                    maintainLayoutTransitionViewport(in: pdfView)
+                }
                 return
             }
             publishNoteAnchors()
@@ -1186,8 +1203,10 @@ struct PDFKitView: NSViewRepresentable {
 
         @objc func viewportGeometryChanged(_ notification: Notification) {
             attachViewportObserverIfNeeded()
-            if let pdfView, layoutTransitionViewport != nil {
-                maintainLayoutTransitionViewport(in: pdfView)
+            if let layoutTransitionMode {
+                if layoutTransitionMode == .animatedChrome, let pdfView {
+                    maintainLayoutTransitionViewport(in: pdfView)
+                }
                 return
             }
             publishNoteAnchors()

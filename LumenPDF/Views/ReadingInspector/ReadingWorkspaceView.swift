@@ -13,6 +13,7 @@ struct ReadingWorkspaceView: View {
     @EnvironmentObject private var appState: AppState
     @State private var isInspectorContentMounted = true
     @State private var inspectorContentGeneration = UUID()
+    @State private var liveInspectorWidth: Double?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -41,9 +42,9 @@ struct ReadingWorkspaceView: View {
             HStack(spacing: 0) {
                 if isInspectorContentMounted {
                     ReadingInspectorDivider(
-                        inspectorWidth: inspectorModel.width,
+                        inspectorWidth: displayedInspectorWidth,
                         onResizeBegan: beginResizeTransition,
-                        onResize: { inspectorModel.setWidth(CGFloat($0)) },
+                        onResize: updateLiveInspectorWidth,
                         onResizeEnded: endResizeTransition
                     )
 
@@ -51,7 +52,7 @@ struct ReadingWorkspaceView: View {
                         setInspectorVisible(false)
                     }
                     .environmentObject(appState)
-                    .frame(width: CGFloat(inspectorModel.width))
+                    .frame(width: CGFloat(displayedInspectorWidth))
                     .frame(maxHeight: .infinity)
                 }
             }
@@ -79,14 +80,30 @@ struct ReadingWorkspaceView: View {
     }
 
     private var inspectorChromeWidth: CGFloat {
-        inspectorModel.isVisible ? CGFloat(inspectorModel.width) + 8 : 0
+        inspectorModel.isVisible ? CGFloat(displayedInspectorWidth) + 8 : 0
+    }
+
+    private var displayedInspectorWidth: Double {
+        liveInspectorWidth ?? inspectorModel.width
     }
 
     private func beginResizeTransition() {
-        viewportTransitionController.begin()
+        liveInspectorWidth = inspectorModel.width
+        viewportTransitionController.begin(.interactiveResize)
+    }
+
+    private func updateLiveInspectorWidth(_ width: Double) {
+        liveInspectorWidth = min(
+            max(width, ReadingInspectorModel.minimumWidth),
+            ReadingInspectorModel.maximumWidth
+        )
     }
 
     private func endResizeTransition() {
+        if let liveInspectorWidth {
+            inspectorModel.setWidth(CGFloat(liveInspectorWidth))
+            self.liveInspectorWidth = nil
+        }
         DispatchQueue.main.async {
             viewportTransitionController.end()
         }
