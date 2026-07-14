@@ -3,6 +3,15 @@
 LumenPDF 的版本记录由人工/AI 维护。每个版本只记录对用户或后续开发有意义的变化，并为具体变更附上对应的 GitHub commit URL。
 
 ---
+## [1.0.17](https://github.com/hedon954/lumen-pdf/compare/v1.0.16..v1.0.17) - 2026-07-14
+
+这一版恢复非容器数据目录，升级后继续直接读取既有的 SQLite 数据库和阅读偏好，避免出现空白的新数据视图。
+
+### 修复
+
+- 移除发布包和 Xcode 工程的 App Sandbox 配置；最终签名不再附加 Sandbox entitlement，使应用继续使用 `~/Library/Application Support/LumenPDF` 与全局 `UserDefaults` 中的既有数据（[2344e26](https://github.com/hedon954/lumen-pdf/commit/2344e2632eb936c1231b5ddb5046f7512288f503)）。
+
+---
 ## [1.0.16](https://github.com/hedon954/lumen-pdf/compare/v1.0.15..v1.0.16) - 2026-07-14
 
 这一版聚焦阅读现场的连续性：选区操作更可靠，重新打开或最小化后尽可能恢复上次的窗口、视口和阅读工作区布局。
