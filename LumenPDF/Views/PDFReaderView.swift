@@ -5,6 +5,7 @@ import AppKit
 struct PDFReaderView: View {
     let document: PdfDocument
     @ObservedObject var selectionActionBarModel: SelectionActionBarModel
+    let viewportTransitionController: ReaderViewportTransitionController
     let onExplainSelection: (PDFSelectionContext) -> Void
     let onOpenNotes: () -> Void
     @EnvironmentObject private var appState: AppState
@@ -67,7 +68,8 @@ struct PDFReaderView: View {
                     if noteAnchorPositions != anchors {
                         noteAnchorPositions = anchors
                     }
-                }
+                },
+                viewportTransitionController: viewportTransitionController
             )
 
             if let draft = underlineDraft {

@@ -6,8 +6,10 @@ struct ContentView: View {
     @EnvironmentObject private var appState: AppState
     @State private var showLibrary = false
     @State private var showSetupSheet = false
+    @State private var inspectorTransitionID: UUID?
     @StateObject private var inspectorModel = ReadingInspectorModel()
     @StateObject private var selectionActionBarModel = SelectionActionBarModel()
+    @StateObject private var viewportTransitionController = ReaderViewportTransitionController()
     @ObservedObject private var restorationStore = ReadingRestorationStore.shared
     @AppStorage("llm_base_url") private var baseURL = ""
     @AppStorage("llm_model") private var model = ""
@@ -59,6 +61,7 @@ struct ContentView: View {
                         document: doc,
                         inspectorModel: inspectorModel,
                         selectionActionBarModel: selectionActionBarModel,
+                        viewportTransitionController: viewportTransitionController,
                         setInspectorVisible: setReadingInspectorVisible
                     )
                     .opacity(appState.activeTab == .reader ? 1 : 0)
@@ -228,22 +231,25 @@ struct ContentView: View {
 
     private func setReadingInspectorVisible(_ visible: Bool) {
         guard inspectorModel.isVisible != visible else { return }
-        guard let doc = appState.selectedDocument else {
-            inspectorModel.isVisible = visible
+        guard appState.selectedDocument != nil else {
+            withAnimation(.smooth(duration: ReadingWorkspaceView.inspectorTransitionDuration)) {
+                inspectorModel.isVisible = visible
+            }
             return
         }
-        ReaderEventBus.shared.postSaveReadingPositionNow(filePath: doc.filePath)
-        DispatchQueue.main.async {
-            let page = appState.currentPageIndex
-            let offset = appState.currentScrollOffset
+
+        let transitionID = UUID()
+        inspectorTransitionID = transitionID
+        viewportTransitionController.begin()
+        withAnimation(
+            .smooth(duration: ReadingWorkspaceView.inspectorTransitionDuration),
+            completionCriteria: .logicallyComplete
+        ) {
             inspectorModel.isVisible = visible
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                ReaderEventBus.shared.postRestoreReadingViewport(
-                    filePath: doc.filePath,
-                    page: page,
-                    scrollOffset: offset
-                )
-            }
+        } completion: {
+            guard inspectorTransitionID == transitionID else { return }
+            inspectorTransitionID = nil
+            viewportTransitionController.end()
         }
     }
 

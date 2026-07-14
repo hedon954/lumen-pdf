@@ -2,19 +2,25 @@ import AppKit
 import SwiftUI
 
 struct ReadingWorkspaceView: View {
+    static let inspectorTransitionDuration: TimeInterval = 0.22
+
     let document: PdfDocument
     @ObservedObject var inspectorModel: ReadingInspectorModel
     @ObservedObject var selectionActionBarModel: SelectionActionBarModel
+    @ObservedObject var viewportTransitionController: ReaderViewportTransitionController
     let setInspectorVisible: (Bool) -> Void
 
     @EnvironmentObject private var appState: AppState
-    @State private var resizeAnchor: ResizeViewportAnchor?
+    @State private var isInspectorContentMounted = true
+    @State private var inspectorContentGeneration = UUID()
+    @State private var liveInspectorWidth: Double?
 
     var body: some View {
         HStack(spacing: 0) {
             PDFReaderView(
                 document: document,
                 selectionActionBarModel: selectionActionBarModel,
+                viewportTransitionController: viewportTransitionController,
                 onExplainSelection: { selection in
                     if !inspectorModel.isVisible {
                         setInspectorVisible(true)
@@ -33,54 +39,90 @@ struct ReadingWorkspaceView: View {
             .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
             .layoutPriority(1)
 
-            if inspectorModel.isVisible {
-                ReadingInspectorDivider(
-                    inspectorWidth: inspectorModel.width,
-                    onResizeBegan: captureResizeAnchor,
-                    onResize: { inspectorModel.setWidth(CGFloat($0)) },
-                    onResizeEnded: restoreResizeAnchor
-                )
+            HStack(spacing: 0) {
+                if isInspectorContentMounted {
+                    ReadingInspectorDivider(
+                        inspectorWidth: displayedInspectorWidth,
+                        onResizeBegan: beginResizeTransition,
+                        onResize: updateLiveInspectorWidth,
+                        onResizeEnded: endResizeTransition
+                    )
 
-                ReadingInspectorView(model: inspectorModel) {
-                    setInspectorVisible(false)
+                    ReadingInspectorView(model: inspectorModel) {
+                        setInspectorVisible(false)
+                    }
+                    .environmentObject(appState)
+                    .frame(width: CGFloat(displayedInspectorWidth))
+                    .frame(maxHeight: .infinity)
                 }
-                .environmentObject(appState)
-                .frame(width: CGFloat(inspectorModel.width))
-                .frame(maxHeight: .infinity)
             }
+            .frame(width: inspectorChromeWidth, alignment: .leading)
+            .clipped()
+            .opacity(inspectorModel.isVisible ? 1 : 0)
+            .allowsHitTesting(inspectorModel.isVisible)
+            .accessibilityHidden(!inspectorModel.isVisible)
+            .animation(
+                .smooth(duration: Self.inspectorTransitionDuration),
+                value: inspectorModel.isVisible
+            )
         }
         .onAppear {
             inspectorModel.clearForDocumentChange(pdfPath: document.filePath)
+            isInspectorContentMounted = inspectorModel.isVisible
         }
         .onChange(of: document.id) { _, _ in
             selectionActionBarModel.dismiss()
             inspectorModel.clearForDocumentChange(pdfPath: document.filePath)
         }
+        .onChange(of: inspectorModel.isVisible) { _, isVisible in
+            updateInspectorContentMount(isVisible: isVisible)
+        }
     }
 
-    private func captureResizeAnchor() {
-        resizeAnchor = ResizeViewportAnchor(
-            page: appState.currentPageIndex,
-            scrollOffset: appState.currentScrollOffset
+    private var inspectorChromeWidth: CGFloat {
+        inspectorModel.isVisible ? CGFloat(displayedInspectorWidth) + 8 : 0
+    }
+
+    private var displayedInspectorWidth: Double {
+        liveInspectorWidth ?? inspectorModel.width
+    }
+
+    private func beginResizeTransition() {
+        liveInspectorWidth = inspectorModel.width
+        viewportTransitionController.begin(.interactiveResize)
+    }
+
+    private func updateLiveInspectorWidth(_ width: Double) {
+        liveInspectorWidth = min(
+            max(width, ReadingInspectorModel.minimumWidth),
+            ReadingInspectorModel.maximumWidth
         )
     }
 
-    private func restoreResizeAnchor() {
-        guard let resizeAnchor else { return }
-        self.resizeAnchor = nil
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-            ReaderEventBus.shared.postRestoreReadingViewport(
-                filePath: document.filePath,
-                page: resizeAnchor.page,
-                scrollOffset: resizeAnchor.scrollOffset
-            )
+    private func endResizeTransition() {
+        if let liveInspectorWidth {
+            inspectorModel.setWidth(CGFloat(liveInspectorWidth))
+            self.liveInspectorWidth = nil
+        }
+        DispatchQueue.main.async {
+            viewportTransitionController.end()
         }
     }
-}
 
-private struct ResizeViewportAnchor {
-    let page: Int
-    let scrollOffset: Double
+    private func updateInspectorContentMount(isVisible: Bool) {
+        let generation = UUID()
+        inspectorContentGeneration = generation
+        if isVisible {
+            isInspectorContentMounted = true
+            return
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.inspectorTransitionDuration) {
+            guard inspectorContentGeneration == generation,
+                  !inspectorModel.isVisible else { return }
+            isInspectorContentMounted = false
+        }
+    }
 }
 
 private struct ReadingInspectorDivider: View {
