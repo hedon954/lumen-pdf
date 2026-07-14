@@ -48,9 +48,3 @@ targets:
         embed: true
         codeSign: true
       - package: Textual
-    entitlements:
-      path: LumenPDF.entitlements
-      properties:
-        com.apple.security.app-sandbox: true
-        com.apple.security.files.user-selected.read-write: true
-        com.apple.security.network.client: true

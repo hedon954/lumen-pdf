@@ -158,7 +158,7 @@ Code should stay simple, understandable, maintainable, iterable, and free of avo
 - Persistent credentials use one data-protection Keychain item. Do not create parallel file-based items or use `SecAccess` / trusted-application ACLs to compensate for unstable code signing.
 - Packaging may use ad-hoc signing by default. If a stable signing identity is configured, use it consistently for the app and all nested code; do not claim that ad-hoc signing preserves Keychain access across binary replacement.
 - After modifying embedded code, sign nested dylibs first and the app last with the same identity. Do not use `codesign --deep` as a signing shortcut.
-- Manual app signing must reattach `LumenPDF.entitlements`, and packaging must fail if the final signature no longer contains `com.apple.security.app-sandbox`.
+- Release packages intentionally omit `com.apple.security.app-sandbox` and must not reattach `LumenPDF.entitlements`: the app's existing SQLite database and `UserDefaults` live in the historical non-container locations. Do not re-enable Sandbox unless the same change includes a tested, non-destructive migration for database and preferences.
 - CI release jobs follow the same configured signing identity as local packaging and must not add identity-presence gates that block ad-hoc release packaging.
 
 ### UI Runtime Verification Gate (Strict)

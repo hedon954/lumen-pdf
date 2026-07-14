@@ -153,29 +153,17 @@ fi
 # 确保 rpath 包含 @executable_path/../Frameworks（多次 add 会静默报错，用 || true 忽略）
 install_name_tool -add_rpath "@executable_path/../Frameworks" "$BINARY" 2>/dev/null || true
 
-# 修改嵌套代码后必须从内到外使用同一身份签名；主应用显式保留 sandbox entitlements。
+# 修改嵌套代码后必须从内到外使用同一身份签名。
+# 发布包故意不附加 App Sandbox entitlement，以继续使用历史的非容器数据目录。
 CODESIGN_ARGS=(--force --sign "$SIGN_IDENTITY")
 if [ -n "$SIGNING_KEYCHAIN" ]; then
     CODESIGN_ARGS+=(--keychain "$SIGNING_KEYCHAIN")
 fi
 codesign "${CODESIGN_ARGS[@]}" "$FRAMEWORKS_DIR/liblumen_pdf_core.dylib"
-codesign "${CODESIGN_ARGS[@]}" \
-    --entitlements "$XCODE_DIR/LumenPDF.entitlements" \
-    "$APP_PATH"
+codesign "${CODESIGN_ARGS[@]}" "$APP_PATH"
 
 codesign --verify --deep --strict --verbose=2 "$APP_PATH"
-SIGNED_ENTITLEMENTS="$(mktemp /tmp/lumenpdf-entitlements.XXXXXX.plist)"
-# `codesign -d --entitlements :-` writes the plist to stdout.  Do not use
-# `plutil -extract` here: entitlement names contain dots, which plutil treats
-# as a nested key path. PlistBuddy's colon notation preserves the raw key.
-codesign -d --entitlements :- "$APP_PATH" >"$SIGNED_ENTITLEMENTS" 2>/dev/null
-if [ "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.app-sandbox' "$SIGNED_ENTITLEMENTS" 2>/dev/null || true)" != "true" ]; then
-    rm -f "$SIGNED_ENTITLEMENTS"
-    echo "✗ 最终应用缺少 App Sandbox entitlement，拒绝继续打包。"
-    exit 1
-fi
-rm -f "$SIGNED_ENTITLEMENTS"
-echo "   ✓ 嵌套 dylib 与主应用已按同一身份签名，并保留 sandbox entitlements"
+echo "   ✓ 嵌套 dylib 与主应用已按同一身份签名（非 Sandbox，保留历史数据目录）"
 
 # ── 4. 制作 DMG（hdiutil，macOS 内置）───────────────────────────────────────
 echo "→ [6/6] 制作 DMG..."

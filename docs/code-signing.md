@@ -44,7 +44,7 @@ Release workflow 默认使用 ad-hoc 签名。若后续配置稳定签名身份�
 - 旧 file-based 条目仅在无需认证 UI 即可读取时迁移；无法读取时由用户重新输入一次 API Key。
 - 不把旧条目的 ACL 扩大为任意应用可访问。
 - 嵌套 dylib 与主应用使用同一身份从内到外签名。
-- 主应用最终签名显式包含 `LumenPDF.entitlements`；脚本会验证 App Sandbox entitlement，缺失时停止打包。
+- 发布包最终签名刻意不包含 `LumenPDF.entitlements` 或 App Sandbox entitlement，以继续使用 `~/Library/Application Support/LumenPDF` 和全局 `UserDefaults` 中已有的数据。若未来重新启用 Sandbox，必须在同一版本提供并验证无损数据库与偏好迁移。
 
 验证最终产物：
 
