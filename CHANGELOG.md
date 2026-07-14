@@ -3,6 +3,16 @@
 LumenPDF 的版本记录由人工/AI 维护。每个版本只记录对用户或后续开发有意义的变化，并为具体变更附上对应的 GitHub commit URL。
 
 ---
+## [1.0.18](https://github.com/hedon954/lumen-pdf/compare/v1.0.17..v1.0.18) - 2026-07-14
+
+这一版优化右侧阅读栏的开关与宽度调整体验，让正文缩放和侧栏拖拽更连贯，同时继续保持当前页和可见阅读位置。
+
+### 修复
+
+- 将右侧阅读栏的打开和关闭改为连续宽度过渡，并由 PDFKit 在布局变化期间统一维护完整视口，避免延迟纠偏造成正文缩放或滚动跳闪（[16e181a](https://github.com/hedon954/lumen-pdf/commit/16e181a9d3d5986f0ab940ef7f76ed910a1a3e67)）。
+- 将分界线拖拽中的临时宽度与持久化状态分离，消除 Inspector 逐帧失效及 PDFKit 缩放、主动滚动之间的反馈抖动，松手后仍精确恢复阅读位置（[44301b3](https://github.com/hedon954/lumen-pdf/commit/44301b3e2652b49d2f1916a95c763e29ca101ead)）。
+
+---
 ## [1.0.17](https://github.com/hedon954/lumen-pdf/compare/v1.0.16..v1.0.17) - 2026-07-14
 
 这一版恢复非容器数据目录，升级后继续直接读取既有的 SQLite 数据库和阅读偏好，避免出现空白的新数据视图。
