@@ -5,6 +5,8 @@ import UniformTypeIdentifiers
 struct ReadingGuidePanel: View {
     @ObservedObject var model: ReadingInspectorModel
     @EnvironmentObject private var appState: AppState
+    @AppStorage("llm_base_url") private var llmBaseURL = ""
+    @AppStorage("llm_model") private var llmModel = ""
 
     @State private var question = ""
     @State private var shouldFollowStream = true
@@ -37,6 +39,14 @@ struct ReadingGuidePanel: View {
             if !loading {
                 focusQuestion()
             }
+        }
+        .onChange(of: model.imageInputCapability) { _, capability in
+            if capability == .unsupported {
+                attachedImageURLs = []
+            }
+        }
+        .task(id: imageCapabilityConfigurationKey) {
+            await model.refreshImageInputCapability()
         }
     }
 
@@ -284,28 +294,23 @@ struct ReadingGuidePanel: View {
     private func questionBar(isLoading: Bool) -> some View {
         HStack(spacing: 8) {
             VStack(spacing: 6) {
-                HStack(alignment: .bottom, spacing: 8) {
+                HStack(alignment: .center, spacing: 8) {
                     Image(systemName: "bubble.left.and.text.bubble.right")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .frame(width: 18)
-                        .padding(.bottom, 5)
 
-                    ZStack(alignment: .topLeading) {
-                        if question.isEmpty {
-                            Text("继续追问，留空则直接解释")
-                                .foregroundStyle(.secondary)
-                                .padding(.top, 8)
-                                .padding(.leading, 5)
-                                .allowsHitTesting(false)
-                        }
-                        TextEditor(text: $question)
-                            .font(.callout)
-                            .scrollContentBackground(.hidden)
-                            .frame(minHeight: questionEditorHeight, maxHeight: questionEditorHeight)
-                            .focused($isQuestionFocused)
-                            .disabled(isLoading)
-                    }
+                    TextField(
+                        "继续追问，留空则直接解释",
+                        text: $question,
+                        axis: .vertical
+                    )
+                    .font(.callout)
+                    .textFieldStyle(.plain)
+                    .lineLimit(1...10)
+                    .focused($isQuestionFocused)
+                    .disabled(isLoading)
+                    .padding(.vertical, 6)
 
                     Button {
                         isImageImporterPresented = true
@@ -315,8 +320,12 @@ struct ReadingGuidePanel: View {
                             .symbolRenderingMode(.hierarchical)
                     }
                     .buttonStyle(.plain)
-                    .disabled(isLoading)
-                    .help("附加图片（当前会随问题记录图片文件名）")
+                    .disabled(
+                        isLoading
+                            || model.isCheckingImageInputCapability
+                            || model.imageInputCapability == .unsupported
+                    )
+                    .help(imageAttachmentHelp)
 
                     Button {
                         submitQuestion()
@@ -358,13 +367,6 @@ struct ReadingGuidePanel: View {
         }
     }
 
-    private var questionEditorHeight: CGFloat {
-        let explicitLines = question.components(separatedBy: .newlines).count
-        let wrappedLines = max(1, question.count / 34 + 1)
-        let lines = min(10, max(explicitLines, wrappedLines))
-        return CGFloat(lines) * 20 + 14
-    }
-
     private var attachedImagesStrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
@@ -389,16 +391,30 @@ struct ReadingGuidePanel: View {
         }
     }
 
+    private var imageCapabilityConfigurationKey: String {
+        "\(llmBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))|\(llmModel)"
+    }
+
+    private var imageAttachmentHelp: String {
+        switch model.imageInputCapability {
+        case .supported:
+            return "附加原图并发送给 LLM"
+        case .unsupported:
+            return "当前模型不支持图片输入"
+        case .unknown:
+            return model.isCheckingImageInputCapability
+                ? "正在检测当前模型是否支持图片输入"
+                : "未能确认模型能力；仍可附加原图，失败时显示模型错误"
+        }
+    }
+
     private func submitQuestion() {
         shouldFollowStream = true
-        var questionToSubmit = question
-        if !attachedImageURLs.isEmpty {
-            let names = attachedImageURLs.map(\.lastPathComponent).joined(separator: ", ")
-            questionToSubmit += "\n\n[附加图片：\(names)]"
-        }
+        let questionToSubmit = question
+        let imageURLs = attachedImageURLs
         question = ""
         attachedImageURLs = []
-        model.submitGuideQuestion(questionToSubmit)
+        model.submitGuideQuestion(questionToSubmit, imageURLs: imageURLs)
     }
 
     private func focusQuestion() {

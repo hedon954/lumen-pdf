@@ -173,6 +173,21 @@ private struct GroupedVocabularyCard: View {
                     .padding(.bottom, 12)
             }
 
+            if !primary.etymology.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("词源 / 历史故事")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .textCase(.uppercase)
+                    Text(primary.etymology)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 12)
+            }
+
             Divider().opacity(0.35)
 
             // ── Context entries ───────────────────────────────────────────────
@@ -336,6 +351,7 @@ private struct VocabularyEditSheet: View {
     @State private var partOfSpeech: String
     @State private var contextTranslation: String
     @State private var contextExplanation: String
+    @State private var etymology: String
     @State private var generalDefinition: String
     @State private var contextSentenceTranslation: String
 
@@ -346,6 +362,7 @@ private struct VocabularyEditSheet: View {
         _partOfSpeech       = State(initialValue: entry.partOfSpeech)
         _contextTranslation = State(initialValue: entry.contextTranslation)
         _contextExplanation = State(initialValue: entry.contextExplanation)
+        _etymology          = State(initialValue: entry.etymology)
         _generalDefinition  = State(initialValue: entry.generalDefinition)
         _contextSentenceTranslation = State(initialValue: entry.contextSentenceTranslation)
     }
@@ -358,6 +375,7 @@ private struct VocabularyEditSheet: View {
             editRow("词性", text: $partOfSpeech)
             editArea("语境翻译", text: $contextTranslation, height: 54)
             editArea("语境解释", text: $contextExplanation, height: 54)
+            editArea("词源 / 历史故事", text: $etymology, height: 72)
             editArea("整句译文", text: $contextSentenceTranslation, height: 54)
             editArea("通用释义", text: $generalDefinition,  height: 54)
             HStack(spacing: 4) {
@@ -374,6 +392,7 @@ private struct VocabularyEditSheet: View {
                         id: entry.id, phonetic: phonetic, partOfSpeech: partOfSpeech,
                         contextTranslation: contextTranslation,
                         contextExplanation: contextExplanation,
+                        etymology: etymology,
                         generalDefinition: generalDefinition,
                         contextSentenceTranslation: contextSentenceTranslation
                     )
@@ -383,7 +402,7 @@ private struct VocabularyEditSheet: View {
             }
         }
         .padding(20)
-        .frame(width: 420, height: 580)
+        .frame(width: 420, height: 670)
     }
 
     private func editRow(_ label: String, text: Binding<String>) -> some View {

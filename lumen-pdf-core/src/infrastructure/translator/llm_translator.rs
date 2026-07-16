@@ -1,5 +1,5 @@
 use crate::domain::translation::{
-    entity::{SentenceChunk, TranslationResult},
+    entity::{ImageAttachment, ImageInputCapability, SentenceChunk, TranslationResult},
     repository::{StreamProgress, Translator},
 };
 use crate::error::LumenError;
@@ -9,7 +9,10 @@ use crate::infrastructure::translator::streaming::{
 };
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use std::sync::{OnceLock, RwLock};
 
 #[derive(Clone)]
 pub struct LlmConfig {
@@ -36,6 +39,10 @@ pub const DEFAULT_SENTENCE_SYSTEM_PROMPT: &str =
 pub const DEFAULT_EXPLANATION_SYSTEM_PROMPT: &str =
     "You are a professional reading tutor. Return explanation text only; never return JSON for explanations.";
 const DEFAULT_MAX_TOKENS: u32 = 4096;
+const IMAGE_CAPABILITY_PROBE_PNG_BASE64: &str =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+static IMAGE_CAPABILITY_CACHE: OnceLock<RwLock<HashMap<String, ImageInputCapability>>> =
+    OnceLock::new();
 
 pub const DEFAULT_WORD_PROMPT_TEMPLATE: &str = r#"You are a professional language tutor. The user selected the word "{word}" while reading a PDF.
 
@@ -49,7 +56,8 @@ Respond with ONLY valid JSON in this exact format:
   "phonetic": "IPA phonetic transcription",
   "part_of_speech": "noun/verb/adjective/adverb/etc",
   "context_translation": "Translation of the word in this specific context to {lang}",
-  "context_explanation": "Why does it mean this here? Explain the nuance in {lang}. If useful and reliable, add a short optional final subsection about the word origin, historical story, or morphology; omit that subsection when it would be speculative.",
+  "context_explanation": "Why does it mean this here? Explain the nuance in {lang}",
+  "etymology": "A short standalone word-origin, historical story, or morphology note in {lang}. Use an empty string when the information would be speculative or would not help understanding or memory.",
   "general_definition": "General English definition of the word",
   "context_sentence_translation": "Full translation of the ENTIRE context sentence above to {lang} (not just the word)"
 }"#;
@@ -130,6 +138,25 @@ fn configured_template<'a>(configured: &'a str, default: &'a str) -> &'a str {
         default
     } else {
         configured
+    }
+}
+
+impl LlmConfig {
+    pub fn word_cache_scope(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(
+            configured_template(&self.word_prompt_template, DEFAULT_WORD_PROMPT_TEMPLATE)
+                .as_bytes(),
+        );
+        hasher.update([0]);
+        hasher.update(
+            configured_template(&self.word_system_prompt, DEFAULT_WORD_SYSTEM_PROMPT).as_bytes(),
+        );
+        format!(
+            "{}|word-prompt:{:x}",
+            self.target_language,
+            hasher.finalize()
+        )
     }
 }
 
@@ -220,9 +247,10 @@ impl LlmTranslator {
         selection: &str,
         context: &str,
         focus: &str,
+        images: &[ImageAttachment],
         mut on_progress: StreamProgress,
     ) -> Result<TranslationResult, LumenError> {
-        let body = self.build_explanation_request(selection, context, focus, true);
+        let body = self.build_explanation_request(selection, context, focus, images, true);
         let url = self.completions_url();
 
         let raw_buf = self
@@ -247,6 +275,35 @@ impl LlmTranslator {
         };
         on_progress(final_result.clone());
         Ok(final_result)
+    }
+
+    pub async fn detect_image_input_capability(&self) -> ImageInputCapability {
+        let cache_key = format!(
+            "{}|{}",
+            self.config.base_url.trim_end_matches('/'),
+            self.config.model
+        );
+        let cache = IMAGE_CAPABILITY_CACHE.get_or_init(|| RwLock::new(HashMap::new()));
+        if let Ok(guard) = cache.read() {
+            if let Some(capability) = guard.get(&cache_key) {
+                return *capability;
+            }
+        }
+
+        if let Some(capability) = self.image_capability_from_model_metadata().await {
+            if let Ok(mut guard) = cache.write() {
+                guard.insert(cache_key, capability);
+            }
+            return capability;
+        }
+
+        let capability = self.probe_image_input_capability().await;
+        if capability != ImageInputCapability::Unknown {
+            if let Ok(mut guard) = cache.write() {
+                guard.insert(cache_key, capability);
+            }
+        }
+        capability
     }
 
     /// Translate a full sentence without word-level analysis (non-streaming).
@@ -326,24 +383,113 @@ impl LlmTranslator {
         )
     }
 
+    fn models_url(&self) -> String {
+        format!("{}/models", self.config.base_url.trim_end_matches('/'))
+    }
+
+    async fn image_capability_from_model_metadata(&self) -> Option<ImageInputCapability> {
+        let response = shared_client()
+            .get(self.models_url())
+            .bearer_auth(&self.config.api_key)
+            .send()
+            .await
+            .ok()?;
+        if !response.status().is_success() {
+            return None;
+        }
+        let value: Value = response.json().await.ok()?;
+        explicit_image_capability(&value, &self.config.model)
+    }
+
+    async fn probe_image_input_capability(&self) -> ImageInputCapability {
+        let body = ChatRequest {
+            model: self.config.model.clone(),
+            stream: false,
+            messages: vec![Message {
+                role: "user".into(),
+                content: RequestMessageContent::Parts(vec![
+                    RequestContentPart::Text {
+                        text: "Reply with OK.".into(),
+                    },
+                    RequestContentPart::ImageUrl {
+                        image_url: ImageUrlContent {
+                            url: format!(
+                                "data:image/png;base64,{IMAGE_CAPABILITY_PROBE_PNG_BASE64}"
+                            ),
+                        },
+                    },
+                ]),
+            }],
+            response_format: None,
+            max_tokens: Some(1),
+        };
+
+        let response = match shared_client()
+            .post(self.completions_url())
+            .bearer_auth(&self.config.api_key)
+            .json(&body)
+            .send()
+            .await
+        {
+            Ok(response) => response,
+            Err(_) => return ImageInputCapability::Unknown,
+        };
+
+        if response.status().is_success() {
+            return ImageInputCapability::Supported;
+        }
+
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        if (status.as_u16() == 400 || status.as_u16() == 422)
+            && is_explicit_image_unsupported_error(&body)
+        {
+            ImageInputCapability::Unsupported
+        } else {
+            ImageInputCapability::Unknown
+        }
+    }
+
     fn build_explanation_request(
         &self,
         selection: &str,
         context: &str,
         focus: &str,
+        images: &[ImageAttachment],
         stream: bool,
     ) -> ChatRequest {
+        let mut prompt = self.build_explanation_prompt(selection, context, focus);
+        let user_content = if images.is_empty() {
+            RequestMessageContent::Text(prompt)
+        } else {
+            prompt.push_str(
+                "\n\nThe attached images are additional context for the user's question. Inspect and use their visual content when answering.",
+            );
+            let mut parts = vec![RequestContentPart::Text { text: prompt }];
+            for (index, image) in images.iter().enumerate() {
+                parts.push(RequestContentPart::Text {
+                    text: format!("Attached image {}: {}", index + 1, image.file_name),
+                });
+                parts.push(RequestContentPart::ImageUrl {
+                    image_url: ImageUrlContent {
+                        url: format!("data:{};base64,{}", image.mime_type, image.base64_data),
+                    },
+                });
+            }
+            RequestMessageContent::Parts(parts)
+        };
+
         ChatRequest {
             model: self.config.model.clone(),
             stream,
             messages: vec![
                 Message {
                     role: "system".into(),
-                    content: self.explanation_system_prompt(),
+                    content: RequestMessageContent::Text(self.explanation_system_prompt()),
                 },
                 Message {
                     role: "user".into(),
-                    content: self.build_explanation_prompt(selection, context, focus),
+                    content: user_content,
                 },
             ],
             response_format: None,
@@ -358,11 +504,11 @@ impl LlmTranslator {
             messages: vec![
                 Message {
                     role: "system".into(),
-                    content: self.sentence_system_prompt(),
+                    content: RequestMessageContent::Text(self.sentence_system_prompt()),
                 },
                 Message {
                     role: "user".into(),
-                    content: self.build_sentence_prompt(sentence),
+                    content: RequestMessageContent::Text(self.build_sentence_prompt(sentence)),
                 },
             ],
             response_format: Some(ResponseFormat {
@@ -379,11 +525,11 @@ impl LlmTranslator {
             messages: vec![
                 Message {
                     role: "system".into(),
-                    content: self.word_system_prompt(),
+                    content: RequestMessageContent::Text(self.word_system_prompt()),
                 },
                 Message {
                     role: "user".into(),
-                    content: self.build_prompt(word, sentence),
+                    content: RequestMessageContent::Text(self.build_prompt(word, sentence)),
                 },
             ],
             response_format: Some(ResponseFormat {
@@ -514,6 +660,7 @@ fn map_to_translation_result(
         part_of_speech: map.get("part_of_speech").cloned().unwrap_or_default(),
         context_translation: map.get("context_translation").cloned().unwrap_or_default(),
         context_explanation: map.get("context_explanation").cloned().unwrap_or_default(),
+        etymology: map.get("etymology").cloned().unwrap_or_default(),
         general_definition: map.get("general_definition").cloned().unwrap_or_default(),
         context_sentence_translation: map
             .get("context_sentence_translation")
@@ -525,6 +672,60 @@ fn map_to_translation_result(
         is_complete_failure: false,
         sentence_breakdown: Vec::new(),
     }
+}
+
+fn explicit_image_capability(root: &Value, model: &str) -> Option<ImageInputCapability> {
+    let model_value = match root.get("data") {
+        Some(Value::Array(models)) => models
+            .iter()
+            .find(|candidate| candidate.get("id").and_then(Value::as_str) == Some(model)),
+        Some(Value::Object(_)) => root.get("data"),
+        _ => Some(root),
+    }?;
+
+    if let Some(supports_vision) = model_value
+        .pointer("/capabilities/vision")
+        .and_then(Value::as_bool)
+    {
+        return Some(if supports_vision {
+            ImageInputCapability::Supported
+        } else {
+            ImageInputCapability::Unsupported
+        });
+    }
+
+    let modalities = model_value
+        .pointer("/architecture/input_modalities")
+        .or_else(|| model_value.get("input_modalities"))
+        .or_else(|| model_value.get("modalities"))?
+        .as_array()?;
+    let has_image = modalities
+        .iter()
+        .filter_map(Value::as_str)
+        .any(|modality| modality.eq_ignore_ascii_case("image"));
+    Some(if has_image {
+        ImageInputCapability::Supported
+    } else {
+        ImageInputCapability::Unsupported
+    })
+}
+
+fn is_explicit_image_unsupported_error(body: &str) -> bool {
+    let lower = body.to_lowercase();
+    let mentions_image = lower.contains("image")
+        || lower.contains("vision")
+        || lower.contains("multimodal")
+        || lower.contains("image_url");
+    let says_unsupported = lower.contains("unsupported")
+        || lower.contains("not support")
+        || lower.contains("does not support")
+        || lower.contains("doesn't support")
+        || lower.contains("only text")
+        || lower.contains("text-only")
+        || lower.contains("invalid content type")
+        || lower.contains("only supported by")
+        || lower.contains("cannot process");
+    mentions_image && says_unsupported
 }
 
 #[derive(Serialize)]
@@ -546,7 +747,28 @@ fn is_false(b: &bool) -> bool {
 #[derive(Serialize)]
 struct Message {
     role: String,
-    content: String,
+    content: RequestMessageContent,
+}
+
+#[derive(Serialize)]
+#[serde(untagged)]
+enum RequestMessageContent {
+    Text(String),
+    Parts(Vec<RequestContentPart>),
+}
+
+#[derive(Serialize)]
+#[serde(tag = "type")]
+enum RequestContentPart {
+    #[serde(rename = "text")]
+    Text { text: String },
+    #[serde(rename = "image_url")]
+    ImageUrl { image_url: ImageUrlContent },
+}
+
+#[derive(Serialize)]
+struct ImageUrlContent {
+    url: String,
 }
 
 #[derive(Serialize)]
@@ -562,11 +784,11 @@ struct ChatResponse {
 
 #[derive(Deserialize)]
 struct Choice {
-    message: MessageContent,
+    message: ResponseMessageContent,
 }
 
 #[derive(Deserialize)]
-struct MessageContent {
+struct ResponseMessageContent {
     content: String,
 }
 
@@ -577,6 +799,7 @@ struct LlmTranslationJson {
     part_of_speech: Option<String>,
     context_translation: Option<String>,
     context_explanation: Option<String>,
+    etymology: Option<String>,
     general_definition: Option<String>,
     context_sentence_translation: Option<String>,
 }
@@ -589,6 +812,7 @@ impl LlmTranslationJson {
             part_of_speech: self.part_of_speech.unwrap_or_default(),
             context_translation: self.context_translation.unwrap_or_default(),
             context_explanation: self.context_explanation.unwrap_or_default(),
+            etymology: self.etymology.unwrap_or_default(),
             general_definition: self.general_definition.unwrap_or_default(),
             context_sentence_translation: self.context_sentence_translation.unwrap_or_default(),
             source: "llm".to_string(),
@@ -705,5 +929,125 @@ impl Translator for LlmTranslator {
                 message: e.to_string(),
             })?;
         Ok(parsed.into_result(word))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn translator() -> LlmTranslator {
+        LlmTranslator::new(LlmConfig {
+            base_url: "https://example.com/v1".into(),
+            api_key: "key".into(),
+            model: "vision-model".into(),
+            target_language: "简体中文".into(),
+            word_prompt_template: String::new(),
+            sentence_prompt_template: String::new(),
+            explanation_prompt_template: String::new(),
+            word_system_prompt: String::new(),
+            sentence_system_prompt: String::new(),
+            explanation_system_prompt: String::new(),
+        })
+    }
+
+    #[test]
+    fn explanation_request_serializes_images_as_openai_content_parts() {
+        let request = translator().build_explanation_request(
+            "selected",
+            "context",
+            "what does the diagram show?",
+            &[ImageAttachment {
+                file_name: "diagram.png".into(),
+                mime_type: "image/png".into(),
+                base64_data: "aGVsbG8=".into(),
+            }],
+            true,
+        );
+
+        let json = serde_json::to_value(request).unwrap();
+        let parts = json["messages"][1]["content"].as_array().unwrap();
+
+        assert_eq!(parts[0]["type"], "text");
+        assert_eq!(parts[1]["text"], "Attached image 1: diagram.png");
+        assert_eq!(parts[2]["type"], "image_url");
+        assert_eq!(
+            parts[2]["image_url"]["url"],
+            "data:image/png;base64,aGVsbG8="
+        );
+    }
+
+    #[test]
+    fn explanation_request_keeps_plain_text_shape_without_images() {
+        let request = translator().build_explanation_request("selected", "context", "", &[], true);
+        let json = serde_json::to_value(request).unwrap();
+
+        assert!(json["messages"][1]["content"].is_string());
+    }
+
+    #[test]
+    fn reads_image_capability_from_openrouter_style_metadata() {
+        let metadata = serde_json::json!({
+            "data": [{
+                "id": "vision-model",
+                "architecture": {
+                    "input_modalities": ["text", "image"]
+                }
+            }]
+        });
+
+        assert_eq!(
+            explicit_image_capability(&metadata, "vision-model"),
+            Some(ImageInputCapability::Supported)
+        );
+    }
+
+    #[test]
+    fn reads_explicit_text_only_capability_from_metadata() {
+        let metadata = serde_json::json!({
+            "data": [{
+                "id": "text-model",
+                "architecture": {
+                    "input_modalities": ["text"]
+                }
+            }]
+        });
+
+        assert_eq!(
+            explicit_image_capability(&metadata, "text-model"),
+            Some(ImageInputCapability::Unsupported)
+        );
+    }
+
+    #[test]
+    fn only_classifies_explicit_image_errors_as_unsupported() {
+        assert!(is_explicit_image_unsupported_error(
+            r#"{"error":{"message":"This model does not support image_url content"}}"#
+        ));
+        assert!(!is_explicit_image_unsupported_error(
+            r#"{"error":{"message":"Rate limit exceeded"}}"#
+        ));
+    }
+
+    #[test]
+    fn word_cache_scope_is_stable_for_the_same_effective_prompt() {
+        let config = translator().config;
+        let mut explicit_defaults = config.clone();
+        explicit_defaults.word_prompt_template = DEFAULT_WORD_PROMPT_TEMPLATE.into();
+        explicit_defaults.word_system_prompt = DEFAULT_WORD_SYSTEM_PROMPT.into();
+
+        assert_eq!(
+            config.word_cache_scope(),
+            explicit_defaults.word_cache_scope()
+        );
+    }
+
+    #[test]
+    fn word_cache_scope_changes_when_the_prompt_changes() {
+        let config = translator().config;
+        let mut customized = config.clone();
+        customized.word_prompt_template = "custom {word} {sentence} {lang}".into();
+
+        assert_ne!(config.word_cache_scope(), customized.word_cache_scope());
     }
 }

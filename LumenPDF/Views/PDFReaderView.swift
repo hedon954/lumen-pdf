@@ -606,6 +606,7 @@ struct PDFReaderView: View {
             phonetic: result.phonetic, partOfSpeech: result.partOfSpeech,
             contextTranslation: result.contextTranslation,
             contextExplanation: result.contextExplanation,
+            etymology: result.etymology,
             generalDefinition: result.generalDefinition,
             contextSentenceTranslation: result.contextSentenceTranslation,
             translationSource: result.source

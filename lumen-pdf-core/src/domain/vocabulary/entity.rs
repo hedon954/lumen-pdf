@@ -12,6 +12,7 @@ pub struct VocabularyEntry {
     pub part_of_speech: String,
     pub context_translation: String,
     pub context_explanation: String,
+    pub etymology: String,
     pub general_definition: String,
     pub context_sentence_translation: String,
     pub translation_source: String,
@@ -28,6 +29,7 @@ pub struct UpdateVocabularyRequest {
     pub part_of_speech: String,
     pub context_translation: String,
     pub context_explanation: String,
+    pub etymology: String,
     pub general_definition: String,
     pub context_sentence_translation: String,
 }
@@ -45,6 +47,7 @@ pub struct SaveVocabularyRequest {
     pub part_of_speech: String,
     pub context_translation: String,
     pub context_explanation: String,
+    pub etymology: String,
     pub general_definition: String,
     pub context_sentence_translation: String,
     pub translation_source: String,

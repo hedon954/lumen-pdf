@@ -55,6 +55,8 @@ final class AppState: ObservableObject {
 
     init(restorationStore: ReadingRestorationStore = .shared) {
         self.restorationStore = restorationStore
+        let promptUpdateResult =
+            PromptTemplateUpdateCoordinator.shared.applyUpdatesAtLaunch()
         let args = ProcessInfo.processInfo.arguments
         if args.contains("--uitesting-vocabulary") {
             shouldPersistActiveTab = false
@@ -69,6 +71,12 @@ final class AppState: ObservableObject {
         bridge.initializeIfNeeded()
         refreshLibrary()
         restoreLastDocument()
+
+        if !promptUpdateResult.pendingCustomLanguages.isEmpty {
+            showToast("系统提示词已有更新；你的自定义模板未被覆盖，请在设置中处理")
+        } else if !promptUpdateResult.automaticallyUpdatedLanguages.isEmpty {
+            showToast("系统提示词已更新，未修改的模板已自动升级")
+        }
     }
 
     // MARK: - Library
