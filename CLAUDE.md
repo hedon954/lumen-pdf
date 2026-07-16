@@ -44,6 +44,34 @@ make dmg
 - User-facing release labels, tags, DMG filenames, and docs should normally use only the short version (`1.0.9`). Include the build number only when debugging or explicitly discussing build metadata.
 - When asked to commit, push, and tag a release, commit the code/docs/version/changelog changes, push the branch, create an annotated `vX.Y.Z` tag, and push the tag.
 
+## Pull Request Branch Naming
+
+Every branch intended to open a PR must use a unique, semantic name. Do not use agent or tool names as branch names or prefixes.
+
+Format:
+
+```text
+<type>/<scope>-<short-topic>-<YYYYMMDD-HHmm>
+```
+
+Rules:
+
+- Use a Conventional Commit type: `feat`, `fix`, `docs`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `style`, or `revert`.
+- Use a short lowercase scope and topic in kebab-case. The name must describe the actual change.
+- Append the local creation time in `YYYYMMDD-HHmm` format so parallel tasks do not collide.
+- Never use generic or agent-specific names such as `codex/*`, `claude/*`, `agent/*`, `feature`, `fix`, or `temp`.
+- Do not reuse an existing remote branch for an unrelated task. If the semantic name already exists, create a new branch with the current timestamp.
+- Release-only branches may use `release/vX.Y.Z`.
+
+Examples:
+
+```text
+feat/reader-image-input-20260716-2215
+fix/settings-prompt-migration-20260716-2230
+docs/repo-branch-naming-20260716-2245
+release/v1.0.20
+```
+
 
 ## Git Commit Message Convention
 
