@@ -40,6 +40,22 @@ pub struct TranslationRequest {
     pub sentence: String,
 }
 
+/// An image attached to a reading-guide question. Swift prepares a
+/// size-bounded PNG or JPEG and sends its base64 payload across UniFFI.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct ImageAttachment {
+    pub file_name: String,
+    pub mime_type: String,
+    pub base64_data: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum ImageInputCapability {
+    Supported,
+    Unsupported,
+    Unknown,
+}
+
 /// One fragment in a sentence-translation breakdown. Returned as part of
 /// `TranslationResult.sentence_breakdown` for long / complex sentences in
 /// sentence mode. Word mode and short sentences leave `sentence_breakdown`
@@ -66,6 +82,10 @@ pub struct TranslationResult {
     pub part_of_speech: String,
     pub context_translation: String,
     pub context_explanation: String,
+    /// Optional word origin, historical story, or morphology note. Empty when
+    /// no reliable and useful background is available.
+    #[serde(default)]
+    pub etymology: String,
     pub general_definition: String,
     /// Full translation of the entire context sentence (helps LLM / reading).
     #[serde(default)]
@@ -87,4 +107,32 @@ pub struct TranslationResult {
     /// or for short / simple sentences. Filled at end of stream by the LLM.
     #[serde(default)]
     pub sentence_breakdown: Vec<SentenceChunk>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cached_translation_without_etymology_remains_compatible() {
+        let cached = r#"{
+            "word": "salary",
+            "phonetic": "",
+            "part_of_speech": "noun",
+            "context_translation": "薪水",
+            "context_explanation": "这里指劳动报酬。",
+            "general_definition": "regular payment for work",
+            "context_sentence_translation": "",
+            "source": "llm",
+            "llm_error_message": "",
+            "fallback_error_message": "",
+            "is_complete_failure": false,
+            "sentence_breakdown": []
+        }"#;
+
+        let result: TranslationResult = serde_json::from_str(cached).unwrap();
+
+        assert!(result.etymology.is_empty());
+        assert_eq!(result.context_explanation, "这里指劳动报酬。");
+    }
 }

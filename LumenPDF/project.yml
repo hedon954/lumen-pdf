@@ -48,3 +48,16 @@ targets:
         embed: true
         codeSign: true
       - package: Textual
+
+  LumenPDFTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests
+    settings:
+      base:
+        HEADER_SEARCH_PATHS: "$(inherited) $(SRCROOT)/Generated"
+        SWIFT_INCLUDE_PATHS: "$(inherited) $(SRCROOT)/Generated"
+        OTHER_SWIFT_FLAGS: "$(inherited) -Xcc -fmodule-map-file=$(SRCROOT)/Generated/lumen_pdf_coreFFI.modulemap"
+    dependencies:
+      - target: LumenPDF

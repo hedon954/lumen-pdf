@@ -608,6 +608,7 @@ mod tests {
                     word: "run".into(),
                     context_translation: "跑".into(),
                     general_definition: "to move quickly".into(),
+                    etymology: "源自古英语 rinnan，意为流动或奔跑。".into(),
                     ..Default::default()
                 },
             ],
@@ -615,6 +616,7 @@ mod tests {
                 word: "run".into(),
                 context_translation: "跑".into(),
                 general_definition: "to move quickly".into(),
+                etymology: "源自古英语 rinnan，意为流动或奔跑。".into(),
                 context_sentence_translation: "他在跑步".into(),
                 ..Default::default()
             },
@@ -638,6 +640,10 @@ mod tests {
 
         assert_eq!(final_result.source, "llm");
         assert_eq!(final_result.context_sentence_translation, "他在跑步");
+        assert_eq!(
+            final_result.etymology,
+            "源自古英语 rinnan，意为流动或奔跑。"
+        );
 
         let emitted = emitted.lock().unwrap();
         assert_eq!(emitted.len(), 3);

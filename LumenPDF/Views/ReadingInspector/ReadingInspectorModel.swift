@@ -13,6 +13,8 @@ final class ReadingInspectorModel: ObservableObject {
     }
     @Published var selection: PDFSelectionContext?
     @Published var guideSession: ExplanationSession?
+    @Published private(set) var imageInputCapability: ImageInputCapability = .unknown
+    @Published private(set) var isCheckingImageInputCapability = false
 
     private let guideService = ReadingGuideService()
     private let restorationStore: ReadingRestorationStore
@@ -51,11 +53,25 @@ final class ReadingInspectorModel: ObservableObject {
         guideSession = nil
     }
 
-    func submitGuideQuestion(_ question: String) {
+    func submitGuideQuestion(_ question: String, imageURLs: [URL] = []) {
         guard let session = guideSession, !session.isLoading else { return }
-        guideService.submitQuestion(question, session: session) { [weak self] updated in
+        guideService.submitQuestion(
+            question,
+            imageURLs: imageURLs,
+            session: session
+        ) { [weak self] updated in
             guard self?.guideSession?.id == updated.id else { return }
             self?.guideSession = updated
+        }
+    }
+
+    func refreshImageInputCapability() async {
+        isCheckingImageInputCapability = true
+        defer { isCheckingImageInputCapability = false }
+        do {
+            imageInputCapability = try await BridgeService.shared.detectImageInputCapability()
+        } catch {
+            imageInputCapability = .unknown
         }
     }
 

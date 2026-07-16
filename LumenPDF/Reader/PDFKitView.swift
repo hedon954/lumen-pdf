@@ -1319,31 +1319,79 @@ struct PDFKitView: NSViewRepresentable {
             selectionDebounce?.invalidate()
             selectionDebounce = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self, weak pdfView] _ in
                 guard let self, let pdfView,
-                      let currentPage = pdfView.currentPage,
                       let doc = pdfView.document else { return }
                 let word = selectedStr.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !word.isEmpty else { return }
                 let sentence = self.extractSentence(from: pdfView, containing: selection) ?? word
 
-                // Build per-line rects for precise annotation.
+                // Build per-line rects for precise annotation. PDFKit can report
+                // an empty selection bounds on `currentPage` when the drag ends near
+                // a page boundary, so choose the page with the largest visible
+                // selected area instead of assuming `currentPage` owns the selection.
                 let rawLines = selection.selectionsByLine()
                 let lineSelections = rawLines.isEmpty ? [selection] : rawLines
-                let lineRects = lineSelections.compactMap { s -> CGRect? in
-                    let r = s.bounds(for: currentPage)
-                    return r.isEmpty ? nil : r
-                }
-                let overallBounds = selection.bounds(for: currentPage)
+                guard let selectedPageGeometry = Self.selectedPageGeometry(
+                    for: selection,
+                    lineSelections: lineSelections,
+                    preferredPage: pdfView.currentPage
+                ) else { return }
+                let currentPage = selectedPageGeometry.page
+                let lineRects = selectedPageGeometry.lineRects
+                let overallBounds = selectedPageGeometry.bounds
                 let boundsStr = lineRects.isEmpty
                     ? NSStringFromRect(overallBounds)
                     : lineRects.map { NSStringFromRect($0) }.joined(separator: "|")
 
                 let pageIndex = doc.index(for: currentPage)
+                guard pageIndex != NSNotFound else { return }
                 let menuAnchor = Self.menuAnchor(boundsInPage: overallBounds,
                                                  page: currentPage, pdfView: pdfView)
                 let selectionAnchorRect = Self.swiftUIRect(boundsInPage: overallBounds, page: currentPage, pdfView: pdfView)
                 DispatchQueue.main.async {
                     self.parent.onTextSelected(word, sentence, overallBounds, boundsStr, pageIndex, menuAnchor, selectionAnchorRect)
                 }
+            }
+        }
+
+
+        private struct SelectedPageGeometry {
+            let page: PDFPage
+            let bounds: CGRect
+            let lineRects: [CGRect]
+        }
+
+        private static func selectedPageGeometry(
+            for selection: PDFSelection,
+            lineSelections: [PDFSelection],
+            preferredPage: PDFPage?
+        ) -> SelectedPageGeometry? {
+            let candidatePages = selection.pages.isEmpty
+                ? Array([preferredPage].compactMap { $0 })
+                : selection.pages
+
+            let candidates = candidatePages.compactMap { page -> SelectedPageGeometry? in
+                let pageLineRects = lineSelections.compactMap { line -> CGRect? in
+                    let rect = line.bounds(for: page)
+                    return rect.isEmpty ? nil : rect
+                }
+                let directBounds = selection.bounds(for: page)
+                let bounds: CGRect
+                if pageLineRects.isEmpty {
+                    bounds = directBounds
+                } else {
+                    bounds = pageLineRects.dropFirst().reduce(pageLineRects[0]) { $0.union($1) }
+                }
+                guard !bounds.isEmpty else { return nil }
+                return SelectedPageGeometry(page: page, bounds: bounds, lineRects: pageLineRects)
+            }
+
+            guard !candidates.isEmpty else { return nil }
+            if let preferredPage,
+               let preferred = candidates.first(where: { $0.page === preferredPage }) {
+                return preferred
+            }
+            return candidates.max { lhs, rhs in
+                lhs.bounds.width * lhs.bounds.height < rhs.bounds.width * rhs.bounds.height
             }
         }
 

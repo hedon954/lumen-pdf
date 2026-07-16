@@ -4,7 +4,9 @@ use crate::application::translation::use_case::TranslationUseCase;
 use crate::application::vocabulary::use_case::VocabularyUseCase;
 use crate::domain::note::entity::{NoteEntry, SaveNoteRequest, UpdateNoteRequest};
 use crate::domain::pdf_document::entity::{PdfDocument, UpsertPdfRequest};
-use crate::domain::translation::entity::{TranslationRequest, TranslationResult};
+use crate::domain::translation::entity::{
+    ImageAttachment, ImageInputCapability, TranslationRequest, TranslationResult,
+};
 use crate::domain::translation::repository::StreamProgress;
 use crate::domain::vocabulary::entity::{
     SaveVocabularyRequest, UpdateVocabularyRequest, VocabularyEntry,
@@ -105,7 +107,7 @@ fn translation_use_case(config: &LlmConfig) -> Result<TranslationUseCase, LumenE
         llm,
         fallback,
         phonetic,
-        config.target_language.clone(),
+        config.word_cache_scope(),
     ))
 }
 
@@ -214,11 +216,27 @@ pub async fn explain_selection_streaming(
     selection: String,
     context: String,
     focus: String,
+    images: Vec<ImageAttachment>,
     callback: Arc<dyn TranslationStreamCallback>,
 ) -> Result<TranslationResult, LumenError> {
     llm_translator()?
-        .explain_selection_streaming(&selection, &context, &focus, stream_progress(callback))
+        .explain_selection_streaming(
+            &selection,
+            &context,
+            &focus,
+            &images,
+            stream_progress(callback),
+        )
         .await
+}
+
+/// Detect whether the configured model accepts image input. Providers that
+/// expose model modality metadata are checked first; otherwise the translator
+/// sends one minimal image probe. Authentication, network, and rate-limit
+/// failures return `Unknown` rather than being misclassified as unsupported.
+#[uniffi::export(async_runtime = "tokio")]
+pub async fn detect_image_input_capability() -> Result<ImageInputCapability, LumenError> {
+    Ok(llm_translator()?.detect_image_input_capability().await)
 }
 
 // ── Vocabulary API ───────────────────────────────────────────────────────────

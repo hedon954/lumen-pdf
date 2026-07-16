@@ -18,23 +18,18 @@ struct SettingsView: View {
     @State private var showSavedBadge = false
     @State private var saveErrorMessage: String?
     @State private var loadedPromptLanguage = "简体中文"
+    @State private var hasPendingWordPromptUpdate = false
+    @StateObject private var llmConfiguration = LLMConfigurationModel()
 
     var body: some View {
         Form {
-            Section("LLM 配置") {
-                TextField("例：https://api.openai.com/v1", text: $baseURL)
-                    .textFieldStyle(.roundedBorder)
-                    .onSubmit { saveSettings() }
-
-                SecureField("API Key", text: $apiKey)
-                    .textFieldStyle(.roundedBorder)
-                    .onAppear { apiKey = KeychainService.load(key: "llm_api_key") ?? "" }
-                    .onSubmit { saveSettings() }
-
-                TextField("例：gpt-4o-mini", text: $model)
-                    .textFieldStyle(.roundedBorder)
-                    .onSubmit { saveSettings() }
-            }
+            LLMConfigurationSection(
+                baseURL: $baseURL,
+                apiKey: $apiKey,
+                model: $model,
+                configuration: llmConfiguration,
+                onSubmit: saveSettings
+            )
 
             Section("翻译设置") {
                 Picker("目标语言", selection: $targetLanguage) {
@@ -43,6 +38,36 @@ struct SettingsView: View {
                     Text("English").tag("English")
                     Text("日本語").tag("日本語")
                     Text("한국어").tag("한국어")
+                }
+            }
+
+            if hasPendingWordPromptUpdate {
+                Section("提示词更新") {
+                    Label("系统单词提示词已有更新", systemImage: "arrow.triangle.2.circlepath")
+                        .font(.headline)
+
+                    Text("检测到你修改过当前语言的单词提示词，因此没有自动覆盖。你可以保留自定义版本，或切换到包含最新字段和规则的系统版本。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    HStack {
+                        Button("保留自定义") {
+                            PromptTemplateUpdateCoordinator.shared.keepCurrentTemplate(
+                                for: targetLanguage
+                            )
+                            hasPendingWordPromptUpdate = false
+                        }
+
+                        Button("使用新版") {
+                            PromptTemplateUpdateCoordinator.shared.acceptLatestTemplate(
+                                for: targetLanguage
+                            )
+                            wordPromptTemplate = activePromptDefaults.word
+                            hasPendingWordPromptUpdate = false
+                            applyRuntimeConfig()
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
                 }
             }
 
@@ -122,14 +147,29 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .padding()
         .onAppear {
+            apiKey = KeychainService.load(key: "llm_api_key") ?? ""
+            llmConfiguration.remember(baseURL: baseURL, model: model)
+            if llmConfiguration.shouldAutomaticallyRefresh(
+                baseURL: baseURL,
+                apiKey: apiKey
+            ) {
+                Task {
+                    await llmConfiguration.refreshModels(
+                        baseURL: baseURL,
+                        apiKey: apiKey
+                    )
+                }
+            }
             loadedPromptLanguage = targetLanguage
             migratePromptDefaultsIfNeeded()
             loadPromptTemplates(for: targetLanguage, replacingLegacyDefaults: true)
+            refreshPromptUpdateState()
         }
         .onChange(of: targetLanguage) { newLanguage in
             persistPromptTemplates(for: loadedPromptLanguage)
             loadPromptTemplates(for: newLanguage, replacingLegacyDefaults: false)
             loadedPromptLanguage = newLanguage
+            refreshPromptUpdateState()
             applyRuntimeConfig()
         }
         .frame(width: 760, height: 860)
@@ -151,6 +191,11 @@ struct SettingsView: View {
         {
             explanationPromptTemplate = PromptTemplateDefaults.explanation
         }
+    }
+
+    private func refreshPromptUpdateState() {
+        hasPendingWordPromptUpdate =
+            PromptTemplateUpdateCoordinator.shared.hasPendingUpdate(for: targetLanguage)
     }
 
     private func promptStorageKey(_ baseKey: String, language: String) -> String {
@@ -255,6 +300,7 @@ struct SettingsView: View {
     }
 
     private func saveSettings() {
+        llmConfiguration.remember(baseURL: baseURL, model: model)
         KeychainService.save(key: "llm_api_key", value: apiKey)
         applyRuntimeConfig()
     }
@@ -276,7 +322,7 @@ struct SettingsView: View {
     }
 }
 
-private enum PromptTemplateDefaults {
+enum PromptTemplateDefaults {
     struct LanguageDefaults {
         let word: String
         let sentence: String
@@ -322,8 +368,18 @@ private enum PromptTemplateDefaults {
     static let allBuiltInDefaults = [
         wordChinese, sentenceChinese, explanationChinese,
         wordEnglish, sentenceEnglish, explanationEnglish,
+        legacyWordChineseWithEmbeddedEtymology,
+        legacyWordEnglishWithEmbeddedEtymology,
         wordSystemChinese, sentenceSystemChinese, explanationSystemChinese,
         wordSystemEnglish, sentenceSystemEnglish, explanationSystemEnglish
+    ]
+
+    static let wordTemplateRevision = 1
+    static let wordBuiltInDefaults = [
+        wordChinese,
+        wordEnglish,
+        legacyWordChineseWithEmbeddedEtymology,
+        legacyWordEnglishWithEmbeddedEtymology
     ]
 
     static let legacyExplanationSystem = "You are a professional reading tutor. Always respond with valid JSON only."
@@ -334,6 +390,25 @@ private enum PromptTemplateDefaults {
     static let wordSystemChinese = "你是专业语言导师。只输出有效 JSON。"
     static let sentenceSystemChinese = "你是专业翻译和语言导师。只输出有效 JSON。"
     static let explanationSystemChinese = "你是专业阅读导师。只输出解释文本，不要输出 JSON。"
+
+    static let legacyWordEnglishWithEmbeddedEtymology = #"""
+You are a professional language tutor. The user selected the word "{word}" while reading a PDF.
+
+Context sentence: "{sentence}"
+
+IMPORTANT: The selected text may contain OCR errors, line-break hyphens (e.g. "investi-\ngating"), or extra whitespace due to PDF extraction. In the "word" field, output the correctly spelled, properly joined word.
+
+Respond with ONLY valid JSON in this exact format:
+{
+  "word": "correctly spelled word (fix any hyphenation, OCR errors, or typos from PDF extraction)",
+  "phonetic": "IPA phonetic transcription",
+  "part_of_speech": "noun/verb/adjective/adverb/etc",
+  "context_translation": "Translation of the word in this specific context to {lang}",
+  "context_explanation": "Why does it mean this here? Explain the nuance in {lang}. If useful and reliable, add a short optional final subsection about the word origin, historical story, or morphology; otherwise omit that subsection.",
+  "general_definition": "General English definition of the word",
+  "context_sentence_translation": "Full translation of the ENTIRE context sentence above to {lang} (not just the word)"
+}
+"""#
 
     static let wordEnglish = #"""
 You are a professional language tutor. The user selected the word "{word}" while reading a PDF.
@@ -349,6 +424,7 @@ Respond with ONLY valid JSON in this exact format:
   "part_of_speech": "noun/verb/adjective/adverb/etc",
   "context_translation": "Translation of the word in this specific context to {lang}",
   "context_explanation": "Why does it mean this here? Explain the nuance in {lang}",
+  "etymology": "A short standalone word-origin, historical story, or morphology note in {lang}. Use an empty string when the information would be speculative or would not help understanding or memory.",
   "general_definition": "General English definition of the word",
   "context_sentence_translation": "Full translation of the ENTIRE context sentence above to {lang} (not just the word)"
 }
@@ -441,6 +517,25 @@ Respond with ONLY valid JSON in this exact format:
 }
 """#
 
+    static let legacyWordChineseWithEmbeddedEtymology = #"""
+你是专业语言导师。用户在阅读 PDF 时选中了英文单词「{word}」。
+
+上下文句子：「{sentence}」
+
+重要：选中文本可能包含 OCR 错误、PDF 抽取导致的断行连字符（例如 "investi-\ngating"）或多余空格。请在 "word" 字段中输出修正拼写、正确合并后的单词。
+
+只输出符合以下格式的有效 JSON：
+{
+  "word": "修正后的英文单词（修复 PDF 抽取导致的断词、OCR 错误或拼写错误）",
+  "phonetic": "IPA 音标",
+  "part_of_speech": "名词/动词/形容词/副词等词性",
+  "context_translation": "该词在当前语境下翻译成{lang}的意思",
+  "context_explanation": "用{lang}解释它为什么在这里表示这个意思，以及语义细微差别；如果有帮助且可靠，可在末尾追加简短的词源、历史故事或构词来源小节，否则省略",
+  "general_definition": "该英文单词的通用英文释义",
+  "context_sentence_translation": "将上面的整句上下文完整翻译成{lang}（不要只翻译该单词）"
+}
+"""#
+
     static let wordChinese = #"""
 你是专业语言导师。用户在阅读 PDF 时选中了英文单词「{word}」。
 
@@ -455,6 +550,7 @@ Respond with ONLY valid JSON in this exact format:
   "part_of_speech": "名词/动词/形容词/副词等词性",
   "context_translation": "该词在当前语境下翻译成{lang}的意思",
   "context_explanation": "用{lang}解释它为什么在这里表示这个意思，以及语义细微差别",
+  "etymology": "用{lang}单独说明简短的词源、历史故事或构词来源；如果信息不可靠、带有猜测性，或无助于理解和记忆，则输出空字符串",
   "general_definition": "该英文单词的通用英文释义",
   "context_sentence_translation": "将上面的整句上下文完整翻译成{lang}（不要只翻译该单词）"
 }

@@ -41,6 +41,7 @@ final class ReaderPersistence {
         partOfSpeech: String,
         contextTranslation: String,
         contextExplanation: String,
+        etymology: String,
         generalDefinition: String,
         contextSentenceTranslation: String,
         translationSource: String,
@@ -58,6 +59,7 @@ final class ReaderPersistence {
             partOfSpeech: partOfSpeech,
             contextTranslation: contextTranslation,
             contextExplanation: contextExplanation,
+            etymology: etymology,
             generalDefinition: generalDefinition,
             contextSentenceTranslation: contextSentenceTranslation,
             translationSource: translationSource,
@@ -84,6 +86,7 @@ final class ReaderPersistence {
         partOfSpeech: String,
         contextTranslation: String,
         contextExplanation: String,
+        etymology: String,
         generalDefinition: String,
         contextSentenceTranslation: String
     ) throws -> VocabularyEntry {
@@ -93,6 +96,7 @@ final class ReaderPersistence {
             partOfSpeech: partOfSpeech,
             contextTranslation: contextTranslation,
             contextExplanation: contextExplanation,
+            etymology: etymology,
             generalDefinition: generalDefinition,
             contextSentenceTranslation: contextSentenceTranslation
         )

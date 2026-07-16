@@ -31,18 +31,19 @@ fn row_to_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<VocabularyEntry> {
         part_of_speech: row.get(9)?,
         context_translation: row.get(10)?,
         context_explanation: row.get(11)?,
-        general_definition: row.get(12)?,
-        context_sentence_translation: row.get(13)?,
-        translation_source: row.get(14)?,
-        annotation_id: row.get(15)?,
-        created_at: row.get(16)?,
-        query_count: row.get::<_, i64>(17).unwrap_or(0) as u32,
+        etymology: row.get(12)?,
+        general_definition: row.get(13)?,
+        context_sentence_translation: row.get(14)?,
+        translation_source: row.get(15)?,
+        annotation_id: row.get(16)?,
+        created_at: row.get(17)?,
+        query_count: row.get::<_, i64>(18).unwrap_or(0) as u32,
     })
 }
 
 const SELECT_COLS: &str = "id, word, sentence, sentence_hash, pdf_path, pdf_name,
     page_index, selection_bounds, phonetic, part_of_speech,
-    context_translation, context_explanation, general_definition,
+    context_translation, context_explanation, etymology, general_definition,
     context_sentence_translation,
     translation_source, annotation_id, created_at,
     COALESCE(query_count, 0) AS query_count";
@@ -56,10 +57,10 @@ impl VocabularyRepository for SqliteVocabularyRepo {
             "INSERT INTO vocabulary_entries
              (id, word, sentence, sentence_hash, pdf_path, pdf_name, page_index,
               selection_bounds, phonetic, part_of_speech, context_translation,
-              context_explanation, general_definition, context_sentence_translation,
+              context_explanation, etymology, general_definition, context_sentence_translation,
               translation_source, annotation_id, created_at,
               query_count)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,0)",
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,0)",
             rusqlite::params![
                 id,
                 req.word,
@@ -73,6 +74,7 @@ impl VocabularyRepository for SqliteVocabularyRepo {
                 req.part_of_speech,
                 req.context_translation,
                 req.context_explanation,
+                req.etymology,
                 req.general_definition,
                 req.context_sentence_translation,
                 req.translation_source,
@@ -93,6 +95,7 @@ impl VocabularyRepository for SqliteVocabularyRepo {
             part_of_speech: req.part_of_speech,
             context_translation: req.context_translation,
             context_explanation: req.context_explanation,
+            etymology: req.etymology,
             general_definition: req.general_definition,
             context_sentence_translation: req.context_sentence_translation,
             translation_source: req.translation_source,
@@ -166,14 +169,15 @@ impl VocabularyRepository for SqliteVocabularyRepo {
         let conn = self.pool.get()?;
         conn.execute(
             "UPDATE vocabulary_entries SET phonetic = ?1, part_of_speech = ?2,
-             context_translation = ?3, context_explanation = ?4, general_definition = ?5,
-             context_sentence_translation = ?6
-             WHERE id = ?7",
+             context_translation = ?3, context_explanation = ?4, etymology = ?5,
+             general_definition = ?6, context_sentence_translation = ?7
+             WHERE id = ?8",
             rusqlite::params![
                 req.phonetic,
                 req.part_of_speech,
                 req.context_translation,
                 req.context_explanation,
+                req.etymology,
                 req.general_definition,
                 req.context_sentence_translation,
                 req.id,

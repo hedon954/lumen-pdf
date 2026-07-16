@@ -156,6 +156,7 @@ final class BridgeService {
         selection: String,
         context: String,
         focus: String,
+        images: [ImageAttachment],
         onPartial: @escaping @MainActor (TranslationResult) -> Void
     ) async throws -> TranslationResult {
         let receiver = TranslationStreamReceiver(onPartial: onPartial)
@@ -163,8 +164,13 @@ final class BridgeService {
             selection: selection,
             context: context,
             focus: focus,
+            images: images,
             callback: receiver
         )
+    }
+
+    func detectImageInputCapability() async throws -> ImageInputCapability {
+        try await LumenPDF.detectImageInputCapability()
     }
 
     // MARK: - Vocabulary
@@ -175,6 +181,7 @@ final class BridgeService {
         pdfPath: String, pdfName: String, pageIndex: UInt32,
         selectionBounds: String, phonetic: String, partOfSpeech: String,
         contextTranslation: String, contextExplanation: String,
+        etymology: String,
         generalDefinition: String, contextSentenceTranslation: String,
         translationSource: String,
         annotationId: String? = nil
@@ -184,7 +191,8 @@ final class BridgeService {
             pdfPath: pdfPath, pdfName: pdfName, pageIndex: pageIndex,
             selectionBounds: selectionBounds, phonetic: phonetic,
             partOfSpeech: partOfSpeech, contextTranslation: contextTranslation,
-            contextExplanation: contextExplanation, generalDefinition: generalDefinition,
+            contextExplanation: contextExplanation, etymology: etymology,
+            generalDefinition: generalDefinition,
             contextSentenceTranslation: contextSentenceTranslation,
             translationSource: translationSource, annotationId: annotationId
         ))
@@ -217,10 +225,12 @@ final class BridgeService {
     @discardableResult
     func updateVocabulary(id: String, phonetic: String, partOfSpeech: String,
                           contextTranslation: String, contextExplanation: String,
+                          etymology: String,
                           generalDefinition: String, contextSentenceTranslation: String) throws -> VocabularyEntry {
         try _updateVocabulary(UpdateVocabularyRequest(
             id: id, phonetic: phonetic, partOfSpeech: partOfSpeech,
             contextTranslation: contextTranslation, contextExplanation: contextExplanation,
+            etymology: etymology,
             generalDefinition: generalDefinition,
             contextSentenceTranslation: contextSentenceTranslation
         ))

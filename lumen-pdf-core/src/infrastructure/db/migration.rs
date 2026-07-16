@@ -19,6 +19,7 @@ pub fn run(conn: &Connection) -> Result<(), LumenError> {
             part_of_speech      TEXT NOT NULL DEFAULT '',
             context_translation TEXT NOT NULL DEFAULT '',
             context_explanation TEXT NOT NULL DEFAULT '',
+            etymology           TEXT NOT NULL DEFAULT '',
             general_definition  TEXT NOT NULL DEFAULT '',
             context_sentence_translation TEXT NOT NULL DEFAULT '',
             translation_source  TEXT NOT NULL DEFAULT '',
@@ -70,9 +71,31 @@ pub fn run(conn: &Connection) -> Result<(), LumenError> {
     let _ = conn.execute_batch(
         "ALTER TABLE vocabulary_entries ADD COLUMN context_sentence_translation TEXT NOT NULL DEFAULT '';"
     );
+    add_column_if_missing(
+        conn,
+        "vocabulary_entries",
+        "etymology",
+        "ALTER TABLE vocabulary_entries ADD COLUMN etymology TEXT NOT NULL DEFAULT '';",
+    )?;
 
     migrate_translation_cache_language_key(conn)?;
 
+    Ok(())
+}
+
+fn add_column_if_missing(
+    conn: &Connection,
+    table: &str,
+    column: &str,
+    statement: &str,
+) -> Result<(), LumenError> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+    let columns = stmt
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<Result<Vec<_>, _>>()?;
+    if !columns.iter().any(|existing| existing == column) {
+        conn.execute_batch(statement)?;
+    }
     Ok(())
 }
 
@@ -110,4 +133,58 @@ fn migrate_translation_cache_language_key(conn: &Connection) -> Result<(), Lumen
         ",
     )?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn adds_etymology_to_existing_vocabulary_table_idempotently() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "
+            CREATE TABLE vocabulary_entries (
+                id TEXT PRIMARY KEY,
+                word TEXT NOT NULL,
+                sentence TEXT NOT NULL,
+                sentence_hash TEXT NOT NULL,
+                pdf_path TEXT NOT NULL,
+                pdf_name TEXT NOT NULL,
+                page_index INTEGER NOT NULL,
+                selection_bounds TEXT NOT NULL DEFAULT '',
+                phonetic TEXT NOT NULL DEFAULT '',
+                part_of_speech TEXT NOT NULL DEFAULT '',
+                context_translation TEXT NOT NULL DEFAULT '',
+                context_explanation TEXT NOT NULL DEFAULT '',
+                general_definition TEXT NOT NULL DEFAULT '',
+                context_sentence_translation TEXT NOT NULL DEFAULT '',
+                translation_source TEXT NOT NULL DEFAULT '',
+                annotation_id TEXT,
+                created_at INTEGER NOT NULL,
+                query_count INTEGER NOT NULL DEFAULT 0
+            );
+            ",
+        )
+        .unwrap();
+
+        run(&conn).unwrap();
+        run(&conn).unwrap();
+
+        let mut stmt = conn
+            .prepare("PRAGMA table_info(vocabulary_entries)")
+            .unwrap();
+        let columns = stmt
+            .query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(
+            columns
+                .iter()
+                .filter(|column| column.as_str() == "etymology")
+                .count(),
+            1
+        );
+    }
 }

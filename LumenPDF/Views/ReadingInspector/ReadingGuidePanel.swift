@@ -1,14 +1,19 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ReadingGuidePanel: View {
     @ObservedObject var model: ReadingInspectorModel
     @EnvironmentObject private var appState: AppState
+    @AppStorage("llm_base_url") private var llmBaseURL = ""
+    @AppStorage("llm_model") private var llmModel = ""
 
     @State private var question = ""
     @State private var shouldFollowStream = true
     @State private var hasOverflow = false
     @State private var contentHeight: CGFloat = 0
+    @State private var isImageImporterPresented = false
+    @State private var attachedImageURLs: [URL] = []
     @FocusState private var isQuestionFocused: Bool
 
     private static let bottomID = "reading-guide-bottom"
@@ -34,6 +39,14 @@ struct ReadingGuidePanel: View {
             if !loading {
                 focusQuestion()
             }
+        }
+        .onChange(of: model.imageInputCapability) { _, capability in
+            if capability == .unsupported {
+                attachedImageURLs = []
+            }
+        }
+        .task(id: imageCapabilityConfigurationKey) {
+            await model.refreshImageInputCapability()
         }
     }
 
@@ -280,33 +293,58 @@ struct ReadingGuidePanel: View {
 
     private func questionBar(isLoading: Bool) -> some View {
         HStack(spacing: 8) {
-            Image(systemName: "bubble.left.and.text.bubble.right")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .frame(width: 18)
-            TextField(
-                text: $question,
-                prompt: Text("继续追问，留空则直接解释")
-                    .foregroundStyle(.secondary)
-            ) {
-                EmptyView()
-            }
-            .textFieldStyle(.plain)
-            .focused($isQuestionFocused)
-            .submitLabel(.send)
-            .onSubmit { submitQuestion() }
-            .disabled(isLoading)
+            VStack(spacing: 6) {
+                HStack(alignment: .center, spacing: 8) {
+                    Image(systemName: "bubble.left.and.text.bubble.right")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 18)
 
-            Button {
-                submitQuestion()
-            } label: {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.title3)
-                    .symbolRenderingMode(.hierarchical)
+                    TextField(
+                        "继续追问，留空则直接解释",
+                        text: $question,
+                        axis: .vertical
+                    )
+                    .font(.callout)
+                    .textFieldStyle(.plain)
+                    .lineLimit(1...10)
+                    .focused($isQuestionFocused)
+                    .disabled(isLoading)
+                    .padding(.vertical, 6)
+
+                    Button {
+                        isImageImporterPresented = true
+                    } label: {
+                        Image(systemName: "photo.badge.plus")
+                            .font(.title3)
+                            .symbolRenderingMode(.hierarchical)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(
+                        isLoading
+                            || model.isCheckingImageInputCapability
+                            || model.imageInputCapability == .unsupported
+                    )
+                    .help(imageAttachmentHelp)
+
+                    Button {
+                        submitQuestion()
+                    } label: {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.title3)
+                            .symbolRenderingMode(.hierarchical)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isLoading)
+                    .keyboardShortcut(.defaultAction)
+                    .help("发送（⌘↩ 或默认按钮）")
+                }
+
+                if !attachedImageURLs.isEmpty {
+                    attachedImagesStrip
+                }
             }
-            .buttonStyle(.plain)
-            .disabled(isLoading)
-            .keyboardShortcut(.defaultAction)
+            .frame(maxWidth: .infinity)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
@@ -318,13 +356,65 @@ struct ReadingGuidePanel: View {
                     lineWidth: isQuestionFocused ? 1.1 : 0.8
                 )
         }
+        .fileImporter(
+            isPresented: $isImageImporterPresented,
+            allowedContentTypes: [.image],
+            allowsMultipleSelection: true
+        ) { result in
+            if case let .success(urls) = result {
+                attachedImageURLs.append(contentsOf: urls)
+            }
+        }
+    }
+
+    private var attachedImagesStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(Array(attachedImageURLs.enumerated()), id: \.offset) { index, url in
+                    HStack(spacing: 4) {
+                        Image(systemName: "photo")
+                        Text(url.lastPathComponent)
+                            .lineLimit(1)
+                        Button {
+                            attachedImageURLs.remove(at: index)
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .font(.caption)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(Color.primary.opacity(0.07), in: Capsule())
+                }
+            }
+        }
+    }
+
+    private var imageCapabilityConfigurationKey: String {
+        "\(llmBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))|\(llmModel)"
+    }
+
+    private var imageAttachmentHelp: String {
+        switch model.imageInputCapability {
+        case .supported:
+            return "附加原图并发送给 LLM"
+        case .unsupported:
+            return "当前模型不支持图片输入"
+        case .unknown:
+            return model.isCheckingImageInputCapability
+                ? "正在检测当前模型是否支持图片输入"
+                : "未能确认模型能力；仍可附加原图，失败时显示模型错误"
+        }
     }
 
     private func submitQuestion() {
         shouldFollowStream = true
         let questionToSubmit = question
+        let imageURLs = attachedImageURLs
         question = ""
-        model.submitGuideQuestion(questionToSubmit)
+        attachedImageURLs = []
+        model.submitGuideQuestion(questionToSubmit, imageURLs: imageURLs)
     }
 
     private func focusQuestion() {

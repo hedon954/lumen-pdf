@@ -190,6 +190,7 @@ struct TranslationBubble: View {
             || !result.partOfSpeech.isEmpty
             || !result.contextTranslation.isEmpty
             || !result.contextExplanation.isEmpty
+            || !result.etymology.isEmpty
             || !result.generalDefinition.isEmpty
             || !result.contextSentenceTranslation.isEmpty
             || !result.sentenceBreakdown.isEmpty
@@ -261,6 +262,16 @@ struct TranslationBubble: View {
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
+                }
+            }
+
+            if !result.etymology.isEmpty {
+                BubbleSection("词源 / 历史故事") {
+                    Text(result.etymology)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
 

@@ -1,4 +1,5 @@
 import Foundation
+import UniformTypeIdentifiers
 
 @MainActor
 final class ReadingGuideService {
@@ -6,6 +7,7 @@ final class ReadingGuideService {
 
     func submitQuestion(
         _ question: String,
+        imageURLs: [URL],
         session: ExplanationSession,
         onSessionChange: @escaping @MainActor (ExplanationSession) -> Void
     ) {
@@ -16,9 +18,14 @@ final class ReadingGuideService {
             summary: session.summary,
             messages: session.messages
         )
+        var displayedQuestion = trimmedQuestion.isEmpty ? "直接解释" : trimmedQuestion
+        if !imageURLs.isEmpty {
+            let names = imageURLs.map(\.lastPathComponent).joined(separator: "、")
+            displayedQuestion += "\n\n图片：\(names)"
+        }
         let userMessage = ExplanationMessage(
             role: .user,
-            content: trimmedQuestion.isEmpty ? "直接解释" : trimmedQuestion
+            content: displayedQuestion
         )
         let assistantMessage = ExplanationMessage(role: .assistant, content: "")
 
@@ -41,10 +48,21 @@ final class ReadingGuideService {
 
         Task {
             do {
+                let preparedImages = try await Task.detached(priority: .userInitiated) {
+                    try Self.prepareImages(from: imageURLs)
+                }.value
+                let images = preparedImages.map {
+                    ImageAttachment(
+                        fileName: $0.fileName,
+                        mimeType: $0.mimeType,
+                        base64Data: $0.base64Data
+                    )
+                }
                 let result = try await bridge.explainSelectionStreaming(
                     selection: session.selection.selectedText,
                     context: session.selection.surroundingText,
                     focus: focus,
+                    images: images,
                     onPartial: { partial in
                         var updated = pending
                         guard updated.id == sessionId else { return }
@@ -81,6 +99,34 @@ final class ReadingGuideService {
                 onSessionChange(failed)
             }
         }
+    }
+
+    nonisolated private static func prepareImages(from urls: [URL]) throws -> [PreparedGuideImage] {
+        try urls.map(prepareImage)
+    }
+
+    nonisolated private static func prepareImage(from url: URL) throws -> PreparedGuideImage {
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer {
+            if accessing {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        let sourceData = try Data(contentsOf: url, options: .mappedIfSafe)
+        let resourceType = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType
+        let extensionType = UTType(filenameExtension: url.pathExtension)
+        guard let mimeType = resourceType?.preferredMIMEType
+            ?? extensionType?.preferredMIMEType
+        else {
+            throw GuideImagePreparationError.unknownMimeType(url.lastPathComponent)
+        }
+
+        return PreparedGuideImage(
+            fileName: url.lastPathComponent,
+            mimeType: mimeType,
+            base64Data: sourceData.base64EncodedString()
+        )
     }
 
     func saveAssistantMessage(_ message: ExplanationMessage, session: ExplanationSession) -> String? {
@@ -206,5 +252,22 @@ final class ReadingGuideService {
         guard text.count > limit else { return text }
         let index = text.index(text.startIndex, offsetBy: max(0, limit))
         return String(text[..<index]) + "..."
+    }
+}
+
+private struct PreparedGuideImage: Sendable {
+    let fileName: String
+    let mimeType: String
+    let base64Data: String
+}
+
+private enum GuideImagePreparationError: LocalizedError {
+    case unknownMimeType(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .unknownMimeType(let name):
+            return "无法识别图片「\(name)」的格式。"
+        }
     }
 }
