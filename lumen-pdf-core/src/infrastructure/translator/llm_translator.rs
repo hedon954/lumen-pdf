@@ -49,7 +49,7 @@ Respond with ONLY valid JSON in this exact format:
   "phonetic": "IPA phonetic transcription",
   "part_of_speech": "noun/verb/adjective/adverb/etc",
   "context_translation": "Translation of the word in this specific context to {lang}",
-  "context_explanation": "Why does it mean this here? Explain the nuance in {lang}",
+  "context_explanation": "Why does it mean this here? Explain the nuance in {lang}. If useful and reliable, add a short optional final subsection about the word origin, historical story, or morphology; omit that subsection when it would be speculative.",
   "general_definition": "General English definition of the word",
   "context_sentence_translation": "Full translation of the ENTIRE context sentence above to {lang} (not just the word)"
 }"#;

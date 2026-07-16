@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ReadingGuidePanel: View {
     @ObservedObject var model: ReadingInspectorModel
@@ -9,6 +10,8 @@ struct ReadingGuidePanel: View {
     @State private var shouldFollowStream = true
     @State private var hasOverflow = false
     @State private var contentHeight: CGFloat = 0
+    @State private var isImageImporterPresented = false
+    @State private var attachedImageURLs: [URL] = []
     @FocusState private var isQuestionFocused: Bool
 
     private static let bottomID = "reading-guide-bottom"
@@ -280,33 +283,59 @@ struct ReadingGuidePanel: View {
 
     private func questionBar(isLoading: Bool) -> some View {
         HStack(spacing: 8) {
-            Image(systemName: "bubble.left.and.text.bubble.right")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .frame(width: 18)
-            TextField(
-                text: $question,
-                prompt: Text("继续追问，留空则直接解释")
-                    .foregroundStyle(.secondary)
-            ) {
-                EmptyView()
-            }
-            .textFieldStyle(.plain)
-            .focused($isQuestionFocused)
-            .submitLabel(.send)
-            .onSubmit { submitQuestion() }
-            .disabled(isLoading)
+            VStack(spacing: 6) {
+                HStack(alignment: .bottom, spacing: 8) {
+                    Image(systemName: "bubble.left.and.text.bubble.right")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 18)
+                        .padding(.bottom, 5)
 
-            Button {
-                submitQuestion()
-            } label: {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.title3)
-                    .symbolRenderingMode(.hierarchical)
+                    ZStack(alignment: .topLeading) {
+                        if question.isEmpty {
+                            Text("继续追问，留空则直接解释")
+                                .foregroundStyle(.secondary)
+                                .padding(.top, 8)
+                                .padding(.leading, 5)
+                                .allowsHitTesting(false)
+                        }
+                        TextEditor(text: $question)
+                            .font(.callout)
+                            .scrollContentBackground(.hidden)
+                            .frame(minHeight: questionEditorHeight, maxHeight: questionEditorHeight)
+                            .focused($isQuestionFocused)
+                            .disabled(isLoading)
+                    }
+
+                    Button {
+                        isImageImporterPresented = true
+                    } label: {
+                        Image(systemName: "photo.badge.plus")
+                            .font(.title3)
+                            .symbolRenderingMode(.hierarchical)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isLoading)
+                    .help("附加图片（当前会随问题记录图片文件名）")
+
+                    Button {
+                        submitQuestion()
+                    } label: {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.title3)
+                            .symbolRenderingMode(.hierarchical)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isLoading)
+                    .keyboardShortcut(.defaultAction)
+                    .help("发送（⌘↩ 或默认按钮）")
+                }
+
+                if !attachedImageURLs.isEmpty {
+                    attachedImagesStrip
+                }
             }
-            .buttonStyle(.plain)
-            .disabled(isLoading)
-            .keyboardShortcut(.defaultAction)
+            .frame(maxWidth: .infinity)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
@@ -318,12 +347,57 @@ struct ReadingGuidePanel: View {
                     lineWidth: isQuestionFocused ? 1.1 : 0.8
                 )
         }
+        .fileImporter(
+            isPresented: $isImageImporterPresented,
+            allowedContentTypes: [.image],
+            allowsMultipleSelection: true
+        ) { result in
+            if case let .success(urls) = result {
+                attachedImageURLs.append(contentsOf: urls)
+            }
+        }
+    }
+
+    private var questionEditorHeight: CGFloat {
+        let explicitLines = question.components(separatedBy: .newlines).count
+        let wrappedLines = max(1, question.count / 34 + 1)
+        let lines = min(10, max(explicitLines, wrappedLines))
+        return CGFloat(lines) * 20 + 14
+    }
+
+    private var attachedImagesStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(Array(attachedImageURLs.enumerated()), id: \.offset) { index, url in
+                    HStack(spacing: 4) {
+                        Image(systemName: "photo")
+                        Text(url.lastPathComponent)
+                            .lineLimit(1)
+                        Button {
+                            attachedImageURLs.remove(at: index)
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .font(.caption)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(Color.primary.opacity(0.07), in: Capsule())
+                }
+            }
+        }
     }
 
     private func submitQuestion() {
         shouldFollowStream = true
-        let questionToSubmit = question
+        var questionToSubmit = question
+        if !attachedImageURLs.isEmpty {
+            let names = attachedImageURLs.map(\.lastPathComponent).joined(separator: ", ")
+            questionToSubmit += "\n\n[附加图片：\(names)]"
+        }
         question = ""
+        attachedImageURLs = []
         model.submitGuideQuestion(questionToSubmit)
     }
 

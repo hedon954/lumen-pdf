@@ -348,7 +348,7 @@ Respond with ONLY valid JSON in this exact format:
   "phonetic": "IPA phonetic transcription",
   "part_of_speech": "noun/verb/adjective/adverb/etc",
   "context_translation": "Translation of the word in this specific context to {lang}",
-  "context_explanation": "Why does it mean this here? Explain the nuance in {lang}",
+  "context_explanation": "Why does it mean this here? Explain the nuance in {lang}. If useful and reliable, add a short optional final subsection about the word origin, historical story, or morphology; otherwise omit that subsection.",
   "general_definition": "General English definition of the word",
   "context_sentence_translation": "Full translation of the ENTIRE context sentence above to {lang} (not just the word)"
 }
@@ -454,7 +454,7 @@ Respond with ONLY valid JSON in this exact format:
   "phonetic": "IPA 音标",
   "part_of_speech": "名词/动词/形容词/副词等词性",
   "context_translation": "该词在当前语境下翻译成{lang}的意思",
-  "context_explanation": "用{lang}解释它为什么在这里表示这个意思，以及语义细微差别",
+  "context_explanation": "用{lang}解释它为什么在这里表示这个意思，以及语义细微差别；如果有帮助且可靠，可在末尾追加简短的词源、历史故事或构词来源小节，否则省略",
   "general_definition": "该英文单词的通用英文释义",
   "context_sentence_translation": "将上面的整句上下文完整翻译成{lang}（不要只翻译该单词）"
 }
