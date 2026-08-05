@@ -53,6 +53,7 @@ struct UnderlineNoteDraftView: View {
             Text(draft.appendingNoteId == nil ? "添加笔记" : "追加笔记")
                 .font(.headline)
             Spacer()
+            ReadingOverlayMoveHandle()
             Button(action: onCancel) {
                 Image(systemName: "xmark")
                     .font(.callout.weight(.medium))

@@ -739,6 +739,7 @@ private struct NoteReviewPopoverView: View {
             Text("笔记")
                 .font(.headline)
             Spacer()
+            ReadingOverlayMoveHandle()
             Button(action: onClose) {
                 Image(systemName: "xmark")
                     .font(.callout.weight(.medium))

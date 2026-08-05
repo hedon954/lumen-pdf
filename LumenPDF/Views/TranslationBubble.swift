@@ -82,10 +82,7 @@ struct TranslationBubble: View {
             Spacer(minLength: 8)
 
             HStack(spacing: 8) {
-                Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .help("拖动标题栏，或长按正文区域后拖动，可移动窗口")
+                ReadingOverlayMoveHandle()
 
                 Button {
                     audio.speak(request.result?.word ?? request.word)

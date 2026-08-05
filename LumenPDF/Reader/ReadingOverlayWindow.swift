@@ -50,12 +50,9 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
     @State private var customSize: CGSize?
     @State private var customCenter: CGPoint?
     @State private var automaticPlacement: ReadingOverlayPlacement?
-    @State private var longPressMoveOrigin: CGPoint?
 
     private let preferredGap: CGFloat = 12
     private let horizontalSafeInset: CGFloat = 12
-    private let longPressMoveDelay: TimeInterval = 0.28
-    private let longPressMoveSlop: CGFloat = 8
 
     init(
         anchorRect: CGRect,
@@ -78,33 +75,30 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
     }
 
     var body: some View {
-        ZStack {
+        // `.position` expands the child's layout/hit-testing to the full parent. An empty
+        // `onTapGesture` on that child then swallows every click in the reader, so outside
+        // taps and even header buttons stop working. Place the card with `offset` instead so
+        // only its visual bounds receive hits; the clear backdrop handles dismissal.
+        ZStack(alignment: .topLeading) {
             if configuration.dismissesOnBackgroundTap {
                 Color.clear
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .contentShape(Rectangle())
                     .onTapGesture(perform: onDismiss)
             }
 
             window
-                .position(displayedCenter)
+                .offset(x: displayedOrigin.x, y: displayedOrigin.y)
                 .animation(nil, value: customCenter)
-                .onTapGesture {}
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onChange(of: resetID) { _, _ in resetWindowState() }
         .onChange(of: availableSize) { _, _ in handleAvailableSizeChange() }
-        .onDisappear(perform: endLongPressMove)
     }
 
     private var window: some View {
         VStack(alignment: .leading, spacing: 0) {
             header()
-                .contentShape(Rectangle())
-                .background(
-                    ReadingOverlayDragCapture { delta in
-                        moveWindow(by: delta)
-                    }
-                )
                 .readingOverlayMeasureHeight { measuredHeaderHeight = $0 }
 
             Divider()
@@ -123,14 +117,14 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
         }
-        .overlay { resizeOverlay }
+        // Keep resize handles below the header so they cannot cover the close / move controls.
+        .overlay {
+            resizeOverlay
+                .padding(.top, max(0, measuredHeaderHeight - resizeHitThickness))
+        }
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(
-            color: .black.opacity(isMovingByLongPress ? 0.2 : 0.12),
-            radius: isMovingByLongPress ? 24 : 18,
-            x: 0,
-            y: 8
-        )
+        .shadow(color: .black.opacity(0.12), radius: 18, x: 0, y: 8)
+        .environment(\.readingOverlayMove, moveWindow)
         .readingOverlayMeasureSize(recordMeasuredWindowSize)
     }
 
@@ -143,8 +137,6 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
         .frame(maxHeight: customSize == nil ? nil : .infinity)
         .scrollIndicators(.automatic)
         .layoutPriority(customSize == nil ? 0 : 1)
-        .contentShape(Rectangle())
-        .simultaneousGesture(longPressMoveGesture)
     }
 
     private var measuredContent: some View {
@@ -210,6 +202,15 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
         return clampedCenter(customCenter ?? automaticCenter(for: size), windowSize: size)
     }
 
+    private var displayedOrigin: CGPoint {
+        let size = renderedSize
+        let center = displayedCenter
+        return CGPoint(
+            x: center.x - size.width / 2,
+            y: center.y - size.height / 2
+        )
+    }
+
     private func automaticCenter(for size: CGSize) -> CGPoint {
         let input = placementInput(for: size)
         let result = if let automaticPlacement {
@@ -269,48 +270,13 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
         )
     }
 
-    private func moveWindow(by delta: CGSize) {
+    private func moveWindow(_ delta: CGSize) {
         let size = renderedSize
         let center = displayedCenter
         customCenter = clampedCenter(
             CGPoint(x: center.x + delta.width, y: center.y + delta.height),
             windowSize: size
         )
-    }
-
-    private var isMovingByLongPress: Bool { longPressMoveOrigin != nil }
-
-    /// Holding anywhere in the body picks the overlay up, so it can be moved off the text it
-    /// covers without aiming for the header. The translation is measured in the window
-    /// coordinate space, which does not move with the overlay while it follows the pointer.
-    private var longPressMoveGesture: some Gesture {
-        LongPressGesture(minimumDuration: longPressMoveDelay, maximumDistance: longPressMoveSlop)
-            .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .global))
-            .onChanged { value in
-                guard case .second(true, let drag?) = value else { return }
-                beginLongPressMove()
-                guard let origin = longPressMoveOrigin else { return }
-                customCenter = clampedCenter(
-                    CGPoint(
-                        x: origin.x + drag.translation.width,
-                        y: origin.y + drag.translation.height
-                    ),
-                    windowSize: renderedSize
-                )
-            }
-            .onEnded { _ in endLongPressMove() }
-    }
-
-    private func beginLongPressMove() {
-        guard longPressMoveOrigin == nil else { return }
-        longPressMoveOrigin = displayedCenter
-        NSCursor.closedHand.push()
-    }
-
-    private func endLongPressMove() {
-        guard longPressMoveOrigin != nil else { return }
-        longPressMoveOrigin = nil
-        NSCursor.pop()
     }
 
     @ViewBuilder
@@ -418,7 +384,6 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
     }
 
     private func resetWindowState() {
-        endLongPressMove()
         measuredWindowSize = .zero
         measuredHeaderHeight = 0
         measuredContentHeight = 0
@@ -426,6 +391,38 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
         customSize = nil
         customCenter = nil
         automaticPlacement = nil
+    }
+}
+
+/// Drag handle for reading overlays. Place it in the header where the move affordance should be;
+/// pressing and dragging it repositions the host `ReadingOverlayWindow`.
+struct ReadingOverlayMoveHandle: View {
+    @Environment(\.readingOverlayMove) private var move
+
+    var body: some View {
+        ReadingOverlayDragCapture { delta in
+            move?(delta)
+        }
+        .frame(width: 28, height: 28)
+        .overlay {
+            Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .allowsHitTesting(false)
+        }
+        .help("拖动以移动窗口")
+        .accessibilityLabel("移动窗口")
+    }
+}
+
+private enum ReadingOverlayMoveKey: EnvironmentKey {
+    static let defaultValue: ((CGSize) -> Void)? = nil
+}
+
+private extension EnvironmentValues {
+    var readingOverlayMove: ((CGSize) -> Void)? {
+        get { self[ReadingOverlayMoveKey.self] }
+        set { self[ReadingOverlayMoveKey.self] = newValue }
     }
 }
 
@@ -449,6 +446,7 @@ private struct ReadingOverlayDragCapture: NSViewRepresentable {
     final class CaptureView: NSView {
         weak var coordinator: Coordinator?
         private var lastLocation: CGPoint?
+        private var isDragging = false
 
         init(coordinator: Coordinator) {
             self.coordinator = coordinator
@@ -457,18 +455,31 @@ private struct ReadingOverlayDragCapture: NSViewRepresentable {
 
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-        override func mouseDown(with event: NSEvent) { lastLocation = event.locationInWindow }
+        override func mouseDown(with event: NSEvent) {
+            lastLocation = event.locationInWindow
+            isDragging = true
+            NSCursor.closedHand.set()
+        }
+
         override func mouseDragged(with event: NSEvent) {
-            guard let lastLocation else { return }
+            guard isDragging, let lastLocation else { return }
             let current = event.locationInWindow
             coordinator?.onDelta(
                 CGSize(width: current.x - lastLocation.x, height: -(current.y - lastLocation.y))
             )
             self.lastLocation = current
         }
-        override func mouseUp(with event: NSEvent) { lastLocation = nil }
+
+        override func mouseUp(with event: NSEvent) {
+            lastLocation = nil
+            isDragging = false
+            window?.invalidateCursorRects(for: self)
+            NSCursor.openHand.set()
+        }
+
         override func resetCursorRects() { addCursorRect(bounds, cursor: .openHand) }
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+        override var mouseDownCanMoveWindow: Bool { false }
     }
 }
 
