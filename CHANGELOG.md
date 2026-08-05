@@ -3,6 +3,24 @@
 LumenPDF 的版本记录由人工/AI 维护。每个版本只记录对用户或后续开发有意义的变化，并为具体变更附上对应的 GitHub commit URL。
 
 ---
+## [1.0.20](https://github.com/hedon954/lumen-pdf/compare/v1.0.19..v1.0.20) - 2026-08-05
+
+这一版让重新打开文档时更稳定地回到上次阅读的可见位置，并修好翻译等阅读浮层的拖动与关闭体验。
+
+### 修复
+
+- 阅读位置改为优先按页面坐标系中的可视锚点恢复，避免窗口尺寸、分栏宽度和自动缩放变化后，原先按文档高度比例换算出的位置漂移到前几页；布局稳定前会持续对齐，用户主动滚动或显式跳转时立即交还控制权（[b885f21](https://github.com/hedon954/lumen-pdf/commit/b885f2144a48a22508a7ccd0280502fa6efe97a0)）。
+- 修复阅读浮层无法点击关闭、无法点外关闭的问题：浮层改为按卡片实际尺寸放置，不再让铺满阅读区的空点击手势吞掉事件；同时把四向箭头做成真正的拖动手柄，缩放热区下移以免盖住关闭按钮（[28e1e7c](https://github.com/hedon954/lumen-pdf/commit/28e1e7cd01e35301c2f243214285ad89ac5288a0)）。
+
+### 主要变化
+
+- 翻译、笔记草稿和笔记回顾浮层统一提供可按住拖动的移动手柄，遮挡正文时可直接挪开（[28e1e7c](https://github.com/hedon954/lumen-pdf/commit/28e1e7cd01e35301c2f243214285ad89ac5288a0)）。
+
+### 工程与文档
+
+- 补充阅读位置锚点恢复与浮层拖动/关闭的 PRD/TDD，并增加 `ReaderViewportGeometry` 与 `PDFViewport` 兼容性的单元测试（[b885f21](https://github.com/hedon954/lumen-pdf/commit/b885f2144a48a22508a7ccd0280502fa6efe97a0)，[0c9298b](https://github.com/hedon954/lumen-pdf/commit/0c9298b13ed370e5d9118094af6368d633e1ccab)）。
+
+---
 ## [1.0.19](https://github.com/hedon954/lumen-pdf/compare/v1.0.18..v1.0.19) - 2026-07-16
 
 这一版完善 AI 辅助阅读链路：单词解释增加独立词源内容，追问支持原图多模态输入，并让不同 LLM 厂商和模型的配置、发现与切换更加顺手。

@@ -33,11 +33,32 @@ struct ReadingRestorationState: Codable, Equatable {
     }
 
     struct PDFViewport: Codable, Equatable {
+        /// Top-left corner of the visible reading area, expressed in the coordinate space of
+        /// one page.
+        ///
+        /// The normalized offsets below are fractions of the document layout that existed when
+        /// they were captured, so they point somewhere else as soon as PDFKit re-fits the
+        /// document at another scale — which is exactly what happens while the window frame and
+        /// split widths are still being restored. A page anchor is independent of scale, so it
+        /// stays on the same line of text.
+        struct PageAnchor: Codable, Equatable {
+            var pageIndex: Int
+            var x: Double
+            var y: Double
+
+            var isValid: Bool {
+                pageIndex >= 0 && x.isFinite && y.isFinite
+            }
+        }
+
         var pageIndex: Int?
         var autoScales: Bool
         var scaleFactor: Double
         var horizontalOffset: Double
         var verticalOffset: Double
+        /// Absent for viewports saved before anchors existed; the normalized offsets are the
+        /// fallback in that case.
+        var anchor: PageAnchor?
     }
 
     static let currentVersion = 1
@@ -189,13 +210,22 @@ final class ReadingRestorationStore: ObservableObject {
             minimum: ReadingRestorationState.minimumInspectorWidth,
             maximum: ReadingRestorationState.maximumInspectorWidth
         )
-        state.pdfViewports = state.pdfViewports.filter { _, viewport in
-            viewport.scaleFactor.isFinite
-                && viewport.scaleFactor > 0
-                && viewport.horizontalOffset.isFinite
-                && viewport.verticalOffset.isFinite
-        }
+        state.pdfViewports = state.pdfViewports.compactMapValues(sanitizedViewport)
         return state
+    }
+
+    private static func sanitizedViewport(
+        _ viewport: ReadingRestorationState.PDFViewport
+    ) -> ReadingRestorationState.PDFViewport? {
+        guard viewport.scaleFactor.isFinite,
+              viewport.scaleFactor > 0,
+              viewport.horizontalOffset.isFinite,
+              viewport.verticalOffset.isFinite else { return nil }
+        var result = viewport
+        if result.anchor?.isValid == false {
+            result.anchor = nil
+        }
+        return result
     }
 
     private static func migrateLegacyState(from defaults: UserDefaults) -> ReadingRestorationState {

@@ -193,6 +193,63 @@ enum ReadingOverlayPlacementPolicy {
     }
 }
 
+/// Maps a saved reading position onto the PDFKit scroll view.
+///
+/// PDFKit re-lays out the document whenever the window frame, the split widths, or the
+/// auto-scale factor change, so a position stored as a fraction of the document height lands
+/// on a different page once the layout settles. Restoring from the document-space point that
+/// was visible in the top-left corner keeps the same text on screen at any scale; the
+/// normalized variant only exists for viewports saved before anchors were introduced.
+enum ReaderViewportGeometry {
+    static func maximumScrollOrigin(visibleSize: CGSize, documentSize: CGSize) -> CGPoint {
+        CGPoint(
+            x: max(0, documentSize.width - visibleSize.width),
+            y: max(0, documentSize.height - visibleSize.height)
+        )
+    }
+
+    /// Document-space point currently shown in the top-left corner of the viewport.
+    static func visibleTopLeft(of visibleRect: CGRect, isDocumentFlipped: Bool) -> CGPoint {
+        CGPoint(
+            x: visibleRect.minX,
+            y: isDocumentFlipped ? visibleRect.minY : visibleRect.maxY
+        )
+    }
+
+    /// Clip view origin that brings `topLeft` back to the top-left corner of the viewport.
+    static func scrollOrigin(
+        visibleTopLeft topLeft: CGPoint,
+        visibleSize: CGSize,
+        documentSize: CGSize,
+        isDocumentFlipped: Bool
+    ) -> CGPoint {
+        let maximum = maximumScrollOrigin(visibleSize: visibleSize, documentSize: documentSize)
+        let y = isDocumentFlipped ? topLeft.y : topLeft.y - visibleSize.height
+        return CGPoint(
+            x: min(max(topLeft.x, 0), maximum.x),
+            y: min(max(y, 0), maximum.y)
+        )
+    }
+
+    static func scrollOrigin(
+        normalizedHorizontal: Double,
+        normalizedVertical: Double,
+        visibleSize: CGSize,
+        documentSize: CGSize
+    ) -> CGPoint {
+        let maximum = maximumScrollOrigin(visibleSize: visibleSize, documentSize: documentSize)
+        return CGPoint(
+            x: CGFloat(unitFraction(normalizedHorizontal)) * maximum.x,
+            y: CGFloat(unitFraction(normalizedVertical)) * maximum.y
+        )
+    }
+
+    private static func unitFraction(_ value: Double) -> Double {
+        guard value.isFinite else { return 0 }
+        return min(max(value, 0), 1)
+    }
+}
+
 struct NoteAnchorRequest: Identifiable, Equatable {
     let id: String
     let noteId: String
