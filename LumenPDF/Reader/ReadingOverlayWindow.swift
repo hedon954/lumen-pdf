@@ -50,9 +50,12 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
     @State private var customSize: CGSize?
     @State private var customCenter: CGPoint?
     @State private var automaticPlacement: ReadingOverlayPlacement?
+    @State private var longPressMoveOrigin: CGPoint?
 
     private let preferredGap: CGFloat = 12
     private let horizontalSafeInset: CGFloat = 12
+    private let longPressMoveDelay: TimeInterval = 0.28
+    private let longPressMoveSlop: CGFloat = 8
 
     init(
         anchorRect: CGRect,
@@ -90,6 +93,7 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onChange(of: resetID) { _, _ in resetWindowState() }
         .onChange(of: availableSize) { _, _ in handleAvailableSizeChange() }
+        .onDisappear(perform: endLongPressMove)
     }
 
     private var window: some View {
@@ -121,7 +125,12 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
         }
         .overlay { resizeOverlay }
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: .black.opacity(0.12), radius: 18, x: 0, y: 8)
+        .shadow(
+            color: .black.opacity(isMovingByLongPress ? 0.2 : 0.12),
+            radius: isMovingByLongPress ? 24 : 18,
+            x: 0,
+            y: 8
+        )
         .readingOverlayMeasureSize(recordMeasuredWindowSize)
     }
 
@@ -134,6 +143,8 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
         .frame(maxHeight: customSize == nil ? nil : .infinity)
         .scrollIndicators(.automatic)
         .layoutPriority(customSize == nil ? 0 : 1)
+        .contentShape(Rectangle())
+        .simultaneousGesture(longPressMoveGesture)
     }
 
     private var measuredContent: some View {
@@ -267,6 +278,41 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
         )
     }
 
+    private var isMovingByLongPress: Bool { longPressMoveOrigin != nil }
+
+    /// Holding anywhere in the body picks the overlay up, so it can be moved off the text it
+    /// covers without aiming for the header. The translation is measured in the window
+    /// coordinate space, which does not move with the overlay while it follows the pointer.
+    private var longPressMoveGesture: some Gesture {
+        LongPressGesture(minimumDuration: longPressMoveDelay, maximumDistance: longPressMoveSlop)
+            .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .global))
+            .onChanged { value in
+                guard case .second(true, let drag?) = value else { return }
+                beginLongPressMove()
+                guard let origin = longPressMoveOrigin else { return }
+                customCenter = clampedCenter(
+                    CGPoint(
+                        x: origin.x + drag.translation.width,
+                        y: origin.y + drag.translation.height
+                    ),
+                    windowSize: renderedSize
+                )
+            }
+            .onEnded { _ in endLongPressMove() }
+    }
+
+    private func beginLongPressMove() {
+        guard longPressMoveOrigin == nil else { return }
+        longPressMoveOrigin = displayedCenter
+        NSCursor.closedHand.push()
+    }
+
+    private func endLongPressMove() {
+        guard longPressMoveOrigin != nil else { return }
+        longPressMoveOrigin = nil
+        NSCursor.pop()
+    }
+
     @ViewBuilder
     private var resizeOverlay: some View {
         if configuration.isResizable {
@@ -372,6 +418,7 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
     }
 
     private func resetWindowState() {
+        endLongPressMove()
         measuredWindowSize = .zero
         measuredHeaderHeight = 0
         measuredContentHeight = 0

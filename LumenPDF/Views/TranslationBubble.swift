@@ -85,6 +85,7 @@ struct TranslationBubble: View {
                 Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
+                    .help("拖动标题栏，或长按正文区域后拖动，可移动窗口")
 
                 Button {
                     audio.speak(request.result?.word ?? request.word)
