@@ -45,12 +45,12 @@ struct PDFReaderView: View {
                         selectionAnchorRect: selectionAnchorRect
                     )
                     let readerFrame = proxy.frame(in: .named(ReaderRootCoordinateSpace.name))
-                    let rootAnchor = CGPoint(
-                        x: readerFrame.minX + anchor.x,
-                        y: readerFrame.minY + anchor.y
+                    let rootSelectionRect = selectionAnchorRect.offsetBy(
+                        dx: readerFrame.minX,
+                        dy: readerFrame.minY
                     )
                     selectionActionBarModel.present(
-                        anchor: rootAnchor,
+                        anchorRect: rootSelectionRect,
                         hasExistingNote: exactUnderlineNote(boundsStr: boundsStr, page: page) != nil,
                         onAction: { action in
                             handleSelectionAction(action, selection: selection)

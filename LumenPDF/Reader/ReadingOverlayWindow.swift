@@ -91,7 +91,15 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
                 .offset(x: displayedOrigin.x, y: displayedOrigin.y)
                 .animation(nil, value: customCenter)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Keep the placement origin at the reader's top-left even when this overlay does not
+        // install a full-size dismissal backdrop. Without an explicit frame alignment, a
+        // non-dismissible window is first centered by the outer frame and then offset again,
+        // which sends note drafts toward the bottom-right corner.
+        .frame(
+            width: availableSize.width,
+            height: availableSize.height,
+            alignment: .topLeading
+        )
         .onChange(of: resetID) { _, _ in resetWindowState() }
         .onChange(of: availableSize) { _, _ in handleAvailableSizeChange() }
     }
@@ -240,17 +248,20 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
     }
 
     private func recordMeasuredWindowSize(_ size: CGSize) {
-        lockAutomaticPlacementIfNeeded(for: size)
+        updateAutomaticPlacement(for: size)
         measuredWindowSize = size
     }
 
-    private func lockAutomaticPlacementIfNeeded(for size: CGSize) {
-        guard automaticPlacement == nil,
-              size.width > 0,
+    private func updateAutomaticPlacement(for size: CGSize) {
+        guard size.width > 0,
               size.height > 0 else { return }
-        let placement = ReadingOverlayPlacementPolicy.place(placementInput(for: size)).placement
-        guard placement != .leastOverlap else { return }
-        automaticPlacement = placement
+        let input = placementInput(for: size)
+        let result = if let automaticPlacement {
+            ReadingOverlayPlacementPolicy.place(input, keeping: automaticPlacement)
+        } else {
+            ReadingOverlayPlacementPolicy.place(input)
+        }
+        automaticPlacement = result.placement == .leastOverlap ? nil : result.placement
     }
 
     private func clampedCenter(_ center: CGPoint, windowSize: CGSize) -> CGPoint {

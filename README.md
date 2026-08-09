@@ -138,8 +138,8 @@ Rust 后端按 DDD 分层组织：
 
 ## 文档
 
-- 最新 PRD：[docs/prd/prd-2026-08-05-viewport-restore-overlay-drag.md](docs/prd/prd-2026-08-05-viewport-restore-overlay-drag.md)
-- 最新 TDD：[docs/tdd/tdd-2026-08-05-viewport-restore-overlay-drag.md](docs/tdd/tdd-2026-08-05-viewport-restore-overlay-drag.md)
+- 最新 PRD：[docs/prd/prd-2026-08-09-selection-overlay-placement.md](docs/prd/prd-2026-08-09-selection-overlay-placement.md)
+- 最新 TDD：[docs/tdd/tdd-2026-08-09-selection-overlay-placement.md](docs/tdd/tdd-2026-08-09-selection-overlay-placement.md)
 - 历史产品和技术文档见 [docs/](docs/)
 
 ## 数据位置

@@ -88,42 +88,26 @@ enum ReadingOverlayPlacement: Equatable {
 }
 
 enum ReadingOverlayPlacementPolicy {
+    private static let overlapTolerance: CGFloat = 0.5
+
     static func place(_ input: ReadingOverlayPlacementInput) -> ReadingOverlayPlacementResult {
         guard input.containerSize.width > 0, input.containerSize.height > 0 else {
             return ReadingOverlayPlacementResult(origin: .zero, placement: .leastOverlap)
         }
 
-        let anchor = input.anchorRect
-        let size = input.overlaySize
         let candidates = [
             ReadingOverlayPlacement.below,
             .above,
             .trailing,
             .leading
-        ].map { placement in
-            (placement, candidateOrigin(for: placement, input: input))
-        }
+        ].map { evaluate($0, input: input) }
 
-        let evaluated = candidates.map { placement, origin in
-            let clamped = clamp(
-                origin: origin,
-                overlaySize: size,
-                containerSize: input.containerSize,
-                horizontalSafeInset: input.horizontalSafeInset,
-                verticalSafeInset: input.verticalSafeInset
-            )
-            let rect = CGRect(origin: clamped, size: size)
-            let overlap = rect.intersection(anchor)
-            let area = overlap.isNull ? 0 : overlap.width * overlap.height
-            return (placement: placement, origin: clamped, overlapArea: area)
-        }
-
-        if let clear = evaluated.first(where: { $0.overlapArea <= 0.5 }) {
+        if let clear = candidates.first(where: { $0.isClearAndOnExpectedSide }) {
             return ReadingOverlayPlacementResult(origin: clear.origin, placement: clear.placement)
         }
 
-        let best = evaluated.min { lhs, rhs in lhs.overlapArea < rhs.overlapArea } ?? evaluated[0]
-        return ReadingOverlayPlacementResult(origin: best.origin, placement: best.placement)
+        let best = candidates.min(by: isBetterFallback) ?? candidates[0]
+        return ReadingOverlayPlacementResult(origin: best.origin, placement: .leastOverlap)
     }
 
     static func place(
@@ -134,16 +118,106 @@ enum ReadingOverlayPlacementPolicy {
               placement != .leastOverlap else {
             return place(input)
         }
-        return ReadingOverlayPlacementResult(
-            origin: clamp(
-                origin: candidateOrigin(for: placement, input: input),
-                overlaySize: input.overlaySize,
-                containerSize: input.containerSize,
-                horizontalSafeInset: input.horizontalSafeInset,
-                verticalSafeInset: input.verticalSafeInset
-            ),
-            placement: placement
+        let candidate = evaluate(placement, input: input)
+        guard candidate.isClearAndOnExpectedSide else {
+            return place(input)
+        }
+        return ReadingOverlayPlacementResult(origin: candidate.origin, placement: placement)
+    }
+
+    private struct EvaluatedCandidate {
+        let placement: ReadingOverlayPlacement
+        let origin: CGPoint
+        let overlapArea: CGFloat
+        let distanceFromAnchor: CGFloat
+        let clampDistance: CGFloat
+        let isOnExpectedSide: Bool
+
+        var isClearAndOnExpectedSide: Bool {
+            overlapArea <= ReadingOverlayPlacementPolicy.overlapTolerance && isOnExpectedSide
+        }
+    }
+
+    private static func evaluate(
+        _ placement: ReadingOverlayPlacement,
+        input: ReadingOverlayPlacementInput
+    ) -> EvaluatedCandidate {
+        let proposed = candidateOrigin(for: placement, input: input)
+        let origin = clamp(
+            origin: proposed,
+            overlaySize: input.overlaySize,
+            containerSize: input.containerSize,
+            horizontalSafeInset: input.horizontalSafeInset,
+            verticalSafeInset: input.verticalSafeInset
         )
+        let rect = CGRect(origin: origin, size: input.overlaySize)
+        let overlap = rect.intersection(input.anchorRect)
+        let overlapArea = overlap.isNull ? 0 : overlap.width * overlap.height
+        return EvaluatedCandidate(
+            placement: placement,
+            origin: origin,
+            overlapArea: overlapArea,
+            distanceFromAnchor: distance(between: rect, and: input.anchorRect),
+            clampDistance: hypot(origin.x - proposed.x, origin.y - proposed.y),
+            isOnExpectedSide: isOnExpectedSide(
+                rect,
+                of: input.anchorRect,
+                placement: placement,
+                gap: input.preferredGap
+            )
+        )
+    }
+
+    private static func isOnExpectedSide(
+        _ rect: CGRect,
+        of anchor: CGRect,
+        placement: ReadingOverlayPlacement,
+        gap: CGFloat
+    ) -> Bool {
+        switch placement {
+        case .below:
+            return rect.minY >= anchor.maxY + gap - overlapTolerance
+        case .above:
+            return rect.maxY <= anchor.minY - gap + overlapTolerance
+        case .trailing:
+            return rect.minX >= anchor.maxX + gap - overlapTolerance
+        case .leading:
+            return rect.maxX <= anchor.minX - gap + overlapTolerance
+        case .leastOverlap:
+            return false
+        }
+    }
+
+    private static func distance(between lhs: CGRect, and rhs: CGRect) -> CGFloat {
+        let horizontal = max(max(lhs.minX - rhs.maxX, rhs.minX - lhs.maxX), 0)
+        let vertical = max(max(lhs.minY - rhs.maxY, rhs.minY - lhs.maxY), 0)
+        return hypot(horizontal, vertical)
+    }
+
+    private static func isBetterFallback(
+        _ lhs: EvaluatedCandidate,
+        _ rhs: EvaluatedCandidate
+    ) -> Bool {
+        if abs(lhs.overlapArea - rhs.overlapArea) > overlapTolerance {
+            return lhs.overlapArea < rhs.overlapArea
+        }
+        if abs(lhs.distanceFromAnchor - rhs.distanceFromAnchor) > overlapTolerance {
+            return lhs.distanceFromAnchor < rhs.distanceFromAnchor
+        }
+        if abs(lhs.clampDistance - rhs.clampDistance) > overlapTolerance {
+            return lhs.clampDistance < rhs.clampDistance
+        }
+        return placementPriority(lhs.placement) < placementPriority(rhs.placement)
+    }
+
+    private static func placementPriority(_ placement: ReadingOverlayPlacement) -> Int {
+        switch placement {
+        case .below: 0
+        case .above: 1
+        case .trailing: 2
+        case .leading: 3
+        case .leastOverlap: 4
+        }
     }
 
     private static func candidateOrigin(

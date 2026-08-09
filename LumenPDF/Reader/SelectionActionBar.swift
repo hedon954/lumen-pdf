@@ -17,8 +17,20 @@ enum SelectionActionBarAction {
 
 struct SelectionActionBarPresentation: Identifiable, Equatable {
     let id: UUID
-    let anchor: CGPoint
+    let anchorRect: CGRect
     let hasExistingNote: Bool
+}
+
+enum SelectionActionBarPlacement {
+    static func localAnchorRect(
+        _ anchorRect: CGRect,
+        overlayFrameInRoot: CGRect
+    ) -> CGRect {
+        anchorRect.offsetBy(
+            dx: -overlayFrameInRoot.minX,
+            dy: -overlayFrameInRoot.minY
+        )
+    }
 }
 
 @MainActor
@@ -27,14 +39,14 @@ final class SelectionActionBarModel: ObservableObject {
     private var actionHandler: ((SelectionActionBarAction) -> Void)?
 
     func present(
-        anchor: CGPoint,
+        anchorRect: CGRect,
         hasExistingNote: Bool,
         onAction: @escaping (SelectionActionBarAction) -> Void
     ) {
         actionHandler = onAction
         presentation = SelectionActionBarPresentation(
             id: UUID(),
-            anchor: anchor,
+            anchorRect: anchorRect,
             hasExistingNote: hasExistingNote
         )
     }
@@ -59,6 +71,10 @@ struct SelectionActionBarOverlay: View {
     var body: some View {
         GeometryReader { proxy in
             if let presentation = model.presentation {
+                let localAnchorRect = SelectionActionBarPlacement.localAnchorRect(
+                    presentation.anchorRect,
+                    overlayFrameInRoot: proxy.frame(in: .named(ReaderRootCoordinateSpace.name))
+                )
                 SelectionActionBarView(
                     hasExistingNote: presentation.hasExistingNote,
                     onAction: model.perform
@@ -67,7 +83,7 @@ struct SelectionActionBarOverlay: View {
                     WindowOutsideClickMonitor(onOutsideClick: model.dismiss)
                 }
                 .onGeometryChange(for: CGSize.self, of: { $0.size }) { actionBarSize = $0 }
-                .position(clampedCenter(for: presentation.anchor, in: proxy.size))
+                .position(placementCenter(for: localAnchorRect, in: proxy.size))
                 .transition(.opacity.combined(with: .scale(scale: 0.88)))
             }
         }
@@ -77,35 +93,24 @@ struct SelectionActionBarOverlay: View {
         }
     }
 
-    private func clampedCenter(for proposed: CGPoint, in containerSize: CGSize) -> CGPoint {
-        let horizontalInset: CGFloat = 8
-        let verticalInset: CGFloat = 6
-        return CGPoint(
-            x: clamp(
-                proposed.x,
-                minimum: horizontalInset,
-                maximum: containerSize.width - horizontalInset,
-                length: actionBarSize.width
-            ),
-            y: clamp(
-                proposed.y,
-                minimum: verticalInset,
-                maximum: containerSize.height - verticalInset,
-                length: actionBarSize.height
+    private func placementCenter(for anchorRect: CGRect, in containerSize: CGSize) -> CGPoint {
+        guard actionBarSize.width > 0, actionBarSize.height > 0 else {
+            return CGPoint(x: anchorRect.midX, y: anchorRect.maxY + 10)
+        }
+        let result = ReadingOverlayPlacementPolicy.place(
+            ReadingOverlayPlacementInput(
+                anchorRect: anchorRect,
+                overlaySize: actionBarSize,
+                containerSize: containerSize,
+                preferredGap: 10,
+                horizontalSafeInset: 8,
+                verticalSafeInset: 6
             )
         )
-    }
-
-    private func clamp(
-        _ proposed: CGFloat,
-        minimum: CGFloat,
-        maximum: CGFloat,
-        length: CGFloat
-    ) -> CGFloat {
-        guard maximum > minimum, length < maximum - minimum else {
-            return (minimum + maximum) / 2
-        }
-        return min(max(proposed, minimum + length / 2), maximum - length / 2)
+        return CGPoint(
+            x: result.origin.x + actionBarSize.width / 2,
+            y: result.origin.y + actionBarSize.height / 2
+        )
     }
 }
 
