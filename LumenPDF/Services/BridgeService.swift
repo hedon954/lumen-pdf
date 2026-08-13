@@ -40,11 +40,12 @@ final class BridgeService {
 
     func initializeIfNeeded() {
         guard !isInitialized else { return }
+        let baseURL = Self.normalizedLLMBaseURL(
+            UserDefaults.standard.string(forKey: "llm_base_url") ?? "https://api.openai.com/v1"
+        )
         let config = AppConfig(
-            llmBaseUrl: Self.normalizedLLMBaseURL(
-                UserDefaults.standard.string(forKey: "llm_base_url") ?? "https://api.openai.com/v1"
-            ),
-            llmApiKey: KeychainService.load(key: "llm_api_key") ?? "",
+            llmBaseUrl: baseURL,
+            llmApiKey: KeychainService.loadLLMAPIKey(for: baseURL) ?? "",
             llmModel: UserDefaults.standard.string(forKey: "llm_model") ?? "gpt-4o-mini",
             targetLanguage: UserDefaults.standard.string(forKey: "target_language") ?? "简体中文",
             wordPromptTemplate: UserDefaults.standard.string(forKey: "word_prompt_template") ?? "",
@@ -111,14 +112,35 @@ final class BridgeService {
     // MARK: - Translation
 
     func translate(word: String, sentence: String) async throws -> TranslationResult {
-        // translate(request:) has different param label — no shadowing conflict
-        try await LumenPDF.translate(request: TranslationRequest(word: word, sentence: sentence))
+        let auditID = await beginAudit(
+            kind: .wordTranslation,
+            input: "选中单词：\(word)\n\n上下文：\(sentence)"
+        )
+        do {
+            // translate(request:) has different param label — no shadowing conflict
+            let result = try await LumenPDF.translate(
+                request: TranslationRequest(word: word, sentence: sentence)
+            )
+            await finishAudit(auditID, result: result)
+            return result
+        } catch {
+            await failAudit(auditID, error: error)
+            throw error
+        }
     }
 
     /// Translate a full sentence without word-level analysis.
     /// Use this when the user selects a phrase/sentence instead of a single word.
     func translateSentence(sentence: String) async throws -> TranslationResult {
-        try await LumenPDF.translateSentence(sentence: sentence)
+        let auditID = await beginAudit(kind: .sentenceTranslation, input: sentence)
+        do {
+            let result = try await LumenPDF.translateSentence(sentence: sentence)
+            await finishAudit(auditID, result: result)
+            return result
+        } catch {
+            await failAudit(auditID, error: error)
+            throw error
+        }
     }
 
     /// Streaming word-level translation. `onPartial` fires repeatedly on
@@ -129,11 +151,22 @@ final class BridgeService {
         sentence: String,
         onPartial: @escaping @MainActor (TranslationResult) -> Void
     ) async throws -> TranslationResult {
-        let receiver = TranslationStreamReceiver(onPartial: onPartial)
-        return try await LumenPDF.translateStreaming(
-            request: TranslationRequest(word: word, sentence: sentence),
-            callback: receiver
+        let auditID = await beginAudit(
+            kind: .wordTranslation,
+            input: "选中单词：\(word)\n\n上下文：\(sentence)"
         )
+        let receiver = TranslationStreamReceiver(onPartial: onPartial)
+        do {
+            let result = try await LumenPDF.translateStreaming(
+                request: TranslationRequest(word: word, sentence: sentence),
+                callback: receiver
+            )
+            await finishAudit(auditID, result: result)
+            return result
+        } catch {
+            await failAudit(auditID, error: error)
+            throw error
+        }
     }
 
     /// Streaming sentence translation. `onPartial` fires as soon as any
@@ -142,11 +175,19 @@ final class BridgeService {
         sentence: String,
         onPartial: @escaping @MainActor (TranslationResult) -> Void
     ) async throws -> TranslationResult {
+        let auditID = await beginAudit(kind: .sentenceTranslation, input: sentence)
         let receiver = TranslationStreamReceiver(onPartial: onPartial)
-        return try await LumenPDF.translateSentenceStreaming(
-            sentence: sentence,
-            callback: receiver
-        )
+        do {
+            let result = try await LumenPDF.translateSentenceStreaming(
+                sentence: sentence,
+                callback: receiver
+            )
+            await finishAudit(auditID, result: result)
+            return result
+        } catch {
+            await failAudit(auditID, error: error)
+            throw error
+        }
     }
 
     /// Streaming explanation for selected text. The selected text and its surrounding
@@ -159,18 +200,111 @@ final class BridgeService {
         images: [ImageAttachment],
         onPartial: @escaping @MainActor (TranslationResult) -> Void
     ) async throws -> TranslationResult {
-        let receiver = TranslationStreamReceiver(onPartial: onPartial)
-        return try await LumenPDF.explainSelectionStreaming(
-            selection: selection,
-            context: context,
-            focus: focus,
-            images: images,
-            callback: receiver
+        let imageSummary = images.isEmpty
+            ? ""
+            : "\n\n附加图片：\(images.map(\.fileName).joined(separator: "、"))"
+        let auditID = await beginAudit(
+            kind: .selectionExplanation,
+            input: "选中文本：\(selection)\n\n上下文：\(context)\n\n关注点：\(focus)\(imageSummary)"
         )
+        let receiver = TranslationStreamReceiver(onPartial: onPartial)
+        do {
+            let result = try await LumenPDF.explainSelectionStreaming(
+                selection: selection,
+                context: context,
+                focus: focus,
+                images: images,
+                callback: receiver
+            )
+            await finishAudit(auditID, result: result)
+            return result
+        } catch {
+            await failAudit(auditID, error: error)
+            throw error
+        }
     }
 
     func detectImageInputCapability() async throws -> ImageInputCapability {
-        try await LumenPDF.detectImageInputCapability()
+        let auditID = await beginAudit(
+            kind: .imageCapabilityCheck,
+            input: "检测当前模型是否支持图片输入"
+        )
+        do {
+            let capability = try await LumenPDF.detectImageInputCapability()
+            let output: String
+            switch capability {
+            case .supported: output = "支持图片输入"
+            case .unsupported: output = "不支持图片输入"
+            case .unknown: output = "提供商未返回明确能力信息"
+            }
+            await MainActor.run {
+                LLMCallLogStore.shared.finish(
+                    id: auditID,
+                    output: output,
+                    source: "provider",
+                    promptTokens: 0,
+                    completionTokens: 0,
+                    totalTokens: 0
+                )
+            }
+            return capability
+        } catch {
+            await failAudit(auditID, error: error)
+            throw error
+        }
+    }
+
+    private func beginAudit(kind: LLMCallKind, input: String) async -> UUID {
+        let model = UserDefaults.standard.string(forKey: "llm_model") ?? ""
+        let baseURL = Self.normalizedLLMBaseURL(
+            UserDefaults.standard.string(forKey: "llm_base_url") ?? ""
+        )
+        return await MainActor.run {
+            LLMCallLogStore.shared.begin(
+                kind: kind,
+                model: model,
+                baseURL: baseURL,
+                input: input
+            )
+        }
+    }
+
+    private func finishAudit(_ id: UUID, result: TranslationResult) async {
+        let warning = [result.llmErrorMessage, result.fallbackErrorMessage]
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .joined(separator: "\n")
+        await MainActor.run {
+            LLMCallLogStore.shared.finish(
+                id: id,
+                output: Self.auditOutput(from: result),
+                source: result.source,
+                promptTokens: result.promptTokens,
+                completionTokens: result.completionTokens,
+                totalTokens: result.totalTokens,
+                warning: warning,
+                failed: result.isCompleteFailure
+            )
+        }
+    }
+
+    private func failAudit(_ id: UUID, error: Error) async {
+        let message = TranslationErrorFormatter.userMessage(from: error)
+        await MainActor.run {
+            LLMCallLogStore.shared.fail(id: id, error: message)
+        }
+    }
+
+    private static func auditOutput(from result: TranslationResult) -> String {
+        let sections = [
+            result.contextTranslation,
+            result.contextSentenceTranslation,
+            result.contextExplanation,
+            result.etymology,
+            result.generalDefinition
+        ]
+        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+        return sections.joined(separator: "\n\n")
     }
 
     // MARK: - Vocabulary

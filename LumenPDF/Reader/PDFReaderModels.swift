@@ -366,13 +366,21 @@ enum NoteAnchorPlacementPolicy {
         buttonSize: CGFloat = 28,
         gap: CGFloat = 6
     ) -> NoteAnchorPlacementResult? {
-        guard let first = lineRects.first,
-              let last = lineRects.last,
+        let orderedLineRects = lineRects
+            .filter { !$0.isEmpty }
+            .sorted { lhs, rhs in
+                if abs(lhs.midY - rhs.midY) > 1 {
+                    return lhs.minY < rhs.minY
+                }
+                return lhs.minX < rhs.minX
+            }
+        guard let first = orderedLineRects.first,
+              let last = orderedLineRects.last,
               !first.isEmpty,
               !last.isEmpty,
               !containerRect.isEmpty else { return nil }
 
-        let union = lineRects.dropFirst().reduce(first) { $0.union($1) }
+        let union = orderedLineRects.dropFirst().reduce(first) { $0.union($1) }
         let radius = buttonSize / 2
         let candidates: [(NoteAnchorPlacement, CGPoint)] = [
             (.trailing, CGPoint(x: last.maxX + gap + radius, y: last.midY)),

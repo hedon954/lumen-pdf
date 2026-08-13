@@ -14,6 +14,8 @@ struct ReadingGuidePanel: View {
     @State private var contentHeight: CGFloat = 0
     @State private var isImageImporterPresented = false
     @State private var attachedImageURLs: [URL] = []
+    @State private var isSelectionExpanded = false
+    @State private var selectionTextWidth: CGFloat = 0
     @FocusState private var isQuestionFocused: Bool
 
     private static let bottomID = "reading-guide-bottom"
@@ -33,6 +35,7 @@ struct ReadingGuidePanel: View {
         .onChange(of: model.guideSession?.id) { _, _ in
             question = ""
             shouldFollowStream = true
+            isSelectionExpanded = false
             focusQuestion()
         }
         .onChange(of: model.guideSession?.isLoading ?? false) { _, loading in
@@ -77,7 +80,7 @@ struct ReadingGuidePanel: View {
                         }
 
                         if let error = session.errorMessage, !error.isEmpty {
-                            assistantFailureMessage(error)
+                            assistantFailureMessage(error, retryMessageID: nil)
                         }
 
                         Color.clear
@@ -112,7 +115,8 @@ struct ReadingGuidePanel: View {
     }
 
     private func selectionCard(_ selection: PDFSelectionContext) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        let displayedText = ContextSentenceFormatting.displayParagraph(selection.selectedText)
+        return VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Label("选中文本", systemImage: "text.viewfinder")
                     .font(.caption.weight(.medium))
@@ -121,13 +125,34 @@ struct ReadingGuidePanel: View {
                 Text("P\(selection.pageIndex + 1)")
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.tertiary)
+                if selectionNeedsExpansion(displayedText) {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.16)) {
+                            isSelectionExpanded.toggle()
+                        }
+                    } label: {
+                        Label(
+                            isSelectionExpanded ? "收起" : "展开",
+                            systemImage: isSelectionExpanded ? "chevron.up" : "chevron.down"
+                        )
+                        .labelStyle(.titleAndIcon)
+                    }
+                    .buttonStyle(.plain)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .help(isSelectionExpanded ? "收起原文" : "展开完整原文")
+                }
             }
-            Text(ContextSentenceFormatting.displayParagraph(selection.selectedText))
+            Text(displayedText)
                 .font(.callout)
                 .foregroundStyle(.primary)
                 .textSelection(.enabled)
-                .lineLimit(6)
+                .lineLimit(isSelectionExpanded ? nil : 6)
                 .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .onGeometryChange(for: CGFloat.self, of: { $0.size.width }) { width in
+                    selectionTextWidth = width
+                }
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -136,6 +161,14 @@ struct ReadingGuidePanel: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
         }
+    }
+
+    private func selectionNeedsExpansion(_ displayedText: String) -> Bool {
+        SelectionTextOverflowDetector.needsExpansion(
+            text: displayedText,
+            width: selectionTextWidth,
+            maximumLines: 6
+        )
     }
 
     @ViewBuilder
@@ -158,7 +191,7 @@ struct ReadingGuidePanel: View {
             }
         case .assistant:
             if message.isError {
-                assistantFailureMessage(message.content)
+                assistantFailureMessage(message.content, retryMessageID: message.id)
             } else if message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && isStreaming {
                 assistantThinking
             } else if message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -230,7 +263,7 @@ struct ReadingGuidePanel: View {
         .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 8))
     }
 
-    private func assistantFailureMessage(_ text: String) -> some View {
+    private func assistantFailureMessage(_ text: String, retryMessageID: UUID?) -> some View {
         HStack(alignment: .top, spacing: 0) {
             RoundedRectangle(cornerRadius: 1)
                 .fill(Color.red.opacity(0.55))
@@ -244,6 +277,21 @@ struct ReadingGuidePanel: View {
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
+                if let retryMessageID {
+                    HStack {
+                        Spacer()
+                        Button {
+                            shouldFollowStream = true
+                            model.retryGuideMessage(retryMessageID)
+                        } label: {
+                            Label("重试", systemImage: "arrow.clockwise")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .disabled(model.guideSession?.isLoading == true)
+                        .help("覆盖这条失败回复并重新调用")
+                    }
+                }
             }
             .padding(.horizontal, 11)
             .padding(.vertical, 9)
@@ -441,6 +489,48 @@ struct ReadingGuidePanel: View {
                 proxy.scrollTo(Self.bottomID, anchor: .bottom)
             }
         }
+    }
+}
+
+enum SelectionTextOverflowDetector {
+    static func needsExpansion(text: String, width: CGFloat, maximumLines: Int) -> Bool {
+        guard width > 0, maximumLines > 0, !text.isEmpty else { return false }
+
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineBreakMode = .byWordWrapping
+        let textStorage = NSTextStorage(
+            string: text,
+            attributes: [
+                .font: NSFont.preferredFont(forTextStyle: .callout),
+                .paragraphStyle: paragraphStyle,
+            ]
+        )
+        let layoutManager = NSLayoutManager()
+        layoutManager.usesFontLeading = true
+        let textContainer = NSTextContainer(
+            size: NSSize(width: width, height: .greatestFiniteMagnitude)
+        )
+        textContainer.lineFragmentPadding = 0
+        textContainer.lineBreakMode = .byWordWrapping
+        layoutManager.addTextContainer(textContainer)
+        textStorage.addLayoutManager(layoutManager)
+        layoutManager.ensureLayout(for: textContainer)
+
+        let glyphRange = layoutManager.glyphRange(for: textContainer)
+        var glyphIndex = glyphRange.location
+        var lineCount = 0
+        while glyphIndex < NSMaxRange(glyphRange) {
+            var lineRange = NSRange()
+            layoutManager.lineFragmentUsedRect(
+                forGlyphAt: glyphIndex,
+                effectiveRange: &lineRange
+            )
+            guard lineRange.length > 0 else { break }
+            lineCount += 1
+            if lineCount > maximumLines { return true }
+            glyphIndex = NSMaxRange(lineRange)
+        }
+        return false
     }
 }
 

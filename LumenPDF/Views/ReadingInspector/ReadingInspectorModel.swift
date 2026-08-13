@@ -65,6 +65,14 @@ final class ReadingInspectorModel: ObservableObject {
         }
     }
 
+    func retryGuideMessage(_ messageID: UUID) {
+        guard let session = guideSession, !session.isLoading else { return }
+        guideService.retryMessage(messageID, session: session) { [weak self] updated in
+            guard self?.guideSession?.id == updated.id else { return }
+            self?.guideSession = updated
+        }
+    }
+
     func refreshImageInputCapability() async {
         isCheckingImageInputCapability = true
         defer { isCheckingImageInputCapability = false }

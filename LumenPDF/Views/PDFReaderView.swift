@@ -119,6 +119,12 @@ struct PDFReaderView: View {
                         onOpenNotes()
                         activeNoteReview = nil
                     },
+                    onDeleteItem: { noteId, itemIndex in
+                        deleteNoteReviewItem(noteId: noteId, itemIndex: itemIndex)
+                    },
+                    onDeleteAll: {
+                        deleteAllNotes(in: review)
+                    },
                     onClose: {
                         activeNoteReview = nil
                     }
@@ -210,6 +216,83 @@ struct PDFReaderView: View {
     private func closeTranslationOverlay() {
         translationRequest = nil
         isTranslating = false
+    }
+
+    private func deleteNoteReviewItem(noteId: String, itemIndex: Int) {
+        guard let review = activeNoteReview,
+              let note = review.notes.first(where: { $0.id == noteId }),
+              let remainingText = NoteTextList.removingItem(at: itemIndex, from: note.note)
+        else {
+            appState.showToast("删除笔记失败")
+            return
+        }
+
+        do {
+            if remainingText.isEmpty {
+                try ReaderPersistence.shared.deleteNote(id: note.id)
+                ReaderEventBus.shared.postRemoveUnderlineNote(
+                    noteId: note.id,
+                    page: Int(note.pageIndex),
+                    filePath: note.pdfPath
+                )
+            } else {
+                try ReaderPersistence.shared.updateNote(id: note.id, note: remainingText)
+            }
+            refreshActiveNoteReview(matching: review)
+            appState.showToast("已删除这条笔记")
+        } catch {
+            appState.showToast("删除笔记失败")
+        }
+    }
+
+    private func deleteAllNotes(in review: ActiveNoteReview) {
+        var deletedCount = 0
+        for note in review.notes {
+            do {
+                try ReaderPersistence.shared.deleteNote(id: note.id)
+                ReaderEventBus.shared.postRemoveUnderlineNote(
+                    noteId: note.id,
+                    page: Int(note.pageIndex),
+                    filePath: note.pdfPath
+                )
+                deletedCount += 1
+            } catch {
+                continue
+            }
+        }
+
+        refreshActiveNoteReview(matching: review)
+        if deletedCount == review.notes.count {
+            appState.showToast("已删除这里的全部笔记")
+        } else if deletedCount > 0 {
+            appState.showToast("部分笔记删除失败")
+        } else {
+            appState.showToast("删除笔记失败")
+        }
+    }
+
+    private func refreshActiveNoteReview(matching review: ActiveNoteReview) {
+        appState.refreshNotes()
+        guard let reference = review.notes.first else {
+            activeNoteReview = nil
+            return
+        }
+
+        let remainingNotes = appState.notes.filter { note in
+            note.pdfPath == reference.pdfPath &&
+                note.pageIndex == reference.pageIndex &&
+                note.boundsStr == reference.boundsStr
+        }
+        guard !remainingNotes.isEmpty else {
+            activeNoteReview = nil
+            return
+        }
+
+        activeNoteReview = ActiveNoteReview(
+            id: review.id,
+            anchor: review.anchor,
+            notes: remainingNotes.sorted { $0.createdAt < $1.createdAt }
+        )
     }
 
     // MARK: - Selection Action Bar
@@ -711,7 +794,25 @@ private struct NoteReviewPopoverView: View {
     let review: ActiveNoteReview
     let availableSize: CGSize
     let onOpenNotes: () -> Void
+    let onDeleteItem: (String, Int) -> Void
+    let onDeleteAll: () -> Void
     let onClose: () -> Void
+
+    @State private var pendingDeletion: NoteReviewDeletion?
+
+    private var noteItems: [NoteReviewItem] {
+        review.notes.flatMap { note in
+            NoteTextList.decode(note.note).enumerated().map { index, markdown in
+                NoteReviewItem(
+                    id: "\(note.id)#\(index)",
+                    noteId: note.id,
+                    itemIndex: index,
+                    markdown: markdown,
+                    createdAt: note.createdAt
+                )
+            }
+        }
+    }
 
     var body: some View {
         ReadingOverlayWindow(
@@ -729,6 +830,26 @@ private struct NoteReviewPopoverView: View {
             content: { content },
             footer: { footer }
         )
+        .alert(item: $pendingDeletion) { deletion in
+            switch deletion {
+            case let .item(noteId, itemIndex):
+                return Alert(
+                    title: Text("删除这条笔记？"),
+                    message: Text("删除后无法恢复。"),
+                    primaryButton: .destructive(Text("删除")) {
+                        onDeleteItem(noteId, itemIndex)
+                    },
+                    secondaryButton: .cancel()
+                )
+            case let .all(count):
+                return Alert(
+                    title: Text("删除全部笔记？"),
+                    message: Text("这里的 \(count) 条笔记及对应划线都会被删除，且无法恢复。"),
+                    primaryButton: .destructive(Text("全部删除"), action: onDeleteAll),
+                    secondaryButton: .cancel()
+                )
+            }
+        }
     }
 
     private var header: some View {
@@ -766,14 +887,29 @@ private struct NoteReviewPopoverView: View {
                 }
             }
 
-            ForEach(review.notes, id: \.id) { note in
+            ForEach(noteItems) { item in
                 VStack(alignment: .leading, spacing: 6) {
-                    if let createdAt = ReadingInspectorDateFormat.timestampText(for: note.createdAt) {
-                        Text(createdAt)
-                            .font(.caption2.monospacedDigit())
-                            .foregroundStyle(.tertiary)
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        if let createdAt = ReadingInspectorDateFormat.timestampText(for: item.createdAt) {
+                            Text(createdAt)
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(.tertiary)
+                        }
+                        Spacer()
+                        Button(role: .destructive) {
+                            pendingDeletion = .item(
+                                noteId: item.noteId,
+                                itemIndex: item.itemIndex
+                            )
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.caption)
+                                .foregroundStyle(.red.opacity(0.75))
+                        }
+                        .buttonStyle(.plain)
+                        .help("删除这条笔记")
                     }
-                    MarkdownText(markdown: NoteTextList.markdown(note.note))
+                    MarkdownText(markdown: item.markdown)
                         .font(.callout)
                         .foregroundStyle(.primary)
                         .textSelection(.enabled)
@@ -789,6 +925,14 @@ private struct NoteReviewPopoverView: View {
 
     private var footer: some View {
         HStack {
+            Button(role: .destructive) {
+                pendingDeletion = .all(count: noteItems.count)
+            } label: {
+                Label("删除全部", systemImage: "trash")
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.red)
+            .disabled(noteItems.isEmpty)
             Spacer()
             Button("打开右侧笔记", action: onOpenNotes)
                 .buttonStyle(.borderless)
@@ -798,5 +942,27 @@ private struct NoteReviewPopoverView: View {
         .padding(.horizontal, 16)
         .padding(.top, 10)
         .padding(.bottom, 16)
+    }
+}
+
+private struct NoteReviewItem: Identifiable {
+    let id: String
+    let noteId: String
+    let itemIndex: Int
+    let markdown: String
+    let createdAt: Int64
+}
+
+private enum NoteReviewDeletion: Identifiable {
+    case item(noteId: String, itemIndex: Int)
+    case all(count: Int)
+
+    var id: String {
+        switch self {
+        case let .item(noteId, itemIndex):
+            return "item|\(noteId)|\(itemIndex)"
+        case let .all(count):
+            return "all|\(count)"
+        }
     }
 }

@@ -89,6 +89,9 @@ final class LLMConfigurationModel: ObservableObject {
         if !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return true
         }
-        return LLMProviderPreset.matching(baseURL: baseURL)?.id == "openrouter"
+        guard let providerID = LLMProviderPreset.matching(baseURL: baseURL)?.id else {
+            return false
+        }
+        return ["openrouter", "opencode-zen"].contains(providerID)
     }
 }

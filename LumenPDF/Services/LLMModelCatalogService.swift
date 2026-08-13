@@ -4,6 +4,22 @@ struct LLMProviderPreset: Identifiable, Hashable {
     let id: String
     let name: String
     let baseURL: String
+    let supportedModelPrefixes: [String]?
+    let compatibilityNote: String?
+
+    init(
+        id: String,
+        name: String,
+        baseURL: String,
+        supportedModelPrefixes: [String]? = nil,
+        compatibilityNote: String? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.baseURL = baseURL
+        self.supportedModelPrefixes = supportedModelPrefixes
+        self.compatibilityNote = compatibilityNote
+    }
 
     static let builtIn: [LLMProviderPreset] = [
         LLMProviderPreset(
@@ -30,6 +46,24 @@ struct LLMProviderPreset: Identifiable, Hashable {
             id: "openrouter",
             name: "OpenRouter",
             baseURL: "https://openrouter.ai/api/v1"
+        ),
+        LLMProviderPreset(
+            id: "opencode-zen",
+            name: "OpenCode Zen",
+            baseURL: "https://opencode.ai/zen/v1",
+            supportedModelPrefixes: [
+                "big-pickle",
+                "deepseek-",
+                "glm-",
+                "hy3-",
+                "kimi-",
+                "laguna-",
+                "ling-",
+                "mimo-",
+                "minimax-",
+                "nemotron-"
+            ],
+            compatibilityNote: "OpenCode Zen 同时提供多种 API 协议；这里仅展示 LumenPDF 当前支持的 Chat Completions 模型。"
         ),
         LLMProviderPreset(
             id: "gemini",
@@ -63,6 +97,11 @@ struct LLMProviderPreset: Identifiable, Hashable {
         return builtIn.first {
             LLMConfigurationHistory.canonicalBaseURLKey($0.baseURL) == key
         }
+    }
+
+    func supports(modelID: String) -> Bool {
+        guard let supportedModelPrefixes else { return true }
+        return supportedModelPrefixes.contains { modelID.hasPrefix($0) }
     }
 }
 
@@ -128,7 +167,10 @@ final class LLMModelCatalogService {
             )
         }
 
-        let models = try decodeModelIDs(from: data)
+        let preset = LLMProviderPreset.matching(baseURL: baseURL)
+        let models = try decodeModelIDs(from: data).filter {
+            preset?.supports(modelID: $0) ?? true
+        }
         guard !models.isEmpty else {
             throw LLMModelCatalogError.noModels
         }

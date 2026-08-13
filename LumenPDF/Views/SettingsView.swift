@@ -14,169 +14,126 @@ struct SettingsView: View {
     @AppStorage("word_system_prompt") private var wordSystemPrompt = PromptTemplateDefaults.wordSystem
     @AppStorage("sentence_system_prompt") private var sentenceSystemPrompt = PromptTemplateDefaults.sentenceSystem
     @AppStorage("explanation_system_prompt") private var explanationSystemPrompt = PromptTemplateDefaults.explanationSystem
+
     @State private var apiKey = ""
+    @State private var selectedDestination: SettingsDestination = .llm
+    @State private var selectedPromptKind: PromptTemplateKind = .word
     @State private var showSavedBadge = false
     @State private var saveErrorMessage: String?
     @State private var loadedPromptLanguage = "简体中文"
-    @State private var hasPendingWordPromptUpdate = false
+    @State private var pendingUpdateTitles: [String] = []
     @StateObject private var llmConfiguration = LLMConfigurationModel()
 
     var body: some View {
-        Form {
-            LLMConfigurationSection(
-                baseURL: $baseURL,
-                apiKey: $apiKey,
-                model: $model,
-                configuration: llmConfiguration,
-                onSubmit: saveSettings
-            )
-
-            Section("翻译设置") {
-                Picker("目标语言", selection: $targetLanguage) {
-                    Text("简体中文").tag("简体中文")
-                    Text("繁體中文").tag("繁體中文")
-                    Text("English").tag("English")
-                    Text("日本語").tag("日本語")
-                    Text("한국어").tag("한국어")
-                }
-            }
-
-            if hasPendingWordPromptUpdate {
-                Section("提示词更新") {
-                    Label("系统单词提示词已有更新", systemImage: "arrow.triangle.2.circlepath")
-                        .font(.headline)
-
-                    Text("检测到你修改过当前语言的单词提示词，因此没有自动覆盖。你可以保留自定义版本，或切换到包含最新字段和规则的系统版本。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    HStack {
-                        Button("保留自定义") {
-                            PromptTemplateUpdateCoordinator.shared.keepCurrentTemplate(
-                                for: targetLanguage
-                            )
-                            hasPendingWordPromptUpdate = false
-                        }
-
-                        Button("使用新版") {
-                            PromptTemplateUpdateCoordinator.shared.acceptLatestTemplate(
-                                for: targetLanguage
-                            )
-                            wordPromptTemplate = activePromptDefaults.word
-                            hasPendingWordPromptUpdate = false
-                            applyRuntimeConfig()
-                        }
-                        .buttonStyle(.borderedProminent)
+        NavigationSplitView {
+            List(selection: $selectedDestination) {
+                Section("设置") {
+                    ForEach(SettingsDestination.allCases) { destination in
+                        Label(destination.title, systemImage: destination.systemImage)
+                            .tag(destination)
                     }
                 }
             }
-
-            Section("提示词模板") {
-                Text("User prompt 可用变量：{lang}、{word}、{sentence}、{selection}、{context}、{focus}。切换目标语言时会切换到对应语言的提示词模板；目前内置中文和英文两套模板。单词/整句翻译仍需保留 JSON 输出格式；选区解释会直接展示模型输出。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                promptEditor(
-                    title: "单词翻译",
-                    text: $wordPromptTemplate,
-                    defaultValue: activePromptDefaults.word
-                )
-
-                promptEditor(
-                    title: "整句翻译",
-                    text: $sentencePromptTemplate,
-                    defaultValue: activePromptDefaults.sentence
-                )
-
-                promptEditor(
-                    title: "选区解释（第一性原理）",
-                    text: $explanationPromptTemplate,
-                    defaultValue: activePromptDefaults.explanation
-                )
-            }
-
-            Section("System Prompt") {
-                promptEditor(
-                    title: "单词翻译 System Prompt",
-                    text: $wordSystemPrompt,
-                    defaultValue: activePromptDefaults.wordSystem,
-                    minHeight: 72
-                )
-
-                promptEditor(
-                    title: "整句翻译 System Prompt",
-                    text: $sentenceSystemPrompt,
-                    defaultValue: activePromptDefaults.sentenceSystem,
-                    minHeight: 72
-                )
-
-                promptEditor(
-                    title: "选区解释 System Prompt",
-                    text: $explanationSystemPrompt,
-                    defaultValue: activePromptDefaults.explanationSystem,
-                    minHeight: 72
-                )
-            }
-
-            HStack {
-                Spacer()
-
-                if showSavedBadge {
-                    Label("已保存", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                }
-                if let saveErrorMessage {
-                    Label(saveErrorMessage, systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
-                }
-
-                // Extra button shown in setup-sheet mode
-                if let dismiss = onDismiss {
-                    Button("稍后设置") {
-                        dismiss()
-                    }
-                }
-
-                Button("保存设置") {
-                    saveSettings()
-                    onDismiss?()
-                }
-                .buttonStyle(.borderedProminent)
+            .listStyle(.sidebar)
+            .navigationSplitViewColumnWidth(min: 180, ideal: 210, max: 240)
+        } detail: {
+            VStack(spacing: 0) {
+                detail
+                Divider()
+                saveBar
             }
         }
-        .formStyle(.grouped)
-        .padding()
-        .onAppear {
-            apiKey = KeychainService.load(key: "llm_api_key") ?? ""
-            llmConfiguration.remember(baseURL: baseURL, model: model)
-            if llmConfiguration.shouldAutomaticallyRefresh(
-                baseURL: baseURL,
-                apiKey: apiKey
-            ) {
-                Task {
-                    await llmConfiguration.refreshModels(
-                        baseURL: baseURL,
-                        apiKey: apiKey
-                    )
-                }
-            }
-            loadedPromptLanguage = targetLanguage
-            migratePromptDefaultsIfNeeded()
-            loadPromptTemplates(for: targetLanguage, replacingLegacyDefaults: true)
-            refreshPromptUpdateState()
-        }
-        .onChange(of: targetLanguage) { newLanguage in
+        .onAppear(perform: load)
+        .onChange(of: targetLanguage) { _, newLanguage in
             persistPromptTemplates(for: loadedPromptLanguage)
             loadPromptTemplates(for: newLanguage, replacingLegacyDefaults: false)
             loadedPromptLanguage = newLanguage
             refreshPromptUpdateState()
-            applyRuntimeConfig()
+            _ = applyRuntimeConfig()
         }
-        .frame(width: 760, height: 860)
+        .frame(minWidth: 860, idealWidth: 940, minHeight: 600, idealHeight: 680)
+    }
+
+    private var saveBar: some View {
+        HStack(spacing: 12) {
+            if showSavedBadge {
+                Label("设置已保存", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            } else if let saveErrorMessage {
+                Label(saveErrorMessage, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+            }
+
+            Spacer()
+
+            if let dismiss = onDismiss {
+                Button("稍后设置", action: dismiss)
+                    .buttonStyle(.borderless)
+            }
+            Button("保存设置") {
+                if saveSettings() {
+                    onDismiss?()
+                }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.regular)
+            .keyboardShortcut(.defaultAction)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    @ViewBuilder
+    private var detail: some View {
+        switch selectedDestination {
+        case .llm:
+            LLMSettingsPage(
+                baseURL: $baseURL,
+                apiKey: $apiKey,
+                model: $model,
+                configuration: llmConfiguration,
+                onSubmit: { _ = saveSettings() }
+            )
+        case .translation:
+            TranslationSettingsPage(targetLanguage: $targetLanguage)
+        case .prompts:
+            PromptSettingsPage(
+                selectedKind: $selectedPromptKind,
+                wordPrompt: $wordPromptTemplate,
+                sentencePrompt: $sentencePromptTemplate,
+                explanationPrompt: $explanationPromptTemplate,
+                wordSystemPrompt: $wordSystemPrompt,
+                sentenceSystemPrompt: $sentenceSystemPrompt,
+                explanationSystemPrompt: $explanationSystemPrompt,
+                defaults: activePromptDefaults,
+                pendingUpdateTitles: pendingUpdateTitles,
+                onKeepCustomTemplates: keepCustomTemplates,
+                onAcceptLatestTemplates: acceptLatestTemplates
+            )
+        case .logs:
+            LLMCallLogSettingsPage()
+        case .usage:
+            LLMUsageSettingsPage(currentModel: $model)
+        }
     }
 
     private var activePromptDefaults: PromptTemplateDefaults.LanguageDefaults {
         PromptTemplateDefaults.defaults(for: targetLanguage)
+    }
+
+    private func load() {
+        apiKey = KeychainService.loadLLMAPIKey(for: baseURL) ?? ""
+        llmConfiguration.remember(baseURL: baseURL, model: model)
+        if llmConfiguration.shouldAutomaticallyRefresh(baseURL: baseURL, apiKey: apiKey) {
+            Task {
+                await llmConfiguration.refreshModels(baseURL: baseURL, apiKey: apiKey)
+            }
+        }
+        loadedPromptLanguage = targetLanguage
+        migratePromptDefaultsIfNeeded()
+        loadPromptTemplates(for: targetLanguage, replacingLegacyDefaults: true)
+        refreshPromptUpdateState()
     }
 
     private func migratePromptDefaultsIfNeeded() {
@@ -185,7 +142,6 @@ struct SettingsView: View {
         {
             explanationSystemPrompt = PromptTemplateDefaults.explanationSystem
         }
-
         if explanationPromptTemplate == PromptTemplateDefaults.legacyExplanation
             || explanationPromptTemplate == PromptTemplateDefaults.legacyMarkdownExplanation
         {
@@ -194,8 +150,20 @@ struct SettingsView: View {
     }
 
     private func refreshPromptUpdateState() {
-        hasPendingWordPromptUpdate =
-            PromptTemplateUpdateCoordinator.shared.hasPendingUpdate(for: targetLanguage)
+        pendingUpdateTitles =
+            PromptTemplateUpdateCoordinator.shared.pendingTemplateTitles(for: targetLanguage)
+    }
+
+    private func keepCustomTemplates() {
+        PromptTemplateUpdateCoordinator.shared.keepCurrentTemplate(for: targetLanguage)
+        refreshPromptUpdateState()
+    }
+
+    private func acceptLatestTemplates() {
+        PromptTemplateUpdateCoordinator.shared.acceptLatestTemplate(for: targetLanguage)
+        loadPromptTemplates(for: targetLanguage, replacingLegacyDefaults: false)
+        refreshPromptUpdateState()
+        _ = applyRuntimeConfig()
     }
 
     private func promptStorageKey(_ baseKey: String, language: String) -> String {
@@ -216,7 +184,12 @@ struct SettingsView: View {
         let defaults = UserDefaults.standard
         let languageDefaults = PromptTemplateDefaults.defaults(for: language)
 
-        func template(_ baseKey: String, currentValue: String, languageDefault: String, legacyDefaults: [String] = []) -> String {
+        func template(
+            _ baseKey: String,
+            currentValue: String,
+            languageDefault: String,
+            legacyDefaults: [String] = []
+        ) -> String {
             let key = promptStorageKey(baseKey, language: language)
             let languageBuiltInDefaults = [
                 languageDefaults.word,
@@ -228,10 +201,6 @@ struct SettingsView: View {
             ]
 
             if let stored = defaults.string(forKey: key) {
-                // Earlier versions could accidentally save the currently visible Chinese
-                // defaults into the English prompt slots while switching languages. If a
-                // stored value is one of our built-in templates but not the selected
-                // language's built-in template, treat it as stale and replace it.
                 if PromptTemplateDefaults.allBuiltInDefaults.contains(stored)
                     && !languageBuiltInDefaults.contains(stored)
                 {
@@ -239,47 +208,74 @@ struct SettingsView: View {
                 }
                 return stored
             }
-            if replacingLegacyDefaults && (legacyDefaults + PromptTemplateDefaults.allBuiltInDefaults).contains(currentValue) {
+            if replacingLegacyDefaults
+                && (legacyDefaults + PromptTemplateDefaults.allBuiltInDefaults).contains(currentValue)
+            {
                 return languageDefault
             }
             return languageDefault
         }
 
-        wordPromptTemplate = template("word_prompt_template", currentValue: wordPromptTemplate, languageDefault: languageDefaults.word)
-        sentencePromptTemplate = template("sentence_prompt_template", currentValue: sentencePromptTemplate, languageDefault: languageDefaults.sentence)
+        wordPromptTemplate = template(
+            "word_prompt_template",
+            currentValue: wordPromptTemplate,
+            languageDefault: languageDefaults.word
+        )
+        sentencePromptTemplate = template(
+            "sentence_prompt_template",
+            currentValue: sentencePromptTemplate,
+            languageDefault: languageDefaults.sentence
+        )
         explanationPromptTemplate = template(
             "explanation_prompt_template",
             currentValue: explanationPromptTemplate,
             languageDefault: languageDefaults.explanation,
-            legacyDefaults: [PromptTemplateDefaults.legacyExplanation, PromptTemplateDefaults.legacyMarkdownExplanation]
+            legacyDefaults: [
+                PromptTemplateDefaults.legacyExplanation,
+                PromptTemplateDefaults.legacyMarkdownExplanation
+            ]
         )
-        wordSystemPrompt = template("word_system_prompt", currentValue: wordSystemPrompt, languageDefault: languageDefaults.wordSystem)
-        sentenceSystemPrompt = template("sentence_system_prompt", currentValue: sentenceSystemPrompt, languageDefault: languageDefaults.sentenceSystem)
+        wordSystemPrompt = template(
+            "word_system_prompt",
+            currentValue: wordSystemPrompt,
+            languageDefault: languageDefaults.wordSystem
+        )
+        sentenceSystemPrompt = template(
+            "sentence_system_prompt",
+            currentValue: sentenceSystemPrompt,
+            languageDefault: languageDefaults.sentenceSystem
+        )
         explanationSystemPrompt = template(
             "explanation_system_prompt",
             currentValue: explanationSystemPrompt,
             languageDefault: languageDefaults.explanationSystem,
-            legacyDefaults: [PromptTemplateDefaults.legacyExplanationSystem, PromptTemplateDefaults.legacyMarkdownExplanationSystem]
+            legacyDefaults: [
+                PromptTemplateDefaults.legacyExplanationSystem,
+                PromptTemplateDefaults.legacyMarkdownExplanationSystem
+            ]
         )
         persistPromptTemplates(for: language)
     }
 
-    private func promptEditor(title: String, text: Binding<String>, defaultValue: String, minHeight: CGFloat = 180) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(title).font(.headline)
-                Spacer()
-                Button("恢复默认") { text.wrappedValue = defaultValue }
-            }
-            TextEditor(text: text)
-                .font(.system(.caption, design: .monospaced))
-                .frame(minHeight: minHeight)
-                .border(.separator)
+    private func validationErrors() -> [String] {
+        let prompts: [(PromptTemplateKind, String, String)] = [
+            (.word, wordPromptTemplate, wordSystemPrompt),
+            (.sentence, sentencePromptTemplate, sentenceSystemPrompt),
+            (.explanation, explanationPromptTemplate, explanationSystemPrompt)
+        ]
+        return prompts.flatMap { kind, userPrompt, systemPrompt in
+            let user = PromptTemplateValidator.validateUserPrompt(userPrompt, kind: kind)
+            let system = PromptTemplateValidator.validateSystemPrompt(systemPrompt)
+            return (user.errors + system.errors).map { "\(kind.title)：\($0)" }
         }
-        .padding(.vertical, 6)
     }
 
     private func syncRuntimeConfig() throws {
+        let errors = validationErrors()
+        guard errors.isEmpty else {
+            throw SettingsPromptValidationError(messages: errors)
+        }
+
         persistPromptTemplates(for: targetLanguage)
         let normalizedBaseURL = SettingsRuntimeService.shared.normalizedLLMBaseURL(baseURL)
         if normalizedBaseURL != baseURL {
@@ -299,13 +295,16 @@ struct SettingsView: View {
         )
     }
 
-    private func saveSettings() {
+    @discardableResult
+    private func saveSettings() -> Bool {
+        guard applyRuntimeConfig() else { return false }
         llmConfiguration.remember(baseURL: baseURL, model: model)
-        KeychainService.save(key: "llm_api_key", value: apiKey)
-        applyRuntimeConfig()
+        KeychainService.saveLLMAPIKey(apiKey, for: baseURL)
+        return true
     }
 
-    private func applyRuntimeConfig() {
+    @discardableResult
+    private func applyRuntimeConfig() -> Bool {
         do {
             try syncRuntimeConfig()
             saveErrorMessage = nil
@@ -314,11 +313,26 @@ struct SettingsView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                 withAnimation { showSavedBadge = false }
             }
+            return true
         } catch {
             showSavedBadge = false
             saveErrorMessage = "保存失败"
-            appState.showToast(TranslationErrorFormatter.userMessage(from: error))
+            if let validationError = error as? SettingsPromptValidationError {
+                appState.showToast(validationError.localizedDescription)
+                selectedDestination = .prompts
+            } else {
+                appState.showToast(TranslationErrorFormatter.userMessage(from: error))
+            }
+            return false
         }
+    }
+}
+
+private struct SettingsPromptValidationError: LocalizedError {
+    let messages: [String]
+
+    var errorDescription: String? {
+        "提示词验证失败：\(messages.first ?? "请检查动态变量")"
     }
 }
 
@@ -370,17 +384,15 @@ enum PromptTemplateDefaults {
         wordEnglish, sentenceEnglish, explanationEnglish,
         legacyWordChineseWithEmbeddedEtymology,
         legacyWordEnglishWithEmbeddedEtymology,
+        legacyExplanation,
+        legacyMarkdownExplanation,
+        legacyExplanationSystem,
+        legacyMarkdownExplanationSystem,
         wordSystemChinese, sentenceSystemChinese, explanationSystemChinese,
         wordSystemEnglish, sentenceSystemEnglish, explanationSystemEnglish
     ]
 
-    static let wordTemplateRevision = 1
-    static let wordBuiltInDefaults = [
-        wordChinese,
-        wordEnglish,
-        legacyWordChineseWithEmbeddedEtymology,
-        legacyWordEnglishWithEmbeddedEtymology
-    ]
+    static let templateRevision = 2
 
     static let legacyExplanationSystem = "You are a professional reading tutor. Always respond with valid JSON only."
     static let legacyMarkdownExplanationSystem = "You are a professional reading tutor. Return clear Markdown/plain text only; never return JSON for explanations."

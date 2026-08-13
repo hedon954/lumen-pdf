@@ -26,8 +26,8 @@ final class PromptTemplateUpdateCoordinatorTests: XCTestCase {
             forKey: "word_prompt_template_zh"
         )
 
-        let result = PromptTemplateUpdateCoordinator(defaults: defaults)
-            .applyUpdatesAtLaunch()
+        let coordinator = PromptTemplateUpdateCoordinator(defaults: defaults)
+        let result = coordinator.applyUpdatesAtLaunch()
 
         XCTAssertEqual(
             defaults.string(forKey: "word_prompt_template"),
@@ -37,8 +37,11 @@ final class PromptTemplateUpdateCoordinatorTests: XCTestCase {
             defaults.string(forKey: "word_prompt_template_zh"),
             "CUSTOM WORD PROMPT"
         )
-        XCTAssertTrue(defaults.bool(forKey: "word_prompt_template_update_pending_zh"))
-        XCTAssertEqual(defaults.integer(forKey: "word_prompt_template_revision_zh"), 0)
+        XCTAssertTrue(coordinator.hasPendingUpdate(for: "简体中文"))
+        XCTAssertTrue(
+            coordinator.pendingTemplateTitles(for: "简体中文")
+                .contains("单词翻译 User Prompt")
+        )
         XCTAssertEqual(result.pendingCustomLanguages, ["简体中文"])
     }
 
@@ -56,11 +59,10 @@ final class PromptTemplateUpdateCoordinatorTests: XCTestCase {
             defaults.string(forKey: "word_prompt_template"),
             PromptTemplateDefaults.wordChinese
         )
-        XCTAssertEqual(
-            defaults.integer(forKey: "word_prompt_template_revision_zh"),
-            PromptTemplateDefaults.wordTemplateRevision
+        XCTAssertFalse(
+            PromptTemplateUpdateCoordinator(defaults: defaults)
+                .hasPendingUpdate(for: "简体中文")
         )
-        XCTAssertFalse(defaults.bool(forKey: "word_prompt_template_update_pending_zh"))
         XCTAssertEqual(result.automaticallyUpdatedLanguages, ["简体中文"])
     }
 
@@ -79,5 +81,31 @@ final class PromptTemplateUpdateCoordinatorTests: XCTestCase {
         )
         XCTAssertFalse(coordinator.hasPendingUpdate(for: "简体中文"))
         XCTAssertTrue(nextLaunch.pendingCustomLanguages.isEmpty)
+    }
+
+    func testKnownBuiltInExplanationAndSystemPromptsUpdateAutomatically() {
+        defaults.set("简体中文", forKey: "target_language")
+        defaults.set(
+            PromptTemplateDefaults.legacyExplanation,
+            forKey: "explanation_prompt_template"
+        )
+        defaults.set(
+            PromptTemplateDefaults.legacyExplanationSystem,
+            forKey: "explanation_system_prompt"
+        )
+
+        let result = PromptTemplateUpdateCoordinator(defaults: defaults)
+            .applyUpdatesAtLaunch()
+
+        XCTAssertEqual(
+            defaults.string(forKey: "explanation_prompt_template"),
+            PromptTemplateDefaults.explanationChinese
+        )
+        XCTAssertEqual(
+            defaults.string(forKey: "explanation_system_prompt"),
+            PromptTemplateDefaults.explanationSystemChinese
+        )
+        XCTAssertEqual(result.automaticallyUpdatedLanguages, ["简体中文"])
+        XCTAssertTrue(result.pendingCustomLanguages.isEmpty)
     }
 }

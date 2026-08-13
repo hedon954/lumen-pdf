@@ -5,7 +5,7 @@ use crate::domain::translation::{
 use crate::error::LumenError;
 use crate::infrastructure::translator::http_client::shared_client;
 use crate::infrastructure::translator::streaming::{
-    extract_complete_string_fields, extract_streaming_string_value, SseAccumulator,
+    extract_complete_string_fields, extract_streaming_string_value, SseAccumulator, TokenUsage,
 };
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -253,7 +253,7 @@ impl LlmTranslator {
         let body = self.build_explanation_request(selection, context, focus, images, true);
         let url = self.completions_url();
 
-        let raw_buf = self
+        let completion = self
             .stream_completion(&url, &body, |raw, last_emitted| {
                 if raw != *last_emitted {
                     *last_emitted = raw.to_string();
@@ -269,8 +269,11 @@ impl LlmTranslator {
 
         let final_result = TranslationResult {
             word: selection.to_string(),
-            context_explanation: raw_buf,
+            context_explanation: completion.content,
             source: "llm".to_string(),
+            prompt_tokens: completion.usage.prompt_tokens,
+            completion_tokens: completion.usage.completion_tokens,
+            total_tokens: completion.usage.total_tokens,
             ..Default::default()
         };
         on_progress(final_result.clone());
@@ -314,14 +317,16 @@ impl LlmTranslator {
         sentence: &str,
     ) -> Result<TranslationResult, LumenError> {
         let body = self.build_sentence_request(sentence, false);
-        let content = self.send_chat_request(&body).await?;
+        let completion = self.send_chat_request(&body).await?;
 
         let parsed: SentencePromptJson =
-            serde_json::from_str(&content).map_err(|e| LumenError::SerializationError {
-                message: e.to_string(),
+            serde_json::from_str(&completion.content).map_err(|e| {
+                LumenError::SerializationError {
+                    message: e.to_string(),
+                }
             })?;
 
-        Ok(parsed.into_result(sentence))
+        Ok(parsed.into_result(sentence, completion.usage))
     }
 
     /// Streaming sentence translation.
@@ -342,7 +347,7 @@ impl LlmTranslator {
         let body = self.build_sentence_request(sentence, true);
         let url = self.completions_url();
 
-        let raw_buf = self
+        let completion = self
             .stream_completion(&url, &body, |raw, last_emitted| {
                 // Stream the `translation` field character by character. Other
                 // fields (`breakdown`) only appear at the end and are handled
@@ -366,10 +371,12 @@ impl LlmTranslator {
         // (string-only). At end of stream we run a strict JSON parse so we
         // can extract `breakdown` and guarantee a clean final result.
         let parsed: SentencePromptJson =
-            serde_json::from_str(&raw_buf).map_err(|e| LumenError::SerializationError {
-                message: e.to_string(),
+            serde_json::from_str(&completion.content).map_err(|e| {
+                LumenError::SerializationError {
+                    message: e.to_string(),
+                }
             })?;
-        let final_result = parsed.into_result(sentence);
+        let final_result = parsed.into_result(sentence, completion.usage);
         // Emit a terminal progress event so the UI gets the breakdown without
         // having to wait for the outer caller to wire it.
         on_progress(final_result.clone());
@@ -422,6 +429,7 @@ impl LlmTranslator {
             }],
             response_format: None,
             max_tokens: Some(1),
+            stream_options: None,
         };
 
         let response = match shared_client()
@@ -494,6 +502,9 @@ impl LlmTranslator {
             ],
             response_format: None,
             max_tokens: Some(DEFAULT_MAX_TOKENS),
+            stream_options: stream.then_some(StreamOptions {
+                include_usage: true,
+            }),
         }
     }
 
@@ -515,6 +526,9 @@ impl LlmTranslator {
                 kind: "json_object".into(),
             }),
             max_tokens: Some(DEFAULT_MAX_TOKENS),
+            stream_options: stream.then_some(StreamOptions {
+                include_usage: true,
+            }),
         }
     }
 
@@ -536,10 +550,13 @@ impl LlmTranslator {
                 kind: "json_object".into(),
             }),
             max_tokens: Some(DEFAULT_MAX_TOKENS),
+            stream_options: stream.then_some(StreamOptions {
+                include_usage: true,
+            }),
         }
     }
 
-    async fn send_chat_request(&self, body: &ChatRequest) -> Result<String, LumenError> {
+    async fn send_chat_request(&self, body: &ChatRequest) -> Result<CompletionOutput, LumenError> {
         let url = self.completions_url();
         let resp = shared_client()
             .post(&url)
@@ -563,12 +580,16 @@ impl LlmTranslator {
             message: e.to_string(),
         })?;
 
-        Ok(chat
+        let content = chat
             .choices
             .into_iter()
             .next()
             .map(|c| c.message.content)
-            .unwrap_or_default())
+            .unwrap_or_default();
+        Ok(CompletionOutput {
+            content,
+            usage: chat.usage.unwrap_or_default(),
+        })
     }
 
     /// Drive an OpenAI-compatible streaming completion: fire the request,
@@ -580,11 +601,11 @@ impl LlmTranslator {
         url: &str,
         body: &ChatRequest,
         mut on_chunk: F,
-    ) -> Result<String, LumenError>
+    ) -> Result<CompletionOutput, LumenError>
     where
         F: FnMut(&str, &mut String),
     {
-        let resp = shared_client()
+        let mut resp = shared_client()
             .post(url)
             .bearer_auth(&self.config.api_key)
             .json(body)
@@ -597,9 +618,36 @@ impl LlmTranslator {
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
-            return Err(LumenError::LlmApiError {
-                message: format!("HTTP {status}: {text}"),
-            });
+            let lower = text.to_lowercase();
+            let can_retry_without_usage = body.stream_options.is_some()
+                && status.as_u16() == 400
+                && (lower.contains("stream_options")
+                    || lower.contains("include_usage")
+                    || lower.contains("unknown field"));
+            if can_retry_without_usage {
+                let mut compatible_body = body.clone();
+                compatible_body.stream_options = None;
+                resp = shared_client()
+                    .post(url)
+                    .bearer_auth(&self.config.api_key)
+                    .json(&compatible_body)
+                    .send()
+                    .await
+                    .map_err(|e| LumenError::LlmApiError {
+                        message: e.to_string(),
+                    })?;
+                if !resp.status().is_success() {
+                    let retry_status = resp.status();
+                    let retry_text = resp.text().await.unwrap_or_default();
+                    return Err(LumenError::LlmApiError {
+                        message: format!("HTTP {retry_status}: {retry_text}"),
+                    });
+                }
+            } else {
+                return Err(LumenError::LlmApiError {
+                    message: format!("HTTP {status}: {text}"),
+                });
+            }
         }
 
         let mut byte_buf: Vec<u8> = Vec::new();
@@ -610,6 +658,7 @@ impl LlmTranslator {
         // mutable string scratch they can repurpose freely.
         let mut scratch = String::new();
         let mut stream = resp.bytes_stream();
+        let mut usage = TokenUsage::default();
 
         while let Some(item) = stream.next().await {
             let bytes = item.map_err(|e| LumenError::LlmApiError {
@@ -633,6 +682,9 @@ impl LlmTranslator {
             byte_buf.drain(..valid_len);
 
             let outcome = sse.feed(&valid_str);
+            if let Some(reported_usage) = outcome.usage {
+                usage = reported_usage;
+            }
             if !outcome.content_deltas.is_empty() {
                 content_buf.push_str(&outcome.content_deltas);
                 on_chunk(&content_buf, &mut scratch);
@@ -642,7 +694,10 @@ impl LlmTranslator {
             }
         }
 
-        Ok(content_buf)
+        Ok(CompletionOutput {
+            content: content_buf,
+            usage,
+        })
     }
 }
 
@@ -671,6 +726,9 @@ fn map_to_translation_result(
         fallback_error_message: String::new(),
         is_complete_failure: false,
         sentence_breakdown: Vec::new(),
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        total_tokens: 0,
     }
 }
 
@@ -728,7 +786,7 @@ fn is_explicit_image_unsupported_error(body: &str) -> bool {
     mentions_image && says_unsupported
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 struct ChatRequest {
     model: String,
     messages: Vec<Message>,
@@ -738,26 +796,33 @@ struct ChatRequest {
     max_tokens: Option<u32>,
     #[serde(skip_serializing_if = "is_false")]
     stream: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stream_options: Option<StreamOptions>,
+}
+
+#[derive(Clone, Serialize)]
+struct StreamOptions {
+    include_usage: bool,
 }
 
 fn is_false(b: &bool) -> bool {
     !*b
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 struct Message {
     role: String,
     content: RequestMessageContent,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(untagged)]
 enum RequestMessageContent {
     Text(String),
     Parts(Vec<RequestContentPart>),
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(tag = "type")]
 enum RequestContentPart {
     #[serde(rename = "text")]
@@ -766,12 +831,12 @@ enum RequestContentPart {
     ImageUrl { image_url: ImageUrlContent },
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 struct ImageUrlContent {
     url: String,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 struct ResponseFormat {
     #[serde(rename = "type")]
     kind: String,
@@ -780,6 +845,13 @@ struct ResponseFormat {
 #[derive(Deserialize)]
 struct ChatResponse {
     choices: Vec<Choice>,
+    #[serde(default)]
+    usage: Option<TokenUsage>,
+}
+
+struct CompletionOutput {
+    content: String,
+    usage: TokenUsage,
 }
 
 #[derive(Deserialize)]
@@ -805,7 +877,7 @@ struct LlmTranslationJson {
 }
 
 impl LlmTranslationJson {
-    fn into_result(self, fallback_word: &str) -> TranslationResult {
+    fn into_result(self, fallback_word: &str, usage: TokenUsage) -> TranslationResult {
         TranslationResult {
             word: self.word.unwrap_or_else(|| fallback_word.to_string()),
             phonetic: self.phonetic.unwrap_or_default(),
@@ -820,6 +892,9 @@ impl LlmTranslationJson {
             fallback_error_message: String::new(),
             is_complete_failure: false,
             sentence_breakdown: Vec::new(),
+            prompt_tokens: usage.prompt_tokens,
+            completion_tokens: usage.completion_tokens,
+            total_tokens: usage.total_tokens,
         }
     }
 }
@@ -846,7 +921,7 @@ impl SentencePromptJson {
     /// Materialize into a fully-populated `TranslationResult` for sentence
     /// mode. `original_sentence` is stored in `word` so callers can correlate
     /// the result with the user's selection (consistent with v1.0.4).
-    fn into_result(self, original_sentence: &str) -> TranslationResult {
+    fn into_result(self, original_sentence: &str, usage: TokenUsage) -> TranslationResult {
         let breakdown: Vec<SentenceChunk> = self
             .breakdown
             .into_iter()
@@ -866,6 +941,9 @@ impl SentencePromptJson {
             context_sentence_translation: self.translation.unwrap_or_default(),
             source: "llm".to_string(),
             sentence_breakdown: breakdown,
+            prompt_tokens: usage.prompt_tokens,
+            completion_tokens: usage.completion_tokens,
+            total_tokens: usage.total_tokens,
             ..Default::default()
         }
     }
@@ -875,14 +953,16 @@ impl SentencePromptJson {
 impl Translator for LlmTranslator {
     async fn translate(&self, word: &str, sentence: &str) -> Result<TranslationResult, LumenError> {
         let body = self.build_word_request(word, sentence, false);
-        let content = self.send_chat_request(&body).await?;
+        let completion = self.send_chat_request(&body).await?;
 
         let parsed: LlmTranslationJson =
-            serde_json::from_str(&content).map_err(|e| LumenError::SerializationError {
-                message: e.to_string(),
+            serde_json::from_str(&completion.content).map_err(|e| {
+                LumenError::SerializationError {
+                    message: e.to_string(),
+                }
             })?;
 
-        Ok(parsed.into_result(word))
+        Ok(parsed.into_result(word, completion.usage))
     }
 
     async fn translate_streaming(
@@ -895,7 +975,7 @@ impl Translator for LlmTranslator {
         let body = self.build_word_request(word, sentence, true);
 
         let mut last_keys: Vec<String> = Vec::new();
-        let raw_buf = self
+        let completion = self
             .stream_completion(&url, &body, |raw, _: &mut String| {
                 let fields = extract_complete_string_fields(raw);
                 if fields.is_empty() {
@@ -925,10 +1005,12 @@ impl Translator for LlmTranslator {
         // End-of-stream: strict parse so missing optional fields default to
         // empty strings via serde and we always return a complete result.
         let parsed: LlmTranslationJson =
-            serde_json::from_str(&raw_buf).map_err(|e| LumenError::SerializationError {
-                message: e.to_string(),
+            serde_json::from_str(&completion.content).map_err(|e| {
+                LumenError::SerializationError {
+                    message: e.to_string(),
+                }
             })?;
-        Ok(parsed.into_result(word))
+        Ok(parsed.into_result(word, completion.usage))
     }
 }
 

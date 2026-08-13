@@ -107,6 +107,16 @@ pub struct TranslationResult {
     /// or for short / simple sentences. Filled at end of stream by the LLM.
     #[serde(default)]
     pub sentence_breakdown: Vec<SentenceChunk>,
+    /// Provider-reported input tokens for this request. Runtime-only: cached
+    /// translations must not make a later cache hit look like a new paid call.
+    #[serde(skip)]
+    pub prompt_tokens: u64,
+    /// Provider-reported generated tokens for this request.
+    #[serde(skip)]
+    pub completion_tokens: u64,
+    /// Provider-reported total tokens for this request.
+    #[serde(skip)]
+    pub total_tokens: u64,
 }
 
 #[cfg(test)]

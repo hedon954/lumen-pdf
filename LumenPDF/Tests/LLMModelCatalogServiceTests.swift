@@ -49,4 +49,23 @@ final class LLMModelCatalogServiceTests: XCTestCase {
             ["custom-model-a", "custom-model-b"]
         )
     }
+
+    func testOpenCodePresetUsesOfficialZenEndpointAndFiltersUnsupportedProtocols() throws {
+        let preset = try XCTUnwrap(
+            LLMProviderPreset.builtIn.first { $0.id == "opencode-zen" }
+        )
+
+        XCTAssertEqual(preset.baseURL, "https://opencode.ai/zen/v1")
+        XCTAssertTrue(preset.supports(modelID: "deepseek-v4-flash"))
+        XCTAssertTrue(preset.supports(modelID: "kimi-k3"))
+        XCTAssertFalse(preset.supports(modelID: "gpt-5.6-terra"))
+        XCTAssertFalse(preset.supports(modelID: "claude-sonnet-5"))
+        XCTAssertFalse(preset.supports(modelID: "gemini-3.6-flash"))
+        XCTAssertFalse(preset.supports(modelID: "qwen3.6-plus"))
+
+        XCTAssertEqual(
+            try service.modelListURL(for: preset.baseURL).absoluteString,
+            "https://opencode.ai/zen/v1/models"
+        )
+    }
 }

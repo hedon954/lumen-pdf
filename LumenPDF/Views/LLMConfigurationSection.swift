@@ -10,6 +10,7 @@ struct LLMConfigurationSection: View {
 
     @State private var isModelPickerPresented = false
     @State private var modelSearch = ""
+    @State private var draftAPIKeysByBaseURL: [String: String] = [:]
 
     var body: some View {
         Section("LLM 配置") {
@@ -123,6 +124,12 @@ struct LLMConfigurationSection: View {
                 )
             } else {
                 Text("选择服务商后会填入常用 Base URL；模型列表来自当前厂商的兼容接口，也可以继续手动输入。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if let note = LLMProviderPreset.matching(baseURL: baseURL)?.compatibilityNote {
+                Label(note, systemImage: "info.circle")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -251,7 +258,18 @@ struct LLMConfigurationSection: View {
     private func selectBaseURL(_ newBaseURL: String) {
         let previousBaseURL = baseURL
         let previousModel = model
-        let apiKeyForRequest = apiKey
+        let previousBaseURLKey = LLMConfigurationHistory.canonicalBaseURLKey(previousBaseURL)
+        let newBaseURLKey = LLMConfigurationHistory.canonicalBaseURLKey(newBaseURL)
+        let isChangingProvider = previousBaseURLKey != newBaseURLKey
+        if isChangingProvider {
+            draftAPIKeysByBaseURL[previousBaseURLKey] = apiKey
+        }
+        let providerAPIKey = isChangingProvider
+            ? draftAPIKeysByBaseURL[newBaseURLKey]
+                ?? KeychainService.loadLLMAPIKey(for: newBaseURL)
+                ?? ""
+            : apiKey
+        apiKey = providerAPIKey
         baseURL = newBaseURL
         model = configuration.recentModels(for: newBaseURL).first ?? ""
         Task {
@@ -262,7 +280,7 @@ struct LLMConfigurationSection: View {
             )
             await configuration.refreshModels(
                 baseURL: newBaseURL,
-                apiKey: apiKeyForRequest
+                apiKey: providerAPIKey
             )
         }
     }

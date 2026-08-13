@@ -76,6 +76,21 @@ final class ReadingOverlayPlacementTests: XCTestCase {
         XCTAssertLessThanOrEqual(frame.maxY, containerSize.height - 12)
     }
 
+    func testNoteAnchorUsesVisualLastLineWhenStoredRectsAreReversed() {
+        let visualTop = CGRect(x: 100, y: 100, width: 760, height: 24)
+        let visualMiddle = CGRect(x: 100, y: 132, width: 700, height: 24)
+        let visualBottom = CGRect(x: 100, y: 164, width: 200, height: 24)
+
+        let result = NoteAnchorPlacementPolicy.place(
+            lineRects: [visualBottom, visualMiddle, visualTop],
+            textRects: [],
+            containerRect: CGRect(origin: .zero, size: containerSize)
+        )
+
+        XCTAssertEqual(result?.placement, .trailing)
+        XCTAssertEqual(result?.point, CGPoint(x: 320, y: 176))
+    }
+
     private func input(
         anchorRect: CGRect,
         overlaySize: CGSize

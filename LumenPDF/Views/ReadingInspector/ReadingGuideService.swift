@@ -27,7 +27,18 @@ final class ReadingGuideService {
             role: .user,
             content: displayedQuestion
         )
-        let assistantMessage = ExplanationMessage(role: .assistant, content: "")
+        let focus = Self.explanationFocusPrompt(
+            userQuestion: trimmedQuestion,
+            compressedContext: compressedContext,
+            originalSelection: session.selection.selectedText,
+            originalContext: session.selection.surroundingText
+        )
+        let retryRequest = ExplanationRetryRequest(focus: focus, imageURLs: imageURLs)
+        let assistantMessage = ExplanationMessage(
+            role: .assistant,
+            content: "",
+            retryRequest: retryRequest
+        )
 
         var pending = session
         pending.messages.append(userMessage)
@@ -37,19 +48,56 @@ final class ReadingGuideService {
         pending.errorMessage = nil
         onSessionChange(pending)
 
-        let sessionId = pending.id
-        let assistantId = assistantMessage.id
-        let focus = Self.explanationFocusPrompt(
-            userQuestion: trimmedQuestion,
-            compressedContext: compressedContext,
-            originalSelection: session.selection.selectedText,
-            originalContext: session.selection.surroundingText
+        execute(
+            retryRequest,
+            assistantID: assistantMessage.id,
+            pending: pending,
+            onSessionChange: onSessionChange
         )
+    }
+
+    func retryMessage(
+        _ messageID: UUID,
+        session: ExplanationSession,
+        onSessionChange: @escaping @MainActor (ExplanationSession) -> Void
+    ) {
+        guard let message = session.messages.first(where: { $0.id == messageID }),
+              message.role == .assistant,
+              let request = message.retryRequest
+        else { return }
+
+        var pending = session
+        pending.messages = Self.updatingAssistantMessage(
+            in: pending.messages,
+            id: messageID,
+            content: "",
+            isError: false,
+            retryRequest: request
+        )
+        pending.isLoading = true
+        pending.errorMessage = nil
+        onSessionChange(pending)
+
+        execute(
+            request,
+            assistantID: messageID,
+            pending: pending,
+            onSessionChange: onSessionChange
+        )
+    }
+
+    private func execute(
+        _ request: ExplanationRetryRequest,
+        assistantID: UUID,
+        pending: ExplanationSession,
+        onSessionChange: @escaping @MainActor (ExplanationSession) -> Void
+    ) {
+        let sessionId = pending.id
 
         Task {
             do {
                 let preparedImages = try await Task.detached(priority: .userInitiated) {
-                    try Self.prepareImages(from: imageURLs)
+                    try Self.prepareImages(from: request.imageURLs)
                 }.value
                 let images = preparedImages.map {
                     ImageAttachment(
@@ -59,17 +107,18 @@ final class ReadingGuideService {
                     )
                 }
                 let result = try await bridge.explainSelectionStreaming(
-                    selection: session.selection.selectedText,
-                    context: session.selection.surroundingText,
-                    focus: focus,
+                    selection: pending.selection.selectedText,
+                    context: pending.selection.surroundingText,
+                    focus: request.focus,
                     images: images,
                     onPartial: { partial in
                         var updated = pending
                         guard updated.id == sessionId else { return }
                         updated.messages = Self.updatingAssistantMessage(
                             in: updated.messages,
-                            id: assistantId,
-                            content: partial.contextExplanation
+                            id: assistantID,
+                            content: partial.contextExplanation,
+                            retryRequest: request
                         )
                         updated.errorMessage = nil
                         onSessionChange(updated)
@@ -79,8 +128,9 @@ final class ReadingGuideService {
                 var completed = pending
                 completed.messages = Self.updatingAssistantMessage(
                     in: completed.messages,
-                    id: assistantId,
-                    content: result.contextExplanation
+                    id: assistantID,
+                    content: result.contextExplanation,
+                    retryRequest: nil
                 )
                 completed.errorMessage = nil
                 completed.isLoading = false
@@ -90,9 +140,10 @@ final class ReadingGuideService {
                 let detail = Self.guideErrorMessage(from: error)
                 failed.messages = Self.updatingAssistantMessage(
                     in: failed.messages,
-                    id: assistantId,
+                    id: assistantID,
                     content: detail,
-                    isError: true
+                    isError: true,
+                    retryRequest: request
                 )
                 failed.errorMessage = nil
                 failed.isLoading = false
@@ -168,13 +219,15 @@ final class ReadingGuideService {
         in messages: [ExplanationMessage],
         id: UUID,
         content: String,
-        isError: Bool = false
+        isError: Bool = false,
+        retryRequest: ExplanationRetryRequest?
     ) -> [ExplanationMessage] {
         messages.map { message in
             guard message.id == id else { return message }
             var updated = message
             updated.content = content
             updated.isError = isError
+            updated.retryRequest = retryRequest
             return updated
         }
     }
@@ -194,7 +247,10 @@ final class ReadingGuideService {
         messages: [ExplanationMessage]
     ) -> String {
         let compactSummary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
-        let completedMessages = messages.filter { !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let completedMessages = messages.filter {
+            !$0.isError
+                && !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
         let recentMessages = completedMessages.suffix(20).map { message in
             let role = message.role == .user ? "User" : "Assistant"
             return "\(role): \(truncated(message.content, limit: message.role == .user ? 220 : 620))"

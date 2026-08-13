@@ -1586,10 +1586,11 @@ struct PDFKitView: NSViewRepresentable {
             let anchors = parent.noteAnchorRequests.compactMap { request -> NoteAnchorPosition? in
                 guard let page = pdfView.document?.page(at: request.pageIndex) else { return nil }
                 let rects = Self.parseAnnotationRects(request.boundsStr)
-                guard let last = rects.last, !last.isEmpty else { return nil }
+                guard let first = rects.first, !first.isEmpty else { return nil }
 
-                let lineInPDFView = pdfView.convert(last, from: page)
-                guard lineInPDFView.intersects(visibleRect.insetBy(dx: -48, dy: -48)) else { return nil }
+                let union = rects.dropFirst().reduce(first) { $0.union($1) }
+                let selectionInPDFView = pdfView.convert(union, from: page)
+                guard selectionInPDFView.intersects(visibleRect.insetBy(dx: -48, dy: -48)) else { return nil }
 
                 let lineRects = rects.map { Self.swiftUIRect(boundsInPage: $0, page: page, pdfView: pdfView) }
                 let textRects = textRectsByPageIndex[request.pageIndex] ?? {
@@ -1610,7 +1611,6 @@ struct PDFKitView: NSViewRepresentable {
                 )
                 guard let point = placement?.point else { return nil }
 
-                let union = rects.dropFirst().reduce(rects[0]) { $0.union($1) }
                 let unionInPDFView = pdfView.convert(union, from: page)
                 let unionInWindow = pdfView.convert(unionInPDFView, to: nil)
                 let anchorRect = CGRect(

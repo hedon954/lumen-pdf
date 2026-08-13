@@ -10,13 +10,26 @@ struct ExplanationMessage: Identifiable, Equatable {
     let role: ExplanationMessageRole
     var content: String
     var isError: Bool
+    var retryRequest: ExplanationRetryRequest?
 
-    init(id: UUID = UUID(), role: ExplanationMessageRole, content: String, isError: Bool = false) {
+    init(
+        id: UUID = UUID(),
+        role: ExplanationMessageRole,
+        content: String,
+        isError: Bool = false,
+        retryRequest: ExplanationRetryRequest? = nil
+    ) {
         self.id = id
         self.role = role
         self.content = content
         self.isError = isError
+        self.retryRequest = retryRequest
     }
+}
+
+struct ExplanationRetryRequest: Equatable {
+    let focus: String
+    let imageURLs: [URL]
 }
 
 struct ExplanationSession: Identifiable, Equatable {

@@ -20,7 +20,20 @@ use serde::Deserialize;
 
 #[derive(Deserialize)]
 struct SseChatChunk {
+    #[serde(default)]
     choices: Vec<SseChatChoice>,
+    #[serde(default)]
+    usage: Option<TokenUsage>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+pub struct TokenUsage {
+    #[serde(default)]
+    pub prompt_tokens: u64,
+    #[serde(default)]
+    pub completion_tokens: u64,
+    #[serde(default)]
+    pub total_tokens: u64,
 }
 
 #[derive(Deserialize)]
@@ -44,6 +57,9 @@ pub struct SseChunkOutcome {
     pub content_deltas: String,
     /// True when the stream signalled `data: [DONE]`.
     pub done: bool,
+    /// Usage appears in the terminal OpenAI-compatible stream frame when
+    /// `stream_options.include_usage` is supported by the provider.
+    pub usage: Option<TokenUsage>,
 }
 
 /// Stateful SSE line buffer. Call `feed` with each `bytes_stream()` chunk; it
@@ -63,6 +79,7 @@ impl SseAccumulator {
         self.pending.push_str(chunk);
         let mut content = String::new();
         let mut done = false;
+        let mut usage = None;
 
         // Process every fully-received line; keep the partial trailing line.
         while let Some(idx) = self.pending.find('\n') {
@@ -78,6 +95,9 @@ impl SseAccumulator {
                     continue;
                 }
                 if let Ok(parsed) = serde_json::from_str::<SseChatChunk>(payload) {
+                    if parsed.usage.is_some() {
+                        usage = parsed.usage;
+                    }
                     if let Some(choice) = parsed.choices.into_iter().next() {
                         if let Some(c) = choice.delta.content {
                             content.push_str(&c);
@@ -93,6 +113,7 @@ impl SseAccumulator {
         SseChunkOutcome {
             content_deltas: content,
             done,
+            usage,
         }
     }
 }
@@ -290,6 +311,23 @@ fn read_json_string(buf: &str, start: usize) -> Option<(String, usize)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extracts_usage_from_terminal_stream_frame() {
+        let mut accumulator = SseAccumulator::new();
+        let outcome = accumulator.feed(
+            "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":12,\"completion_tokens\":8,\"total_tokens\":20}}\n\n",
+        );
+
+        assert_eq!(
+            outcome.usage,
+            Some(TokenUsage {
+                prompt_tokens: 12,
+                completion_tokens: 8,
+                total_tokens: 20,
+            })
+        );
+    }
 
     #[test]
     fn extract_simple_fields() {
