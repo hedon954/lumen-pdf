@@ -612,8 +612,10 @@ struct PDFKitView: NSViewRepresentable {
             let contents: String?
             init(ann: PDFAnnotation) {
                 lineRects = PDFHighlightAnnotationFactory.lineRects(from: ann)
-                color = (ann.color as NSColor?) ?? PDFHighlightAnnotationFactory.nativeHighlightColor
                 tag = ann.userName ?? ""
+                color = tag == "__fu"
+                    ? PDFMarkupAppearance.underlineColor
+                    : (ann.color as NSColor?) ?? PDFHighlightAnnotationFactory.nativeHighlightColor
                 contents = ann.contents
             }
             var subtype: PDFAnnotationSubtype {
@@ -628,7 +630,6 @@ struct PDFKitView: NSViewRepresentable {
         private struct NoteAnnotationSnapshot {
             let noteId: String
             let bounds: CGRect
-            let color: NSColor
         }
 
         @objc func addFreeAnnotation(_ notification: Notification) {
@@ -650,7 +651,7 @@ struct PDFKitView: NSViewRepresentable {
             }
 
             let annType: PDFAnnotationSubtype = .underline
-            let color = NSColor(red: 0.8, green: 0, blue: 0, alpha: 1.0)
+            let color = PDFMarkupAppearance.underlineColor
             let tag = "__fu"
             let undoLabel = "划线"
             let contents = "free:underline"
@@ -880,8 +881,7 @@ struct PDFKitView: NSViewRepresentable {
                 for ann in oldAnns {
                     removedSnapshots.append(NoteAnnotationSnapshot(
                         noteId: oldNoteId,
-                        bounds: ann.bounds,
-                        color: ann.color ?? NSColor.systemRed
+                        bounds: ann.bounds
                     ))
                     page.removeAnnotation(ann)
                 }
@@ -891,7 +891,7 @@ struct PDFKitView: NSViewRepresentable {
             var addedAnnotations: [PDFAnnotation] = []
             for rect in lineRects {
                 let ann = PDFAnnotation(bounds: rect, forType: .underline, withProperties: nil)
-                ann.color = NSColor(red: 0.8, green: 0, blue: 0, alpha: 1.0)
+                PDFMarkupAppearance.applyUnderline(to: ann)
                 ann.userName = noteId
                 ann.contents = "note:\(noteId)"
                 page.addAnnotation(ann)
@@ -939,7 +939,7 @@ struct PDFKitView: NSViewRepresentable {
             var restoredAnnotations: [PDFAnnotation] = []
             for snap in removedSnapshots {
                 let ann = PDFAnnotation(bounds: snap.bounds, forType: .underline, withProperties: nil)
-                ann.color = snap.color
+                PDFMarkupAppearance.applyUnderline(to: ann)
                 ann.userName = snap.noteId
                 ann.contents = "note:\(snap.noteId)"
                 page.addAnnotation(ann)
@@ -1081,7 +1081,7 @@ struct PDFKitView: NSViewRepresentable {
             let lineRects = Self.parseAnnotationRects(boundsStr)
             for rect in lineRects where !rect.isEmpty && rect != .zero {
                 let ann = PDFAnnotation(bounds: rect, forType: .underline, withProperties: nil)
-                ann.color = NSColor(red: 0.8, green: 0, blue: 0, alpha: 1.0)
+                PDFMarkupAppearance.applyUnderline(to: ann)
                 ann.userName = noteId
                 ann.contents = "note:\(noteId)"
                 page.addAnnotation(ann)
@@ -1094,7 +1094,7 @@ struct PDFKitView: NSViewRepresentable {
             if item.type == "underline" {
                 _ = Self.makeMarkupAnnotations(
                     lineRects: lineRects, selection: nil, type: .underline,
-                    color: NSColor(red: 0.8, green: 0, blue: 0, alpha: 1.0),
+                    color: PDFMarkupAppearance.underlineColor,
                     tag: "__fu", page: page, contents: "free:underline"
                 )
             } else {
@@ -1778,7 +1778,11 @@ struct PDFKitView: NSViewRepresentable {
                                            color: NSColor, tag: String, page: PDFPage,
                                            contents: String? = nil) -> PDFAnnotation {
             let ann = PDFAnnotation(bounds: bounds, forType: type, withProperties: nil)
-            ann.color = color
+            if type == .underline {
+                PDFMarkupAppearance.applyUnderline(to: ann)
+            } else {
+                ann.color = color
+            }
             ann.userName = tag
             if let contents = contents {
                 ann.contents = contents

@@ -13,7 +13,7 @@ struct LLMConfigurationSection: View {
     @State private var draftAPIKeysByBaseURL: [String: String] = [:]
 
     var body: some View {
-        Section("LLM 配置") {
+        Section {
             Picker("服务商", selection: providerSelection) {
                 Section("内置服务商") {
                     ForEach(LLMProviderPreset.builtIn) { provider in
@@ -132,6 +132,18 @@ struct LLMConfigurationSection: View {
                 Label(note, systemImage: "info.circle")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+
+            if let provider = LLMProviderPreset.matching(baseURL: baseURL) {
+                Link(destination: provider.apiKeyURL) {
+                    Label(
+                        "前往 \(provider.name) 官网申请 API Key",
+                        systemImage: "arrow.up.right.square"
+                    )
+                }
+                .font(.caption)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .accessibilityHint("在浏览器中打开官方 API Key 申请页面")
             }
         }
     }

@@ -1,6 +1,22 @@
 import AppKit
 import PDFKit
 
+enum PDFMarkupAppearance {
+    /// Fixed sRGB keeps app-managed underlines visibly red on a white PDF page and avoids
+    /// PDFKit falling back to its near-black default when annotations are rebuilt or undone.
+    static let underlineColor = NSColor(
+        srgbRed: 0.92,
+        green: 0.10,
+        blue: 0.12,
+        alpha: 1
+    )
+
+    static func applyUnderline(to annotation: PDFAnnotation) {
+        annotation.color = underlineColor
+        annotation.markupType = .underline
+    }
+}
+
 /// Builds PDFKit highlight annotations that match macOS Preview markup style.
 enum PDFHighlightAnnotationFactory {
     /// Matches macOS Preview's highlighter, which uses the system "yellow" (a saturated goldenrod)

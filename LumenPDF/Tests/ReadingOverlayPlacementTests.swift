@@ -76,6 +76,28 @@ final class ReadingOverlayPlacementTests: XCTestCase {
         XCTAssertLessThanOrEqual(frame.maxY, containerSize.height - 12)
     }
 
+    func testManualMovementCanReachEveryContainerEdge() {
+        let overlaySize = CGSize(width: 380, height: 300)
+
+        let topLeading = ReadingOverlayPlacementPolicy.clamp(
+            origin: CGPoint(x: -500, y: -500),
+            overlaySize: overlaySize,
+            containerSize: containerSize,
+            horizontalSafeInset: 12,
+            verticalSafeInset: 12
+        )
+        let bottomTrailing = ReadingOverlayPlacementPolicy.clamp(
+            origin: CGPoint(x: 2_000, y: 2_000),
+            overlaySize: overlaySize,
+            containerSize: containerSize,
+            horizontalSafeInset: 12,
+            verticalSafeInset: 12
+        )
+
+        XCTAssertEqual(topLeading, CGPoint(x: 12, y: 12))
+        XCTAssertEqual(bottomTrailing, CGPoint(x: 608, y: 488))
+    }
+
     func testNoteAnchorUsesVisualLastLineWhenStoredRectsAreReversed() {
         let visualTop = CGRect(x: 100, y: 100, width: 760, height: 24)
         let visualMiddle = CGRect(x: 100, y: 132, width: 700, height: 24)

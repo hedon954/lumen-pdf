@@ -43,6 +43,7 @@ struct SettingsView: View {
                 saveBar
             }
         }
+        .toolbarVisibility(.visible, for: .windowToolbar)
         .onAppear(perform: load)
         .onChange(of: targetLanguage) { _, newLanguage in
             persistPromptTemplates(for: loadedPromptLanguage)

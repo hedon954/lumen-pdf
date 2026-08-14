@@ -68,4 +68,30 @@ final class LLMModelCatalogServiceTests: XCTestCase {
             "https://opencode.ai/zen/v1/models"
         )
     }
+
+    func testEveryBuiltInProviderHasOfficialAPIKeyLink() {
+        let expectedLinks = [
+            "openai": "https://platform.openai.com/api-keys",
+            "aliyun-cn": "https://bailian.console.aliyun.com/?tab=model#/api-key",
+            "aliyun-intl": "https://modelstudio.console.alibabacloud.com/?tab=model#/api-key",
+            "deepseek": "https://platform.deepseek.com/api_keys",
+            "openrouter": "https://openrouter.ai/settings/keys",
+            "opencode-zen": "https://opencode.ai/zen",
+            "gemini": "https://aistudio.google.com/app/apikey",
+            "siliconflow": "https://cloud.siliconflow.cn/account/ak",
+            "zhipu": "https://bigmodel.cn/usercenter/proj-mgmt/apikeys",
+            "minimax-cn": "https://platform.minimaxi.com/console/access?tab=api-keys",
+            "volcengine": "https://console.volcengine.com/ark/region:ark+cn-beijing/apikey"
+        ]
+
+        XCTAssertEqual(LLMProviderPreset.builtIn.count, expectedLinks.count)
+        for provider in LLMProviderPreset.builtIn {
+            XCTAssertEqual(provider.apiKeyURL.scheme, "https", provider.id)
+            XCTAssertEqual(
+                provider.apiKeyURL.absoluteString,
+                expectedLinks[provider.id],
+                provider.id
+            )
+        }
+    }
 }

@@ -4,6 +4,7 @@ struct LLMProviderPreset: Identifiable, Hashable {
     let id: String
     let name: String
     let baseURL: String
+    let apiKeyURL: URL
     let supportedModelPrefixes: [String]?
     let compatibilityNote: String?
 
@@ -11,12 +12,14 @@ struct LLMProviderPreset: Identifiable, Hashable {
         id: String,
         name: String,
         baseURL: String,
+        apiKeyURL: URL,
         supportedModelPrefixes: [String]? = nil,
         compatibilityNote: String? = nil
     ) {
         self.id = id
         self.name = name
         self.baseURL = baseURL
+        self.apiKeyURL = apiKeyURL
         self.supportedModelPrefixes = supportedModelPrefixes
         self.compatibilityNote = compatibilityNote
     }
@@ -25,32 +28,42 @@ struct LLMProviderPreset: Identifiable, Hashable {
         LLMProviderPreset(
             id: "openai",
             name: "OpenAI",
-            baseURL: "https://api.openai.com/v1"
+            baseURL: "https://api.openai.com/v1",
+            apiKeyURL: URL(string: "https://platform.openai.com/api-keys")!
         ),
         LLMProviderPreset(
             id: "aliyun-cn",
             name: "阿里云百炼（北京）",
-            baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+            baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            apiKeyURL: URL(
+                string: "https://bailian.console.aliyun.com/?tab=model#/api-key"
+            )!
         ),
         LLMProviderPreset(
             id: "aliyun-intl",
             name: "阿里云百炼（新加坡）",
-            baseURL: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+            baseURL: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+            apiKeyURL: URL(
+                string: "https://modelstudio.console.alibabacloud.com/?tab=model#/api-key"
+            )!
         ),
         LLMProviderPreset(
             id: "deepseek",
             name: "DeepSeek",
-            baseURL: "https://api.deepseek.com/v1"
+            baseURL: "https://api.deepseek.com/v1",
+            apiKeyURL: URL(string: "https://platform.deepseek.com/api_keys")!
         ),
         LLMProviderPreset(
             id: "openrouter",
             name: "OpenRouter",
-            baseURL: "https://openrouter.ai/api/v1"
+            baseURL: "https://openrouter.ai/api/v1",
+            apiKeyURL: URL(string: "https://openrouter.ai/settings/keys")!
         ),
         LLMProviderPreset(
             id: "opencode-zen",
             name: "OpenCode Zen",
             baseURL: "https://opencode.ai/zen/v1",
+            apiKeyURL: URL(string: "https://opencode.ai/zen")!,
             supportedModelPrefixes: [
                 "big-pickle",
                 "deepseek-",
@@ -68,27 +81,36 @@ struct LLMProviderPreset: Identifiable, Hashable {
         LLMProviderPreset(
             id: "gemini",
             name: "Google Gemini",
-            baseURL: "https://generativelanguage.googleapis.com/v1beta/openai"
+            baseURL: "https://generativelanguage.googleapis.com/v1beta/openai",
+            apiKeyURL: URL(string: "https://aistudio.google.com/app/apikey")!
         ),
         LLMProviderPreset(
             id: "siliconflow",
             name: "硅基流动",
-            baseURL: "https://api.siliconflow.cn/v1"
+            baseURL: "https://api.siliconflow.cn/v1",
+            apiKeyURL: URL(string: "https://cloud.siliconflow.cn/account/ak")!
         ),
         LLMProviderPreset(
             id: "zhipu",
             name: "智谱开放平台",
-            baseURL: "https://open.bigmodel.cn/api/paas/v4"
+            baseURL: "https://open.bigmodel.cn/api/paas/v4",
+            apiKeyURL: URL(string: "https://bigmodel.cn/usercenter/proj-mgmt/apikeys")!
         ),
         LLMProviderPreset(
             id: "minimax-cn",
             name: "MiniMax（中国）",
-            baseURL: "https://api.minimaxi.com/v1"
+            baseURL: "https://api.minimaxi.com/v1",
+            apiKeyURL: URL(
+                string: "https://platform.minimaxi.com/console/access?tab=api-keys"
+            )!
         ),
         LLMProviderPreset(
             id: "volcengine",
             name: "火山方舟",
-            baseURL: "https://ark.cn-beijing.volces.com/api/v3"
+            baseURL: "https://ark.cn-beijing.volces.com/api/v3",
+            apiKeyURL: URL(
+                string: "https://console.volcengine.com/ark/region:ark+cn-beijing/apikey"
+            )!
         )
     ]
 

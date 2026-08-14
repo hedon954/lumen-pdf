@@ -27,6 +27,7 @@ struct LumenPDFApp: App {
             SettingsView()
                 .environmentObject(appState)
         }
+        .windowToolbarStyle(.unifiedCompact(showsTitle: true))
     }
 }
 

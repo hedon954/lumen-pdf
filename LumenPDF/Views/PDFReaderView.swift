@@ -5,14 +5,13 @@ import AppKit
 struct PDFReaderView: View {
     let document: PdfDocument
     @ObservedObject var selectionActionBarModel: SelectionActionBarModel
+    @ObservedObject var translationOverlayModel: TranslationOverlayModel
     let viewportTransitionController: ReaderViewportTransitionController
     let onExplainSelection: (PDFSelectionContext) -> Void
     let onOpenNotes: () -> Void
     @EnvironmentObject private var appState: AppState
     @StateObject private var session = ReadingSessionService()
 
-    @State private var translationRequest: TranslationBubbleRequest?
-    @State private var isTranslating = false
     @State private var underlineDraft: UnderlineNoteDraft?
     @State private var noteAnchorPositions: [NoteAnchorPosition] = []
     @State private var activeNoteReview: ActiveNoteReview?
@@ -53,7 +52,11 @@ struct PDFReaderView: View {
                         anchorRect: rootSelectionRect,
                         hasExistingNote: exactUnderlineNote(boundsStr: boundsStr, page: page) != nil,
                         onAction: { action in
-                            handleSelectionAction(action, selection: selection)
+                            handleSelectionAction(
+                                action,
+                                selection: selection,
+                                translationAnchorRect: rootSelectionRect
+                            )
                         }
                     )
                 },
@@ -133,28 +136,6 @@ struct PDFReaderView: View {
                 .zIndex(3)
             }
 
-            // Translation bubble
-            if let req = translationRequest {
-                TranslationBubble(
-                    request: req,
-                    isLoading: isTranslating,
-                    availableSize: proxy.size,
-                    onSave: { result in
-                        if req.isSentenceMode {
-                            saveSentenceToNote(result: result, request: req)
-                        } else {
-                            saveToDiary(result: result, request: req)
-                        }
-                    },
-                    onDelete: { deletedId, savedToNote in
-                        deleteTranslationSave(id: deletedId, savedToNote: savedToNote, request: req)
-                    },
-                    onDismiss: closeTranslationOverlay
-                )
-                .transition(.opacity.combined(with: .scale(scale: 0.95)))
-                .animation(.easeOut(duration: 0.15), value: translationRequest != nil)
-                .zIndex(4)
-            }
             // ⌘S — invisible button that flushes reading position immediately.
             // Must be inside the ZStack (not .background) to stay in the responder chain.
             Button("") {
@@ -214,8 +195,7 @@ struct PDFReaderView: View {
     }
 
     private func closeTranslationOverlay() {
-        translationRequest = nil
-        isTranslating = false
+        translationOverlayModel.dismiss()
     }
 
     private func deleteNoteReviewItem(noteId: String, itemIndex: Int) {
@@ -297,7 +277,11 @@ struct PDFReaderView: View {
 
     // MARK: - Selection Action Bar
 
-    private func handleSelectionAction(_ action: SelectionActionBarAction, selection: SelectionInfo) {
+    private func handleSelectionAction(
+        _ action: SelectionActionBarAction,
+        selection: SelectionInfo,
+        translationAnchorRect: CGRect
+    ) {
         switch action {
         case .translate:
             requestTranslation(
@@ -306,7 +290,7 @@ struct PDFReaderView: View {
                 bounds: selection.bounds,
                 boundsStr: selection.boundsStr,
                 page: selection.page,
-                selectionAnchorRect: selection.selectionAnchorRect
+                selectionAnchorRect: translationAnchorRect
             )
         case .explain:
             onExplainSelection(
@@ -606,38 +590,41 @@ struct PDFReaderView: View {
         // correct saved/unsaved state on its very first frame. An entry is the *same word at the
         // same position* — keyed by word + context (sentence hash) — so the same spelling in a
         // different context (different sentence) is a separate entry and can still be added.
+        let sentenceHash = session.sentenceHash(sentence)
         var existingEntryId: String?
         if !isSentenceMode {
-            let hash = session.sentenceHash(sentence)
-            if let existing = try? ReaderPersistence.shared.getVocabularyByWordAndHash(word: word, sentenceHash: hash) {
+            if let existing = try? ReaderPersistence.shared.getVocabularyByWordAndHash(
+                word: word,
+                sentenceHash: sentenceHash
+            ) {
                 existingEntryId = existing.id
                 ReaderPersistence.shared.incrementQueryCount(id: existing.id)
             }
         }
 
-        translationRequest = TranslationBubbleRequest(
+        let request = TranslationBubbleRequest(
+            pdfPath: document.filePath,
+            pdfName: document.fileName,
             word: word, sentence: sentence,
+            sentenceHash: sentenceHash,
             bounds: bounds, boundsStr: boundsStr,
             page: page, selectionAnchorRect: selectionAnchorRect,
             result: nil, translationError: nil,
             existingEntryId: existingEntryId,
             isSentenceMode: isSentenceMode
         )
-        isTranslating = true
+        translationOverlayModel.present(request)
 
         // Track which translation request this Task belongs to, so a delayed
         // streaming callback from a previous selection can't overwrite the
         // bubble of a fresh one (user dismissed and selected something else).
-        let requestId = translationRequest?.id
+        let requestId = request.id
 
         Task {
             // Updates the bubble's `result` field as fields stream in.
             // Captured by both streaming-mode branches below.
             @MainActor func applyPartial(_ partial: TranslationResult) {
-                guard var req = translationRequest, req.id == requestId else { return }
-                req.result = partial
-                req.translationError = nil
-                translationRequest = req
+                translationOverlayModel.applyPartial(partial, requestID: requestId)
             }
 
             do {
@@ -656,110 +643,17 @@ struct PDFReaderView: View {
                 }
 
                 await MainActor.run {
-                    guard var req = translationRequest, req.id == requestId else { return }
-                    req.result = result
-                    req.translationError = nil
-                    translationRequest = req
-                    isTranslating = false
+                    translationOverlayModel.complete(result, requestID: requestId)
                 }
             } catch {
                 await MainActor.run {
-                    guard var req = translationRequest, req.id == requestId else { return }
                     var detail = TranslationErrorFormatter.userMessage(from: error)
                     if detail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         detail = "翻译失败：\(String(describing: error))"
                     }
-                    req.translationError = detail
-                    translationRequest = req
-                    isTranslating = false
+                    translationOverlayModel.fail(detail, requestID: requestId)
                 }
             }
-        }
-    }
-
-    // MARK: - Save to vocabulary
-
-    @discardableResult
-    private func saveToDiary(result: TranslationResult, request: TranslationBubbleRequest) -> String? {
-        let hash = session.sentenceHash(request.sentence)
-        guard let entry = try? ReaderPersistence.shared.saveVocabulary(
-            word: result.word, sentence: request.sentence, sentenceHash: hash,
-            pdfPath: document.filePath, pdfName: document.fileName,
-            pageIndex: UInt32(request.page), selectionBounds: request.boundsStr,
-            phonetic: result.phonetic, partOfSpeech: result.partOfSpeech,
-            contextTranslation: result.contextTranslation,
-            contextExplanation: result.contextExplanation,
-            etymology: result.etymology,
-            generalDefinition: result.generalDefinition,
-            contextSentenceTranslation: result.contextSentenceTranslation,
-            translationSource: result.source
-        ) else { return nil }
-
-        ReaderEventBus.shared.postAddHighlight(
-            entryId: entry.id,
-            page: Int(entry.pageIndex),
-            boundsStr: request.boundsStr,
-            filePath: document.filePath
-        )
-        appState.refreshVocabulary()
-        appState.showToast("已保存「\(entry.word)」")
-        return entry.id
-    }
-
-    // MARK: - Save sentence translation to notes
-
-    @discardableResult
-    private func saveSentenceToNote(result: TranslationResult, request: TranslationBubbleRequest) -> String? {
-        ReaderPersistence.shared.initializeIfNeeded()
-
-        let noteText = result.contextSentenceTranslation.isEmpty
-            ? result.contextTranslation
-            : result.contextSentenceTranslation
-
-        guard let noteEntry = try? ReaderPersistence.shared.saveNote(
-            pdfPath: document.filePath,
-            pdfName: document.fileName,
-            pageIndex: UInt32(request.page),
-            content: request.word,
-            note: noteText,
-            boundsStr: request.boundsStr
-        ) else {
-            appState.showToast("保存笔记失败")
-            return nil
-        }
-
-        // Add underline annotation linked to the note
-        ReaderEventBus.shared.postAddUnderlineNote(
-            noteId: noteEntry.id,
-            page: request.page,
-            boundsStr: request.boundsStr,
-            filePath: document.filePath
-        )
-
-        appState.refreshNotes()
-        appState.showToast("已保存到笔记")
-        return noteEntry.id
-    }
-
-    private func deleteTranslationSave(id: String, savedToNote: Bool, request: TranslationBubbleRequest) {
-        if savedToNote {
-            try? ReaderPersistence.shared.deleteNote(id: id)
-            ReaderEventBus.shared.postRemoveUnderlineNote(
-                noteId: id,
-                page: request.page,
-                filePath: document.filePath
-            )
-            appState.refreshNotes()
-            appState.showToast("已从笔记删除")
-        } else {
-            try? ReaderPersistence.shared.deleteVocabulary(id: id)
-            ReaderEventBus.shared.postRemoveHighlight(
-                entryId: id,
-                page: request.page,
-                filePath: document.filePath
-            )
-            appState.refreshVocabulary()
-            appState.showToast("已从单词本删除")
         }
     }
 }

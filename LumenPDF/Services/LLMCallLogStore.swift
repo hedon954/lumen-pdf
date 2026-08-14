@@ -16,6 +16,18 @@ enum LLMCallKind: String, Codable, CaseIterable, Identifiable {
         case .imageCapabilityCheck: return "图片能力检测"
         }
     }
+
+    /// Only reading actions initiated by the user belong in the audit trail and
+    /// usage accounting. Keep legacy internal cases decodable so older log
+    /// files can be migrated without failing the entire file.
+    var isUserFacing: Bool {
+        switch self {
+        case .wordTranslation, .sentenceTranslation, .selectionExplanation:
+            return true
+        case .imageCapabilityCheck:
+            return false
+        }
+    }
 }
 
 enum LLMCallStatus: String, Codable {
@@ -57,14 +69,16 @@ final class LLMCallLogStore: ObservableObject {
     init(fileURL: URL? = nil, maximumEntryCount: Int = 500) {
         self.maximumEntryCount = maximumEntryCount
         self.fileURL = fileURL ?? Self.defaultFileURL()
-        entries = Self.load(from: self.fileURL).map { entry in
-            guard entry.status == .running else { return entry }
-            var interrupted = entry
-            interrupted.status = .failed
-            interrupted.finishedAt = entry.finishedAt ?? Date()
-            interrupted.errorMessage = "应用在调用结束前退出，未收到完整响应。"
-            return interrupted
-        }
+        entries = Self.load(from: self.fileURL)
+            .filter { $0.kind.isUserFacing }
+            .map { entry in
+                guard entry.status == .running else { return entry }
+                var interrupted = entry
+                interrupted.status = .failed
+                interrupted.finishedAt = entry.finishedAt ?? Date()
+                interrupted.errorMessage = "应用在调用结束前退出，未收到完整响应。"
+                return interrupted
+            }
         persist()
     }
 
@@ -75,6 +89,7 @@ final class LLMCallLogStore: ObservableObject {
         baseURL: String,
         input: String
     ) -> UUID {
+        precondition(kind.isUserFacing, "Internal LLM operations must not enter user call logs")
         let id = UUID()
         entries.insert(
             LLMCallLogEntry(
@@ -256,6 +271,81 @@ struct LLMUsageSummary {
         totalTokens = entries.reduce(0) { $0 + $1.totalTokens }
         estimatedCostUSD = entries.reduce(0) {
             $0 + pricingStore.estimatedCost(for: $1)
+        }
+    }
+}
+
+struct LLMUsageCalendar: Equatable {
+    struct Day: Identifiable, Equatable {
+        let date: Date
+        let calls: Int
+        let promptTokens: UInt64
+        let completionTokens: UInt64
+        let totalTokens: UInt64
+        let isFuture: Bool
+
+        var id: Date { date }
+    }
+
+    let days: [Day]
+    let weekCount: Int
+
+    var weeks: [[Day]] {
+        stride(from: 0, to: days.count, by: 7).map { start in
+            Array(days[start..<min(start + 7, days.count)])
+        }
+    }
+
+    var maximumCallsPerDay: Int {
+        days.map(\.calls).max() ?? 0
+    }
+
+    init(
+        entries: [LLMCallLogEntry],
+        endingAt referenceDate: Date = Date(),
+        weekCount: Int = 26,
+        calendar: Calendar = .autoupdatingCurrent
+    ) {
+        let calendar = calendar
+        let count = max(1, weekCount)
+        let referenceDay = calendar.startOfDay(for: referenceDate)
+        let currentWeekStart = calendar.dateInterval(of: .weekOfYear, for: referenceDay)?.start
+            ?? referenceDay
+        let firstWeekStart = calendar.date(
+            byAdding: .weekOfYear,
+            value: -(count - 1),
+            to: currentWeekStart
+        ) ?? currentWeekStart
+
+        struct Totals {
+            var calls = 0
+            var promptTokens: UInt64 = 0
+            var completionTokens: UInt64 = 0
+            var totalTokens: UInt64 = 0
+        }
+
+        let totalsByDay = entries.reduce(into: [Date: Totals]()) { result, entry in
+            let day = calendar.startOfDay(for: entry.startedAt)
+            result[day, default: Totals()].calls += 1
+            result[day, default: Totals()].promptTokens += entry.promptTokens
+            result[day, default: Totals()].completionTokens += entry.completionTokens
+            result[day, default: Totals()].totalTokens += entry.totalTokens
+        }
+
+        self.weekCount = count
+        days = (0..<(count * 7)).compactMap { offset in
+            guard let date = calendar.date(byAdding: .day, value: offset, to: firstWeekStart) else {
+                return nil
+            }
+            let totals = totalsByDay[date] ?? Totals()
+            return Day(
+                date: date,
+                calls: totals.calls,
+                promptTokens: totals.promptTokens,
+                completionTokens: totals.completionTokens,
+                totalTokens: totals.totalTokens,
+                isFuture: date > referenceDay
+            )
         }
     }
 }

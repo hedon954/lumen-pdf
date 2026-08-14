@@ -207,7 +207,18 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
 
     private var displayedCenter: CGPoint {
         let size = renderedSize
-        return clampedCenter(customCenter ?? automaticCenter(for: size), windowSize: size)
+        if let customCenter {
+            return clampedCenter(
+                customCenter,
+                windowSize: size,
+                verticalSafeInset: horizontalSafeInset
+            )
+        }
+        return clampedCenter(
+            automaticCenter(for: size),
+            windowSize: size,
+            verticalSafeInset: verticalSafeInset
+        )
     }
 
     private var displayedOrigin: CGPoint {
@@ -264,7 +275,11 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
         automaticPlacement = result.placement == .leastOverlap ? nil : result.placement
     }
 
-    private func clampedCenter(_ center: CGPoint, windowSize: CGSize) -> CGPoint {
+    private func clampedCenter(
+        _ center: CGPoint,
+        windowSize: CGSize,
+        verticalSafeInset: CGFloat
+    ) -> CGPoint {
         let origin = ReadingOverlayPlacementPolicy.clamp(
             origin: CGPoint(
                 x: center.x - windowSize.width / 2,
@@ -286,7 +301,8 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
         let center = displayedCenter
         customCenter = clampedCenter(
             CGPoint(x: center.x + delta.width, y: center.y + delta.height),
-            windowSize: size
+            windowSize: size,
+            verticalSafeInset: horizontalSafeInset
         )
     }
 
@@ -371,7 +387,11 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
         }
 
         customSize = nextSize
-        customCenter = clampedCenter(nextCenter, windowSize: nextSize)
+        customCenter = clampedCenter(
+            nextCenter,
+            windowSize: nextSize,
+            verticalSafeInset: horizontalSafeInset
+        )
     }
 
     private func handleAvailableSizeChange() {
@@ -391,7 +411,11 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
         )
         let center = customCenter ?? displayedCenter
         self.customSize = nextSize
-        customCenter = clampedCenter(center, windowSize: nextSize)
+        customCenter = clampedCenter(
+            center,
+            windowSize: nextSize,
+            verticalSafeInset: horizontalSafeInset
+        )
     }
 
     private func resetWindowState() {

@@ -10,6 +10,7 @@
 		06B43D9E1D090999482B69FC /* ReadingGuideService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE608EB05C9C424192F3C777 /* ReadingGuideService.swift */; };
 		0FCA880AEE9A07C841BE7CA3 /* AnnotationBoundsCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE9BA24B6EA3E9B58D6835C6 /* AnnotationBoundsCodec.swift */; };
 		1011ADF9B649FC6D3C1EBDA3 /* PDFOutlineSidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B661E810829DCB71DA2BB60 /* PDFOutlineSidebarView.swift */; };
+		11C3EBFF47D034DE2BD487F9 /* PDFMarkupAppearanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09BDE20D6E9744162610607E /* PDFMarkupAppearanceTests.swift */; };
 		290C3D3454A7E5CE2ECF8899 /* liblumen_pdf_core.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = FDAFB107C96F1EAEFC542766 /* liblumen_pdf_core.dylib */; };
 		2A814A39F2654BC077AF664E /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAADF103642AE411F00A83B2 /* SettingsView.swift */; };
 		2EF45AD089F08CC60EEF25A6 /* LLMConfigurationSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58182CB629987E7524162EC6 /* LLMConfigurationSection.swift */; };
@@ -33,11 +34,13 @@
 		7169990F59B805C6B5E1175C /* ReadingNoteGrouping.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88795B8209674FF5713769A0 /* ReadingNoteGrouping.swift */; };
 		751E131F4EA169979C86BE05 /* VocabularyListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D66F2D5BF54DF0277E8B8F5 /* VocabularyListView.swift */; };
 		7544D14CF33881806D433311 /* LLMConfigurationHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB31EAE93D21D7777797E190 /* LLMConfigurationHistory.swift */; };
+		7801B0CD9094B9E504DB179C /* LLMUsageHeatmap.swift in Sources */ = {isa = PBXBuildFile; fileRef = C36DED22B8A258EF40C45989 /* LLMUsageHeatmap.swift */; };
 		782238EECEFDCFCC4C6F4807 /* BridgeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D971163E74432C8E4D8E88B6 /* BridgeService.swift */; };
 		7A7F657207F24ECEB64891C1 /* LLMModelCatalogServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D8152F2758E707FF7AF44CA /* LLMModelCatalogServiceTests.swift */; };
 		7C20FC2931CCEA0F767AD9E1 /* LLMCallLogStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 003EC82D03E7017BE31C375C /* LLMCallLogStoreTests.swift */; };
 		7CD0D064B6A78DE229C10ADF /* NoteListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 289641D4E088EC11218E96E7 /* NoteListView.swift */; };
 		7DD03E111E5BAFFD99175286 /* ExplanationSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 386AB8DF49B0F88A6CEEB115 /* ExplanationSession.swift */; };
+		7F358B7C0D710B52CE8497C8 /* TranslationOverlayModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91314A27CEF4CC44808FAB80 /* TranslationOverlayModel.swift */; };
 		7F3CC90F36A5EE8DA40DDAE6 /* LibrarySidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBADA67AFE4CCA308FE5ECE3 /* LibrarySidebarView.swift */; };
 		7F62BF62C6AD1CFB4E579174 /* LLMConfigurationHistoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 656A225A0B3D0AE834BBCD0D /* LLMConfigurationHistoryTests.swift */; };
 		7FCB6C88E0A9D66F857ACD60 /* LLMConfigurationModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAEBB9949F9A1630AA3539C1 /* LLMConfigurationModel.swift */; };
@@ -102,6 +105,7 @@
 /* Begin PBXFileReference section */
 		003EC82D03E7017BE31C375C /* LLMCallLogStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMCallLogStoreTests.swift; sourceTree = "<group>"; };
 		02C8AB89597B5F7CD4BEEE1B /* SettingsRuntimeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsRuntimeService.swift; sourceTree = "<group>"; };
+		09BDE20D6E9744162610607E /* PDFMarkupAppearanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFMarkupAppearanceTests.swift; sourceTree = "<group>"; };
 		0CAE0AF4D6907DA0DFD2F1BE /* LumenPDF.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LumenPDF.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		0D66F2D5BF54DF0277E8B8F5 /* VocabularyListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabularyListView.swift; sourceTree = "<group>"; };
 		1A241C349E69B97B92EBD132 /* ReaderViewportGeometryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderViewportGeometryTests.swift; sourceTree = "<group>"; };
@@ -135,6 +139,7 @@
 		86397D3859663CD7D5B07982 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		88795B8209674FF5713769A0 /* ReadingNoteGrouping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingNoteGrouping.swift; sourceTree = "<group>"; };
 		8D30F8A859F8099B314A72B1 /* PDFReaderModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFReaderModels.swift; sourceTree = "<group>"; };
+		91314A27CEF4CC44808FAB80 /* TranslationOverlayModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationOverlayModel.swift; sourceTree = "<group>"; };
 		92D0F2DE24CFD041786B3ED5 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		9513D7E3777A4832E9D95420 /* PromptTemplateValidatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptTemplateValidatorTests.swift; sourceTree = "<group>"; };
 		96C3E4FC222769CD9CEC5ECB /* NoteTextList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteTextList.swift; sourceTree = "<group>"; };
@@ -148,6 +153,7 @@
 		B3C5A08FEDBDF06479787BAF /* FreeMarkupStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FreeMarkupStore.swift; sourceTree = "<group>"; };
 		B5D36AC880B4D221C3928298 /* PDFSelectionContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFSelectionContext.swift; sourceTree = "<group>"; };
 		BEED3A291C974F7E4E2DB11A /* SelectionActionBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectionActionBar.swift; sourceTree = "<group>"; };
+		C36DED22B8A258EF40C45989 /* LLMUsageHeatmap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMUsageHeatmap.swift; sourceTree = "<group>"; };
 		C4B30D9C086E3F01B5AD75F6 /* lumen_pdf_coreFFI.modulemap */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.module-map"; path = lumen_pdf_coreFFI.modulemap; sourceTree = "<group>"; };
 		C5AC7216EC69DB6ECA36E92E /* LLMAPIKeyVaultTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMAPIKeyVaultTests.swift; sourceTree = "<group>"; };
 		C5C9CEA207C75F85B4568607 /* liblumen_pdf_core.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = liblumen_pdf_core.dylib; sourceTree = "<group>"; };
@@ -207,6 +213,7 @@
 				4C7DB11713DA8AACF51DC35F /* ContextSentenceFormatting.swift */,
 				CBADA67AFE4CCA308FE5ECE3 /* LibrarySidebarView.swift */,
 				58182CB629987E7524162EC6 /* LLMConfigurationSection.swift */,
+				C36DED22B8A258EF40C45989 /* LLMUsageHeatmap.swift */,
 				289641D4E088EC11218E96E7 /* NoteListView.swift */,
 				96C3E4FC222769CD9CEC5ECB /* NoteTextList.swift */,
 				9B661E810829DCB71DA2BB60 /* PDFOutlineSidebarView.swift */,
@@ -262,6 +269,7 @@
 				5B07FBCAEAFAEECD88CFE576 /* ReadingRestorationState.swift */,
 				BEED3A291C974F7E4E2DB11A /* SelectionActionBar.swift */,
 				728A21B45C88A4C44E504D01 /* SplitPaneWidthObserver.swift */,
+				91314A27CEF4CC44808FAB80 /* TranslationOverlayModel.swift */,
 				C5D204492B4D1E54DC478CF6 /* UnderlineNoteDraftView.swift */,
 				E5A0EBC40C3F33282D857841 /* UnderlineNoteMergePolicy.swift */,
 			);
@@ -276,6 +284,7 @@
 				656A225A0B3D0AE834BBCD0D /* LLMConfigurationHistoryTests.swift */,
 				2D8152F2758E707FF7AF44CA /* LLMModelCatalogServiceTests.swift */,
 				C88A756D118B5E7C64879F2C /* NoteTextListTests.swift */,
+				09BDE20D6E9744162610607E /* PDFMarkupAppearanceTests.swift */,
 				E64706D3CABF48D59E6ED9D4 /* PromptTemplateUpdateCoordinatorTests.swift */,
 				9513D7E3777A4832E9D95420 /* PromptTemplateValidatorTests.swift */,
 				1A241C349E69B97B92EBD132 /* ReaderViewportGeometryTests.swift */,
@@ -435,6 +444,7 @@
 				7F62BF62C6AD1CFB4E579174 /* LLMConfigurationHistoryTests.swift in Sources */,
 				7A7F657207F24ECEB64891C1 /* LLMModelCatalogServiceTests.swift in Sources */,
 				BB1E0DACC0305E57AD2A5809 /* NoteTextListTests.swift in Sources */,
+				11C3EBFF47D034DE2BD487F9 /* PDFMarkupAppearanceTests.swift in Sources */,
 				52A7C096DC0EE47021467BDD /* PromptTemplateUpdateCoordinatorTests.swift in Sources */,
 				3D1CC2E6216E9D107E3BA2C8 /* PromptTemplateValidatorTests.swift in Sources */,
 				5A1758AFDD0D467FCDB903BD /* ReaderViewportGeometryTests.swift in Sources */,
@@ -462,6 +472,7 @@
 				7FCB6C88E0A9D66F857ACD60 /* LLMConfigurationModel.swift in Sources */,
 				2EF45AD089F08CC60EEF25A6 /* LLMConfigurationSection.swift in Sources */,
 				6BBE6EE08B8CE203AA0081D9 /* LLMModelCatalogService.swift in Sources */,
+				7801B0CD9094B9E504DB179C /* LLMUsageHeatmap.swift in Sources */,
 				7F3CC90F36A5EE8DA40DDAE6 /* LibrarySidebarView.swift in Sources */,
 				DA410654D0FCF8C48775E83D /* LumenPDFApp.swift in Sources */,
 				7CD0D064B6A78DE229C10ADF /* NoteListView.swift in Sources */,
@@ -494,6 +505,7 @@
 				A77220337E850506BABA4F04 /* SplitPaneWidthObserver.swift in Sources */,
 				B308BE40E9C7A5E667FB725E /* TranslationBubble.swift in Sources */,
 				AF82E5794BAC9B20BC7C6746 /* TranslationErrorFormatter.swift in Sources */,
+				7F358B7C0D710B52CE8497C8 /* TranslationOverlayModel.swift in Sources */,
 				6986D8C59A85F24C07531810 /* UnderlineNoteDraftView.swift in Sources */,
 				8EA1E0ACAFE101E377E75E1F /* UnderlineNoteMergePolicy.swift in Sources */,
 				751E131F4EA169979C86BE05 /* VocabularyListView.swift in Sources */,

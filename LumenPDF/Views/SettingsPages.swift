@@ -48,6 +48,7 @@ struct LLMSettingsPage: View {
             )
         }
         .formStyle(.grouped)
+        .contentMargins(.top, 0, for: .scrollContent)
         .navigationTitle("LLM 配置")
     }
 }
@@ -73,6 +74,7 @@ struct TranslationSettingsPage: View {
             }
         }
         .formStyle(.grouped)
+        .contentMargins(.top, 0, for: .scrollContent)
         .navigationTitle("翻译设置")
     }
 }
@@ -93,12 +95,19 @@ struct PromptSettingsPage: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Picker("提示词类型", selection: $selectedKind) {
-                ForEach(PromptTemplateKind.allCases) { kind in
-                    Label(kind.title, systemImage: kind.systemImage).tag(kind)
+            HStack {
+                Spacer(minLength: 0)
+                Picker("", selection: $selectedKind) {
+                    ForEach(PromptTemplateKind.allCases) { kind in
+                        Label(kind.title, systemImage: kind.systemImage).tag(kind)
+                    }
                 }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .fixedSize()
+                .accessibilityLabel("提示词类型")
+                Spacer(minLength: 0)
             }
-            .pickerStyle(.segmented)
             .padding()
 
             Divider()
@@ -139,6 +148,7 @@ struct PromptSettingsPage: View {
                 .padding(20)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .contentMargins(.top, 0, for: .scrollContent)
         }
         .navigationTitle("提示词模板")
     }
@@ -166,6 +176,13 @@ struct PromptSettingsPage: View {
     }
 }
 
+private enum PromptValidationButtonState: Equatable {
+    case idle
+    case validating
+    case valid
+    case invalid
+}
+
 private struct PromptTemplateEditor: View {
     let kind: PromptTemplateKind
     @Binding var userPrompt: String
@@ -174,6 +191,8 @@ private struct PromptTemplateEditor: View {
     let defaultSystemPrompt: String
 
     @State private var validationFeedback: PromptTemplateValidation?
+    @State private var isValidating = false
+    @State private var validationTask: Task<Void, Never>?
 
     private var liveValidation: PromptTemplateValidation {
         let user = PromptTemplateValidator.validateUserPrompt(userPrompt, kind: kind)
@@ -193,14 +212,27 @@ private struct PromptTemplateEditor: View {
                 }
                 Spacer()
                 Button {
-                    validationFeedback = liveValidation
+                    validatePrompts()
                 } label: {
-                    Label("验证提示词", systemImage: "checkmark.shield")
+                    validationButtonLabel
+                        .id(validationButtonState)
+                        .transition(.scale(scale: 0.9).combined(with: .opacity))
                 }
                 .buttonStyle(.borderedProminent)
+                .tint(validationButtonTint)
+                .disabled(isValidating)
+                .animation(
+                    .spring(response: 0.28, dampingFraction: 0.7),
+                    value: validationButtonState
+                )
             }
 
             variableGuide
+
+            if let validationFeedback {
+                validationCard(validationFeedback)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
 
             editor(
                 title: "User Prompt",
@@ -214,11 +246,74 @@ private struct PromptTemplateEditor: View {
                 defaultValue: defaultSystemPrompt,
                 minimumHeight: 110
             )
-
-            validationCard(validationFeedback ?? liveValidation)
         }
-        .onChange(of: userPrompt) { _, _ in validationFeedback = nil }
-        .onChange(of: systemPrompt) { _, _ in validationFeedback = nil }
+        .animation(.snappy(duration: 0.25), value: validationFeedback)
+        .onChange(of: userPrompt) { _, _ in resetValidation() }
+        .onChange(of: systemPrompt) { _, _ in resetValidation() }
+        .onDisappear { validationTask?.cancel() }
+    }
+
+    private var validationButtonState: PromptValidationButtonState {
+        if isValidating { return .validating }
+        guard let validationFeedback else { return .idle }
+        return validationFeedback.isValid ? .valid : .invalid
+    }
+
+    private var validationButtonTint: Color {
+        switch validationButtonState {
+        case .idle, .validating:
+            return .accentColor
+        case .valid:
+            return .green
+        case .invalid:
+            return .orange
+        }
+    }
+
+    @ViewBuilder
+    private var validationButtonLabel: some View {
+        switch validationButtonState {
+        case .idle:
+            Label("验证提示词", systemImage: "checkmark.shield")
+        case .validating:
+            HStack(spacing: 7) {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(.white)
+                Text("验证中…")
+            }
+        case .valid:
+            Label("验证通过", systemImage: "checkmark.circle.fill")
+        case .invalid:
+            Label("需要修正", systemImage: "exclamationmark.triangle.fill")
+        }
+    }
+
+    private func validatePrompts() {
+        validationTask?.cancel()
+        withAnimation(.easeOut(duration: 0.16)) {
+            validationFeedback = nil
+            isValidating = true
+        }
+
+        validationTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
+            let result = liveValidation
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
+                isValidating = false
+                validationFeedback = result
+            }
+        }
+    }
+
+    private func resetValidation() {
+        validationTask?.cancel()
+        validationTask = nil
+        withAnimation(.easeOut(duration: 0.16)) {
+            isValidating = false
+            validationFeedback = nil
+        }
     }
 
     private var variableGuide: some View {
@@ -310,9 +405,11 @@ struct LLMCallLogSettingsPage: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Text("LLM 调用日志")
-                    .font(.title2.weight(.semibold))
+            HStack(alignment: .center, spacing: 16) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("LLM 调用日志")
+                        .font(.title2.weight(.semibold))
+                }
                 Spacer()
                 Button(role: .destructive) {
                     isConfirmingClear = true
@@ -327,17 +424,15 @@ struct LLMCallLogSettingsPage: View {
 
             Divider()
 
-            HStack(spacing: 0) {
+            HSplitView {
                 List(selection: $selectedID) {
                     ForEach(store.entries) { entry in
                         LogRow(entry: entry)
                             .tag(entry.id)
                     }
                 }
-                .listStyle(.sidebar)
-                .frame(width: 230)
-
-                Divider()
+                .listStyle(.plain)
+                .frame(minWidth: 250, idealWidth: 280, maxWidth: 340)
 
                 Group {
                     if let entry = selectedEntry {
@@ -348,8 +443,8 @@ struct LLMCallLogSettingsPage: View {
                             systemImage: "list.bullet.rectangle",
                             description: Text(
                                 store.entries.isEmpty
-                                    ? "完成一次 LLM 调用后，可在这里审计输入、输出、失败原因和 Token。"
-                                    : "查看输入、响应、失败原因、耗时与 Token 用量"
+                                    ? "完成一次单词翻译、整句翻译或选区解释后，可在这里查看请求、响应与 Token。"
+                                    : "查看这次请求的响应、耗时与 Token 用量"
                             )
                         )
                     }
@@ -382,30 +477,185 @@ private struct LogRow: View {
     let entry: LLMCallLogEntry
 
     var body: some View {
-        HStack(alignment: .top, spacing: 9) {
-            Image(systemName: statusIcon)
-                .foregroundStyle(statusColor)
-                .frame(width: 16)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(entry.kind.title)
-                    .font(.body.weight(.medium))
+        HStack(alignment: .top, spacing: 10) {
+            ZStack {
+                Circle()
+                    .fill(statusColor.opacity(0.12))
+                Image(systemName: entry.kind.logSystemImage)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(statusColor)
+            }
+            .frame(width: 30, height: 30)
+
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 6) {
+                    Text(entry.kind.title)
+                        .font(.body.weight(.semibold))
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    Circle()
+                        .fill(statusColor)
+                        .frame(width: 7, height: 7)
+                        .help(statusTitle)
+                }
                 Text(entry.model)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                Text(entry.startedAt.formatted(date: .abbreviated, time: .standard))
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.tertiary)
+                HStack(spacing: 6) {
+                    Text(entry.startedAt.formatted(date: .abbreviated, time: .shortened))
+                    if entry.totalTokens > 0 {
+                        Text("·")
+                        Text("\(entry.totalTokens.formatted()) Token")
+                    }
+                }
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.tertiary)
             }
         }
-        .padding(.vertical, 3)
+        .padding(.vertical, 7)
     }
 
-    private var statusIcon: String {
+    private var statusColor: Color {
         switch entry.status {
-        case .running: return "clock"
-        case .succeeded: return "checkmark.circle.fill"
-        case .failed: return "xmark.octagon.fill"
+        case .running: return .orange
+        case .succeeded: return .green
+        case .failed: return .red
+        }
+    }
+
+    private var statusTitle: String {
+        switch entry.status {
+        case .running: return "进行中"
+        case .succeeded: return "成功"
+        case .failed: return "失败"
+        }
+    }
+}
+
+private struct LLMCallLogDetail: View {
+    let entry: LLMCallLogEntry
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                summaryCard
+
+                if !entry.errorMessage.isEmpty {
+                    logTextSection(
+                        "错误与警告",
+                        systemImage: "exclamationmark.triangle.fill",
+                        text: entry.errorMessage,
+                        tint: .red
+                    )
+                }
+                logTextSection(
+                    "请求内容",
+                    systemImage: "arrow.up.doc",
+                    text: entry.input,
+                    tint: .blue
+                )
+                logTextSection(
+                    "模型响应",
+                    systemImage: "arrow.down.doc",
+                    text: entry.output.isEmpty ? "暂无输出" : entry.output,
+                    tint: .green
+                )
+            }
+            .padding(22)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var summaryCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(statusColor.opacity(0.12))
+                    Image(systemName: entry.kind.logSystemImage)
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(statusColor)
+                }
+                .frame(width: 44, height: 44)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(entry.kind.title)
+                        .font(.title3.weight(.semibold))
+                    Text(entry.startedAt.formatted(date: .long, time: .standard))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Label(statusTitle, systemImage: statusSystemImage)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(statusColor)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(statusColor.opacity(0.1), in: Capsule())
+            }
+
+            Divider()
+
+            Grid(alignment: .leading, horizontalSpacing: 30, verticalSpacing: 12) {
+                GridRow {
+                    summaryValue("模型", value: entry.model)
+                    summaryValue("来源", value: sourceTitle)
+                }
+                GridRow {
+                    summaryValue("耗时", value: durationTitle)
+                    summaryValue("Token", value: entry.totalTokens.formatted())
+                }
+                GridRow {
+                    summaryValue("输入 Token", value: entry.promptTokens.formatted())
+                    summaryValue("输出 Token", value: entry.completionTokens.formatted())
+                }
+            }
+        }
+        .padding(16)
+        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+        }
+    }
+
+    private func summaryValue(_ title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.callout.weight(.medium))
+                .lineLimit(1)
+                .textSelection(.enabled)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func logTextSection(
+        _ title: String,
+        systemImage: String,
+        text: String,
+        tint: Color
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(title, systemImage: systemImage)
+                .font(.headline)
+                .foregroundStyle(tint)
+            Text(text)
+                .font(.callout)
+                .lineSpacing(3)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(16)
+        .background(tint.opacity(0.055), in: RoundedRectangle(cornerRadius: 12))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(tint.opacity(0.14), lineWidth: 0.5)
         }
     }
 
@@ -416,46 +666,47 @@ private struct LogRow: View {
         case .failed: return .red
         }
     }
-}
 
-private struct LLMCallLogDetail: View {
-    let entry: LLMCallLogEntry
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                LabeledContent("类型", value: entry.kind.title)
-                LabeledContent("模型", value: entry.model)
-                LabeledContent("来源", value: entry.source.isEmpty ? "—" : entry.source)
-                if let duration = entry.duration {
-                    LabeledContent("耗时", value: String(format: "%.2f 秒", duration))
-                }
-                LabeledContent(
-                    "Token",
-                    value: "输入 \(entry.promptTokens) · 输出 \(entry.completionTokens) · 合计 \(entry.totalTokens)"
-                )
-
-                if !entry.errorMessage.isEmpty {
-                    logTextSection("错误 / 警告", text: entry.errorMessage, tint: .red)
-                }
-                logTextSection("输入", text: entry.input, tint: .secondary)
-                logTextSection("输出", text: entry.output.isEmpty ? "暂无输出" : entry.output, tint: .secondary)
-            }
-            .padding(20)
-            .frame(maxWidth: .infinity, alignment: .leading)
+    private var statusTitle: String {
+        switch entry.status {
+        case .running: return "进行中"
+        case .succeeded: return "成功"
+        case .failed: return "失败"
         }
     }
 
-    private func logTextSection(_ title: String, text: String, tint: Color) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.headline)
-            Text(text)
-                .font(.system(.callout, design: .monospaced))
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
+    private var statusSystemImage: String {
+        switch entry.status {
+        case .running: return "clock.fill"
+        case .succeeded: return "checkmark.circle.fill"
+        case .failed: return "xmark.octagon.fill"
         }
-        .padding(12)
-        .background(tint.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var sourceTitle: String {
+        switch entry.source.lowercased() {
+        case "llm": return "模型"
+        case "cache": return "本地缓存"
+        case "fallback": return "备用翻译"
+        case "": return "—"
+        default: return entry.source
+        }
+    }
+
+    private var durationTitle: String {
+        guard let duration = entry.duration else { return "进行中" }
+        return String(format: "%.2f 秒", duration)
+    }
+}
+
+private extension LLMCallKind {
+    var logSystemImage: String {
+        switch self {
+        case .wordTranslation: return "character.book.closed"
+        case .sentenceTranslation: return "text.quote"
+        case .selectionExplanation: return "sparkles"
+        case .imageCapabilityCheck: return "photo.badge.checkmark"
+        }
     }
 }
 
@@ -537,6 +788,11 @@ struct LLMUsageSettingsPage: View {
                     .padding(6)
                 }
 
+                LLMUsageHeatmapCard(
+                    entries: logStore.entries,
+                    pricingStore: pricingStore
+                )
+
                 VStack(alignment: .leading, spacing: 10) {
                     Text("按模型统计").font(.title3.weight(.semibold))
                     if groupedEntries.isEmpty {
@@ -570,6 +826,7 @@ struct LLMUsageSettingsPage: View {
             }
             .padding(20)
         }
+        .contentMargins(.top, 0, for: .scrollContent)
         .navigationTitle("Token 与费用")
         .task(id: currentModel) { loadPricing() }
     }

@@ -225,33 +225,10 @@ final class BridgeService {
     }
 
     func detectImageInputCapability() async throws -> ImageInputCapability {
-        let auditID = await beginAudit(
-            kind: .imageCapabilityCheck,
-            input: "检测当前模型是否支持图片输入"
-        )
-        do {
-            let capability = try await LumenPDF.detectImageInputCapability()
-            let output: String
-            switch capability {
-            case .supported: output = "支持图片输入"
-            case .unsupported: output = "不支持图片输入"
-            case .unknown: output = "提供商未返回明确能力信息"
-            }
-            await MainActor.run {
-                LLMCallLogStore.shared.finish(
-                    id: auditID,
-                    output: output,
-                    source: "provider",
-                    promptTokens: 0,
-                    completionTokens: 0,
-                    totalTokens: 0
-                )
-            }
-            return capability
-        } catch {
-            await failAudit(auditID, error: error)
-            throw error
-        }
+        // This is internal feature negotiation for the reading inspector, not a
+        // reading action initiated by the user. It must not pollute the audit
+        // trail or Token/cost statistics.
+        try await LumenPDF.detectImageInputCapability()
     }
 
     private func beginAudit(kind: LLMCallKind, input: String) async -> UUID {

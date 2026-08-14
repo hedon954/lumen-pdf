@@ -429,13 +429,16 @@ struct ActiveNoteReview: Identifiable {
 
 struct TranslationBubbleRequest: Identifiable, Equatable {
     let id: UUID
+    let pdfPath: String
+    let pdfName: String
     let word: String
     let sentence: String
+    let sentenceHash: String
     let bounds: CGRect
     let boundsStr: String
     let page: Int
-    /// Selection bounds in the reader's SwiftUI coordinate space, used to keep
-    /// the translation card from covering the selected text by default.
+    /// Selection bounds in the main reader-root coordinate space, used to keep
+    /// the window-level translation card from covering the selected text by default.
     let selectionAnchorRect: CGRect
     var result: TranslationResult?
     var translationError: String?
@@ -448,8 +451,11 @@ struct TranslationBubbleRequest: Identifiable, Equatable {
 
     init(
         id: UUID = UUID(),
+        pdfPath: String,
+        pdfName: String,
         word: String,
         sentence: String,
+        sentenceHash: String,
         bounds: CGRect,
         boundsStr: String,
         page: Int,
@@ -460,8 +466,11 @@ struct TranslationBubbleRequest: Identifiable, Equatable {
         isSentenceMode: Bool = false
     ) {
         self.id = id
+        self.pdfPath = pdfPath
+        self.pdfName = pdfName
         self.word = word
         self.sentence = sentence
+        self.sentenceHash = sentenceHash
         self.bounds = bounds
         self.boundsStr = boundsStr
         self.page = page
@@ -474,8 +483,11 @@ struct TranslationBubbleRequest: Identifiable, Equatable {
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.id == rhs.id &&
+        lhs.pdfPath == rhs.pdfPath &&
+        lhs.pdfName == rhs.pdfName &&
         lhs.word == rhs.word &&
         lhs.sentence == rhs.sentence &&
+        lhs.sentenceHash == rhs.sentenceHash &&
         lhs.bounds == rhs.bounds &&
         lhs.boundsStr == rhs.boundsStr &&
         lhs.page == rhs.page &&

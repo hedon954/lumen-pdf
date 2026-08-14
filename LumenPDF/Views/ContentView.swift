@@ -9,6 +9,7 @@ struct ContentView: View {
     @State private var inspectorTransitionID: UUID?
     @StateObject private var inspectorModel = ReadingInspectorModel()
     @StateObject private var selectionActionBarModel = SelectionActionBarModel()
+    @StateObject private var translationOverlayModel = TranslationOverlayModel()
     @StateObject private var viewportTransitionController = ReaderViewportTransitionController()
     @ObservedObject private var restorationStore = ReadingRestorationStore.shared
     @AppStorage("llm_base_url") private var baseURL = ""
@@ -61,6 +62,7 @@ struct ContentView: View {
                         document: doc,
                         inspectorModel: inspectorModel,
                         selectionActionBarModel: selectionActionBarModel,
+                        translationOverlayModel: translationOverlayModel,
                         viewportTransitionController: viewportTransitionController,
                         setInspectorVisible: setReadingInspectorVisible
                     )
@@ -90,6 +92,35 @@ struct ContentView: View {
         .overlay {
             if appState.activeTab == .reader {
                 SelectionActionBarOverlay(model: selectionActionBarModel)
+            }
+        }
+        .overlay {
+            if appState.activeTab == .reader,
+               let request = translationOverlayModel.request
+            {
+                GeometryReader { proxy in
+                    TranslationBubble(
+                        request: request,
+                        isLoading: translationOverlayModel.isLoading,
+                        availableSize: proxy.size,
+                        onSave: { result in
+                            saveTranslation(result: result, request: request)
+                        },
+                        onDelete: { id, savedToNote in
+                            deleteTranslationSave(
+                                id: id,
+                                savedToNote: savedToNote,
+                                request: request
+                            )
+                        },
+                        onDismiss: translationOverlayModel.dismiss
+                    )
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                }
+                .animation(
+                    .easeOut(duration: 0.15),
+                    value: translationOverlayModel.request != nil
+                )
             }
         }
         .toolbar {
@@ -195,9 +226,11 @@ struct ContentView: View {
         }
         .onChange(of: appState.activeTab) { _, _ in
             selectionActionBarModel.dismiss()
+            translationOverlayModel.dismiss()
         }
         .onChange(of: appState.selectedDocument?.id) { _, _ in
             selectionActionBarModel.dismiss()
+            translationOverlayModel.dismiss()
         }
     }
 
@@ -250,6 +283,108 @@ struct ContentView: View {
             guard inspectorTransitionID == transitionID else { return }
             inspectorTransitionID = nil
             viewportTransitionController.end()
+        }
+    }
+
+    @discardableResult
+    private func saveTranslation(
+        result: TranslationResult,
+        request: TranslationBubbleRequest
+    ) -> String? {
+        if request.isSentenceMode {
+            return saveSentenceTranslation(result: result, request: request)
+        }
+        return saveWordTranslation(result: result, request: request)
+    }
+
+    private func saveWordTranslation(
+        result: TranslationResult,
+        request: TranslationBubbleRequest
+    ) -> String? {
+        guard let entry = try? ReaderPersistence.shared.saveVocabulary(
+            word: result.word,
+            sentence: request.sentence,
+            sentenceHash: request.sentenceHash,
+            pdfPath: request.pdfPath,
+            pdfName: request.pdfName,
+            pageIndex: UInt32(request.page),
+            selectionBounds: request.boundsStr,
+            phonetic: result.phonetic,
+            partOfSpeech: result.partOfSpeech,
+            contextTranslation: result.contextTranslation,
+            contextExplanation: result.contextExplanation,
+            etymology: result.etymology,
+            generalDefinition: result.generalDefinition,
+            contextSentenceTranslation: result.contextSentenceTranslation,
+            translationSource: result.source
+        ) else { return nil }
+
+        ReaderEventBus.shared.postAddHighlight(
+            entryId: entry.id,
+            page: Int(entry.pageIndex),
+            boundsStr: request.boundsStr,
+            filePath: request.pdfPath
+        )
+        appState.refreshVocabulary()
+        appState.showToast("已保存「\(entry.word)」")
+        return entry.id
+    }
+
+    private func saveSentenceTranslation(
+        result: TranslationResult,
+        request: TranslationBubbleRequest
+    ) -> String? {
+        ReaderPersistence.shared.initializeIfNeeded()
+        let noteText = result.contextSentenceTranslation.isEmpty
+            ? result.contextTranslation
+            : result.contextSentenceTranslation
+
+        guard let note = try? ReaderPersistence.shared.saveNote(
+            pdfPath: request.pdfPath,
+            pdfName: request.pdfName,
+            pageIndex: UInt32(request.page),
+            content: request.word,
+            note: noteText,
+            boundsStr: request.boundsStr
+        ) else {
+            appState.showToast("保存笔记失败")
+            return nil
+        }
+
+        ReaderEventBus.shared.postAddUnderlineNote(
+            noteId: note.id,
+            page: request.page,
+            boundsStr: request.boundsStr,
+            filePath: request.pdfPath
+        )
+        appState.refreshNotes()
+        appState.showToast("已保存到笔记")
+        return note.id
+    }
+
+    private func deleteTranslationSave(
+        id: String,
+        savedToNote: Bool,
+        request: TranslationBubbleRequest
+    ) {
+        if savedToNote {
+            try? ReaderPersistence.shared.deleteNote(id: id)
+            ReaderEventBus.shared.postRemoveUnderlineNote(
+                noteId: id,
+                page: request.page,
+                filePath: request.pdfPath
+            )
+            appState.refreshNotes()
+            appState.showToast("已从笔记删除")
+        } else {
+            try? ReaderPersistence.shared.deleteVocabulary(id: id)
+            ReaderEventBus.shared.postRemoveHighlight(
+                entryId: id,
+                page: request.page,
+                filePath: request.pdfPath
+            )
+            appState.refreshVocabulary()
+            appState.showToast("已从单词本删除")
         }
     }
 

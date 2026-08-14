@@ -7,6 +7,7 @@ struct ReadingWorkspaceView: View {
     let document: PdfDocument
     @ObservedObject var inspectorModel: ReadingInspectorModel
     @ObservedObject var selectionActionBarModel: SelectionActionBarModel
+    @ObservedObject var translationOverlayModel: TranslationOverlayModel
     @ObservedObject var viewportTransitionController: ReaderViewportTransitionController
     let setInspectorVisible: (Bool) -> Void
 
@@ -20,6 +21,7 @@ struct ReadingWorkspaceView: View {
             PDFReaderView(
                 document: document,
                 selectionActionBarModel: selectionActionBarModel,
+                translationOverlayModel: translationOverlayModel,
                 viewportTransitionController: viewportTransitionController,
                 onExplainSelection: { selection in
                     if !inspectorModel.isVisible {
