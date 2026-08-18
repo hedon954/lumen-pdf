@@ -3,6 +3,23 @@
 LumenPDF 的版本记录由人工/AI 维护。每个版本只记录对用户或后续开发有意义的变化，并为具体变更附上对应的 GitHub commit URL。
 
 ---
+## [1.0.24](https://github.com/hedon954/lumen-pdf/compare/v1.0.23..v1.0.24) - 2026-08-19
+
+这一版让跨页划线落到每一页正文上，并把 LLM 失败原因、导读追问和设置窗口补齐：空响应能看出具体原因，追问必须等上一条回复完成，设置窗口也可以拖边缩放。
+
+### 主要变化
+
+- 跨页划线和高亮会为选中的每一页分别落笔；页眉页脚按相邻页在相近位置重复出现的文字识别（页码可以递增），不再因为某行在页顶就丢掉正文（[fcc0bf6](https://github.com/hedon954/lumen-pdf/commit/fcc0bf655d0b1a0968a0a52f572888998e863111)）。
+- 设置窗口支持拖动边角缩放，最小约 860×600，并记住上次大小（[fcc0bf6](https://github.com/hedon954/lumen-pdf/commit/fcc0bf655d0b1a0968a0a52f572888998e863111)）。
+
+### 修复
+
+- LLM 空响应不再只显示 JSON `EOF`：会说明空 body、流式协议不匹配或模型未真正生成，并提示到「设置 → 调用日志」查看原始响应（[fcc0bf6](https://github.com/hedon954/lumen-pdf/commit/fcc0bf655d0b1a0968a0a52f572888998e863111)）。
+- AI 导读必须等上一条回复完成（成功或失败）才能继续发送；空回复也会显示为失败，避免连续追问没有回答（[fcc0bf6](https://github.com/hedon954/lumen-pdf/commit/fcc0bf655d0b1a0968a0a52f572888998e863111)）。
+- 调用日志列表减少重复日期格式化带来的卡顿；超长请求/响应先截断，需要时再展开（[fcc0bf6](https://github.com/hedon954/lumen-pdf/commit/fcc0bf655d0b1a0968a0a52f572888998e863111)）。
+- PDF 文本层把同一句话叠了很多遍时，发给模型和写入日志前会折叠成一句（[fcc0bf6](https://github.com/hedon954/lumen-pdf/commit/fcc0bf655d0b1a0968a0a52f572888998e863111)）。
+
+---
 ## [1.0.23](https://github.com/hedon954/lumen-pdf/compare/v1.0.22..v1.0.23) - 2026-08-15
 
 这一版集中打磨 LLM 设置与阅读浮窗的可用性：调用日志只保留真正的阅读请求，Token 用量可以按天和模型查看，设置反馈更紧凑清晰，翻译浮窗也能在整个阅读窗口内自由移动。
