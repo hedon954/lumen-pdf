@@ -31,8 +31,8 @@ struct PDFKitView: NSViewRepresentable {
     let savedPage: Int
     let savedScrollOffset: Double
     let onPageChange: (Int, Double) -> Void
-    /// word, sentence, overallBounds, perLineBoundsStr, pageIndex, menuAnchor, selectionAnchorRect
-    let onTextSelected: (String, String, CGRect, String, Int, CGPoint, CGRect) -> Void
+    /// word, sentence, overallBounds, perLineBoundsStr, pageIndex, menuAnchor, selectionAnchorRect, pageMarkups
+    let onTextSelected: (SelectionInfo) -> Void
     let onClearSelection: () -> Void
     let onDocumentLoaded: (Int) -> Void
     let noteAnchorRequests: [NoteAnchorRequest]
@@ -633,18 +633,35 @@ struct PDFKitView: NSViewRepresentable {
         }
 
         @objc func addFreeAnnotation(_ notification: Notification) {
-            guard let typeStr   = notification.userInfo?["annotationType"] as? String,
-                  let pageIndex = notification.userInfo?["pageIndex"]      as? Int,
-                  let boundsStr = notification.userInfo?["boundsStr"]      as? String,
-                  let filePath  = notification.userInfo?["filePath"]       as? String,
+            guard let typeStr = notification.userInfo?["annotationType"] as? String,
+                  let filePath = notification.userInfo?["filePath"] as? String,
                   filePath == currentFilePath,
-                  let pdfView,
-                  let page      = pdfView.document?.page(at: pageIndex)
+                  let pdfView
             else { return }
 
-            let lineRects = Self.parseAnnotationRects(boundsStr)
-            guard !lineRects.isEmpty else { return }
+            let targets: [(Int, String)]
+            if let pageIndexes = Self.intArray(notification.userInfo?["pageIndexes"]),
+               let boundsStrs = notification.userInfo?["boundsStrs"] as? [String],
+               pageIndexes.count == boundsStrs.count {
+                targets = Array(zip(pageIndexes, boundsStrs))
+            } else if let pageIndex = Self.intValue(notification.userInfo?["pageIndex"]),
+                      let boundsStr = notification.userInfo?["boundsStr"] as? String {
+                targets = [(pageIndex, boundsStr)]
+            } else {
+                return
+            }
 
+            pdfView.undoManager?.beginUndoGrouping()
+            defer { pdfView.undoManager?.endUndoGrouping() }
+            for (pageIndex, boundsStr) in targets {
+                guard let page = pdfView.document?.page(at: pageIndex) else { continue }
+                let lineRects = Self.parseAnnotationRects(boundsStr)
+                guard !lineRects.isEmpty else { continue }
+                applyFreeAnnotation(type: typeStr, page: page, lineRects: lineRects)
+            }
+        }
+
+        private func applyFreeAnnotation(type typeStr: String, page: PDFPage, lineRects: [CGRect]) {
             if typeStr == "highlight" {
                 handleFreeHighlight(page: page, lineRects: lineRects)
                 return
@@ -1466,82 +1483,56 @@ struct PDFKitView: NSViewRepresentable {
                 return
             }
 
+            let selectionSnapshot = (selection.copy() as? PDFSelection) ?? selection
             selectionDebounce?.invalidate()
             selectionDebounce = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self, weak pdfView] _ in
                 guard let self, let pdfView,
                       let doc = pdfView.document else { return }
-                let word = selectedStr.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !word.isEmpty else { return }
-                let sentence = self.extractSentence(from: pdfView, containing: selection) ?? word
+                let rawWord = selectedStr.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !rawWord.isEmpty else { return }
 
-                // Build per-line rects for precise annotation. PDFKit can report
-                // an empty selection bounds on `currentPage` when the drag ends near
-                // a page boundary, so choose the page with the largest visible
-                // selected area instead of assuming `currentPage` owns the selection.
-                let rawLines = selection.selectionsByLine()
-                let lineSelections = rawLines.isEmpty ? [selection] : rawLines
-                guard let selectedPageGeometry = Self.selectedPageGeometry(
-                    for: selection,
-                    lineSelections: lineSelections,
-                    preferredPage: pdfView.currentPage
-                ) else { return }
-                let currentPage = selectedPageGeometry.page
-                let lineRects = selectedPageGeometry.lineRects
-                let overallBounds = selectedPageGeometry.bounds
-                let boundsStr = lineRects.isEmpty
-                    ? NSStringFromRect(overallBounds)
-                    : lineRects.map { NSStringFromRect($0) }.joined(separator: "|")
+                let markups = PDFSelectionMarkupGeometry.make(
+                    selection: selectionSnapshot,
+                    document: doc
+                )
+                let preferredIndex = pdfView.currentPage.map { doc.index(for: $0) }
+                guard let primary = markups.first(where: { $0.pageIndex == preferredIndex }) ?? markups.first else {
+                    DispatchQueue.main.async { self.parent.onClearSelection() }
+                    return
+                }
 
-                let pageIndex = doc.index(for: currentPage)
-                guard pageIndex != NSNotFound else { return }
+                let word = PDFExtractedTextCollapser.collapse(
+                    markups
+                        .map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
+                        .filter { !$0.isEmpty }
+                        .joined(separator: "\n")
+                )
+                guard !word.isEmpty else {
+                    DispatchQueue.main.async { self.parent.onClearSelection() }
+                    return
+                }
+                let sentence = PDFExtractedTextCollapser.collapse(
+                    self.extractSentence(from: pdfView, containing: selectionSnapshot) ?? word
+                )
+                let currentPage = doc.page(at: primary.pageIndex) ?? pdfView.currentPage
+                guard let currentPage else { return }
+                let overallBounds = primary.bounds
                 let menuAnchor = Self.menuAnchor(boundsInPage: overallBounds,
                                                  page: currentPage, pdfView: pdfView)
                 let selectionAnchorRect = Self.swiftUIRect(boundsInPage: overallBounds, page: currentPage, pdfView: pdfView)
+                let info = SelectionInfo(
+                    word: word,
+                    sentence: sentence,
+                    bounds: overallBounds,
+                    boundsStr: primary.boundsStr,
+                    page: primary.pageIndex,
+                    menuAnchor: menuAnchor,
+                    selectionAnchorRect: selectionAnchorRect,
+                    pageMarkups: markups
+                )
                 DispatchQueue.main.async {
-                    self.parent.onTextSelected(word, sentence, overallBounds, boundsStr, pageIndex, menuAnchor, selectionAnchorRect)
+                    self.parent.onTextSelected(info)
                 }
-            }
-        }
-
-
-        private struct SelectedPageGeometry {
-            let page: PDFPage
-            let bounds: CGRect
-            let lineRects: [CGRect]
-        }
-
-        private static func selectedPageGeometry(
-            for selection: PDFSelection,
-            lineSelections: [PDFSelection],
-            preferredPage: PDFPage?
-        ) -> SelectedPageGeometry? {
-            let candidatePages = selection.pages.isEmpty
-                ? Array([preferredPage].compactMap { $0 })
-                : selection.pages
-
-            let candidates = candidatePages.compactMap { page -> SelectedPageGeometry? in
-                let pageLineRects = lineSelections.compactMap { line -> CGRect? in
-                    let rect = line.bounds(for: page)
-                    return rect.isEmpty ? nil : rect
-                }
-                let directBounds = selection.bounds(for: page)
-                let bounds: CGRect
-                if pageLineRects.isEmpty {
-                    bounds = directBounds
-                } else {
-                    bounds = pageLineRects.dropFirst().reduce(pageLineRects[0]) { $0.union($1) }
-                }
-                guard !bounds.isEmpty else { return nil }
-                return SelectedPageGeometry(page: page, bounds: bounds, lineRects: pageLineRects)
-            }
-
-            guard !candidates.isEmpty else { return nil }
-            if let preferredPage,
-               let preferred = candidates.first(where: { $0.page === preferredPage }) {
-                return preferred
-            }
-            return candidates.max { lhs, rhs in
-                lhs.bounds.width * lhs.bounds.height < rhs.bounds.width * rhs.bounds.height
             }
         }
 
@@ -1698,6 +1689,23 @@ struct PDFKitView: NSViewRepresentable {
         }
 
         // MARK: Helpers
+
+        private static func intValue(_ raw: Any?) -> Int? {
+            if let value = raw as? Int { return value }
+            if let value = raw as? Int64 { return Int(value) }
+            if let value = raw as? NSNumber { return value.intValue }
+            return nil
+        }
+
+        private static func intArray(_ raw: Any?) -> [Int]? {
+            if let values = raw as? [Int] { return values }
+            if let values = raw as? [NSNumber] { return values.map(\.intValue) }
+            if let values = raw as? NSArray {
+                let mapped = values.compactMap { intValue($0) }
+                return mapped.count == values.count ? mapped : nil
+            }
+            return nil
+        }
 
         /// Parse a pipe-separated per-line bounds string back to CGRect array.
         /// Backward compatible: strings without `|` are treated as a single rect.

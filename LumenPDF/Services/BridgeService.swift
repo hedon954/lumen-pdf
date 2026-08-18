@@ -112,6 +112,8 @@ final class BridgeService {
     // MARK: - Translation
 
     func translate(word: String, sentence: String) async throws -> TranslationResult {
+        let word = PDFExtractedTextCollapser.collapse(word)
+        let sentence = PDFExtractedTextCollapser.collapse(sentence)
         let auditID = await beginAudit(
             kind: .wordTranslation,
             input: "选中单词：\(word)\n\n上下文：\(sentence)"
@@ -132,6 +134,7 @@ final class BridgeService {
     /// Translate a full sentence without word-level analysis.
     /// Use this when the user selects a phrase/sentence instead of a single word.
     func translateSentence(sentence: String) async throws -> TranslationResult {
+        let sentence = PDFExtractedTextCollapser.collapse(sentence)
         let auditID = await beginAudit(kind: .sentenceTranslation, input: sentence)
         do {
             let result = try await LumenPDF.translateSentence(sentence: sentence)
@@ -151,6 +154,8 @@ final class BridgeService {
         sentence: String,
         onPartial: @escaping @MainActor (TranslationResult) -> Void
     ) async throws -> TranslationResult {
+        let word = PDFExtractedTextCollapser.collapse(word)
+        let sentence = PDFExtractedTextCollapser.collapse(sentence)
         let auditID = await beginAudit(
             kind: .wordTranslation,
             input: "选中单词：\(word)\n\n上下文：\(sentence)"
@@ -175,6 +180,7 @@ final class BridgeService {
         sentence: String,
         onPartial: @escaping @MainActor (TranslationResult) -> Void
     ) async throws -> TranslationResult {
+        let sentence = PDFExtractedTextCollapser.collapse(sentence)
         let auditID = await beginAudit(kind: .sentenceTranslation, input: sentence)
         let receiver = TranslationStreamReceiver(onPartial: onPartial)
         do {
@@ -200,6 +206,8 @@ final class BridgeService {
         images: [ImageAttachment],
         onPartial: @escaping @MainActor (TranslationResult) -> Void
     ) async throws -> TranslationResult {
+        let selection = PDFExtractedTextCollapser.collapse(selection)
+        let context = PDFExtractedTextCollapser.collapse(context)
         let imageSummary = images.isEmpty
             ? ""
             : "\n\n附加图片：\(images.map(\.fileName).joined(separator: "、"))"

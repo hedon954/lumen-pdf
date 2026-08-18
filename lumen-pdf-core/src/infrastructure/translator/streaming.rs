@@ -17,14 +17,7 @@
 //!    the result; once a field finishes it shows up on the next call.
 
 use serde::Deserialize;
-
-#[derive(Deserialize)]
-struct SseChatChunk {
-    #[serde(default)]
-    choices: Vec<SseChatChoice>,
-    #[serde(default)]
-    usage: Option<TokenUsage>,
-}
+use serde_json::Value;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
 pub struct TokenUsage {
@@ -34,21 +27,6 @@ pub struct TokenUsage {
     pub completion_tokens: u64,
     #[serde(default)]
     pub total_tokens: u64,
-}
-
-#[derive(Deserialize)]
-struct SseChatChoice {
-    #[serde(default)]
-    delta: SseDelta,
-    #[serde(default)]
-    #[allow(dead_code)]
-    finish_reason: Option<String>,
-}
-
-#[derive(Deserialize, Default)]
-struct SseDelta {
-    #[serde(default)]
-    content: Option<String>,
 }
 
 /// Result of feeding one raw byte chunk into the SSE parser.
@@ -68,6 +46,12 @@ pub struct SseChunkOutcome {
 pub struct SseAccumulator {
     /// Bytes received so far that haven't been split on `\n`.
     pending: String,
+    pub finish_reason: Option<String>,
+    pub reasoning: String,
+    pub parsed_frames: usize,
+    pub ignored_frames: usize,
+    pub ignored_preview: String,
+    pub gateway_error: Option<String>,
 }
 
 impl SseAccumulator {
@@ -85,28 +69,37 @@ impl SseAccumulator {
         while let Some(idx) = self.pending.find('\n') {
             let line = self.pending[..idx].trim_end_matches('\r').to_string();
             self.pending.drain(..=idx);
-            if let Some(payload) = line.strip_prefix("data:") {
-                let payload = payload.trim();
-                if payload.is_empty() {
-                    continue;
-                }
-                if payload == "[DONE]" {
-                    done = true;
-                    continue;
-                }
-                if let Ok(parsed) = serde_json::from_str::<SseChatChunk>(payload) {
-                    if parsed.usage.is_some() {
-                        usage = parsed.usage;
-                    }
-                    if let Some(choice) = parsed.choices.into_iter().next() {
-                        if let Some(c) = choice.delta.content {
-                            content.push_str(&c);
-                        }
-                    }
-                }
-                // Silently ignore non-OpenAI SSE control frames; some gateways
-                // emit `: keep-alive` comments or vendor-specific events that
-                // are not relevant to translation deltas.
+            let Some(payload) = sse_payload_from_line(&line) else {
+                continue;
+            };
+            if payload.is_empty() {
+                continue;
+            }
+            if payload == "[DONE]" {
+                done = true;
+                continue;
+            }
+            let view = interpret_sse_payload(payload);
+            if !view.parsed {
+                self.ignored_frames += 1;
+                capture_preview(&mut self.ignored_preview, payload, 400);
+                continue;
+            }
+            self.parsed_frames += 1;
+            if let Some(reported_usage) = view.usage {
+                usage = Some(reported_usage);
+            }
+            if let Some(reason) = view.finish_reason {
+                self.finish_reason = Some(reason);
+            }
+            if let Some(error) = view.error {
+                self.gateway_error = Some(error);
+            }
+            if !view.reasoning.is_empty() {
+                self.reasoning.push_str(&view.reasoning);
+            }
+            if !view.content.is_empty() {
+                content.push_str(&view.content);
             }
         }
 
@@ -116,6 +109,229 @@ impl SseAccumulator {
             usage,
         }
     }
+
+    /// Some gateways omit the trailing newline on the last SSE frame.
+    pub fn flush(&mut self) -> SseChunkOutcome {
+        if self.pending.is_empty() {
+            return SseChunkOutcome {
+                content_deltas: String::new(),
+                done: false,
+                usage: None,
+            };
+        }
+        if !self.pending.ends_with('\n') {
+            self.pending.push('\n');
+        }
+        self.feed("")
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct SsePayloadView {
+    pub content: String,
+    pub reasoning: String,
+    pub finish_reason: Option<String>,
+    pub usage: Option<TokenUsage>,
+    pub error: Option<String>,
+    pub parsed: bool,
+}
+
+pub fn interpret_sse_payload(payload: &str) -> SsePayloadView {
+    let trimmed = payload.trim();
+    if trimmed.is_empty() {
+        return SsePayloadView::default();
+    }
+    match serde_json::from_str::<Value>(trimmed) {
+        Ok(value) => interpret_sse_value(&value),
+        Err(_) => SsePayloadView::default(),
+    }
+}
+
+pub fn extract_message_content_from_json(raw: &str) -> Option<(String, TokenUsage)> {
+    let value = serde_json::from_str::<Value>(raw.trim()).ok()?;
+    let view = interpret_sse_value(&value);
+    let content = view.content.trim();
+    if content.is_empty() {
+        return None;
+    }
+    Some((content.to_string(), view.usage.unwrap_or_default()))
+}
+
+pub fn describe_empty_model_output(
+    bytes_received: usize,
+    accumulator: &SseAccumulator,
+    raw_preview: &str,
+    usage: TokenUsage,
+    model: &str,
+    url: &str,
+) -> String {
+    let mut parts = vec![
+        "模型没有返回任何可用正文。".to_string(),
+        format!("请求地址：{url}"),
+        format!("模型：{}", if model.is_empty() { "未配置" } else { model }),
+        format!(
+            "收到 {bytes_received} 字节，成功解析 {} 个流式帧，忽略 {} 个无法识别的帧。",
+            accumulator.parsed_frames, accumulator.ignored_frames
+        ),
+    ];
+    if usage.total_tokens == 0 && usage.prompt_tokens == 0 && usage.completion_tokens == 0 {
+        parts.push(
+            "Token 用量为 0，说明接口几乎没有生成输出，模型很可能没有真正开始推理。".to_string(),
+        );
+    } else {
+        parts.push(format!(
+            "Token：输入 {}，输出 {}，合计 {}。",
+            usage.prompt_tokens, usage.completion_tokens, usage.total_tokens
+        ));
+    }
+    if let Some(reason) = &accumulator.finish_reason {
+        parts.push(format!("finish_reason：{reason}"));
+    }
+    if let Some(error) = &accumulator.gateway_error {
+        parts.push(format!("网关错误：{error}"));
+    }
+    if !accumulator.reasoning.trim().is_empty() {
+        parts.push(format!(
+            "模型只返回了思考过程，没有最终答案。思考预览：{}",
+            preview_text(&accumulator.reasoning, 240)
+        ));
+    }
+    if !accumulator.ignored_preview.trim().is_empty() {
+        parts.push(format!(
+            "未识别帧预览：{}",
+            preview_text(&accumulator.ignored_preview, 280)
+        ));
+    }
+    let preview = raw_preview.trim();
+    if preview.is_empty() {
+        parts.push(
+            "原始响应完全为空：常见于网关返回空 body、流式协议不匹配，或请求在到达模型前被拒绝。"
+                .to_string(),
+        );
+    } else {
+        parts.push(format!("原始响应预览：{}", preview_text(preview, 420)));
+    }
+    parts.join(" ")
+}
+
+fn interpret_sse_value(value: &Value) -> SsePayloadView {
+    let mut view = SsePayloadView {
+        parsed: true,
+        ..SsePayloadView::default()
+    };
+
+    if let Some(error) = value.get("error") {
+        view.error = Some(sse_error_text(error));
+    }
+
+    if let Some(usage_value) = value.get("usage") {
+        if let Ok(usage) = serde_json::from_value::<TokenUsage>(usage_value.clone()) {
+            if usage.prompt_tokens > 0 || usage.completion_tokens > 0 || usage.total_tokens > 0 {
+                view.usage = Some(usage);
+            }
+        }
+    }
+
+    let choices = value
+        .get("choices")
+        .and_then(Value::as_array)
+        .cloned()
+        .or_else(|| {
+            value
+                .pointer("/output/choices")
+                .and_then(Value::as_array)
+                .cloned()
+        });
+
+    if let Some(choice) = choices.as_ref().and_then(|items| items.first()) {
+        view.finish_reason = choice
+            .get("finish_reason")
+            .and_then(Value::as_str)
+            .filter(|reason| !reason.is_empty())
+            .map(ToOwned::to_owned);
+        append_content_from_node(choice.get("delta"), &mut view);
+        append_content_from_node(choice.get("message"), &mut view);
+        push_content_value(choice.get("text"), &mut view.content);
+    }
+
+    view
+}
+
+fn append_content_from_node(node: Option<&Value>, view: &mut SsePayloadView) {
+    let Some(node) = node else {
+        return;
+    };
+    push_content_value(node.get("content"), &mut view.content);
+    push_content_value(node.get("reasoning_content"), &mut view.reasoning);
+    push_content_value(node.get("reasoning"), &mut view.reasoning);
+}
+
+fn push_content_value(value: Option<&Value>, dest: &mut String) {
+    let Some(value) = value else {
+        return;
+    };
+    match value {
+        Value::String(text) => dest.push_str(text),
+        Value::Array(parts) => {
+            for part in parts {
+                if let Some(text) = part.get("text").and_then(Value::as_str) {
+                    dest.push_str(text);
+                } else if let Some(text) = part.as_str() {
+                    dest.push_str(text);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn sse_error_text(error: &Value) -> String {
+    if let Some(message) = error.get("message").and_then(Value::as_str) {
+        if let Some(code) = error.get("code").and_then(Value::as_str) {
+            return format!("{code}: {message}");
+        }
+        return message.to_string();
+    }
+    error.to_string()
+}
+
+fn sse_payload_from_line(line: &str) -> Option<&str> {
+    let trimmed = line.trim();
+    if trimmed.is_empty() || trimmed.starts_with(':') {
+        return None;
+    }
+    if let Some(payload) = trimmed.strip_prefix("data:") {
+        return Some(payload.trim());
+    }
+    if trimmed.starts_with('{') {
+        return Some(trimmed);
+    }
+    None
+}
+
+fn capture_preview(buffer: &mut String, chunk: &str, limit: usize) {
+    if buffer.len() >= limit {
+        return;
+    }
+    let remaining = limit - buffer.len();
+    let preview = preview_text(chunk, remaining);
+    if !buffer.is_empty() {
+        buffer.push('\n');
+    }
+    buffer.push_str(&preview);
+}
+
+pub fn preview_text(text: &str, limit: usize) -> String {
+    let trimmed = text.trim();
+    if trimmed.chars().count() <= limit {
+        return trimmed.to_string();
+    }
+    let end = trimmed
+        .char_indices()
+        .nth(limit)
+        .map(|(index, _)| index)
+        .unwrap_or(trimmed.len());
+    format!("{}…", &trimmed[..end])
 }
 
 /// Scan `buf` for top-level `"key": "value"` pairs whose closing `"` of the
@@ -497,5 +713,53 @@ mod tests {
         let chunk = ": keep-alive\n\nevent: ping\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n";
         let out = acc.feed(chunk);
         assert_eq!(out.content_deltas, "ok");
+    }
+
+    #[test]
+    fn sse_accumulator_reads_reasoning_and_plain_json_lines() {
+        let mut acc = SseAccumulator::new();
+        let chunk = "{\"choices\":[{\"delta\":{\"reasoning_content\":\"think\"}}]}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"answer\"},\"finish_reason\":\"stop\"}]}\n\n";
+        let out = acc.feed(chunk);
+        assert_eq!(out.content_deltas, "answer");
+        assert_eq!(acc.reasoning, "think");
+        assert_eq!(acc.finish_reason.as_deref(), Some("stop"));
+    }
+
+    #[test]
+    fn extract_message_content_from_non_stream_json() {
+        let raw = r#"{"choices":[{"message":{"content":"{\"translation\":\"你好\"}"}}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}"#;
+        let (content, usage) = extract_message_content_from_json(raw).unwrap();
+        assert_eq!(content, r#"{"translation":"你好"}"#);
+        assert_eq!(usage.total_tokens, 5);
+    }
+
+    #[test]
+    fn interpret_sse_payload_reads_content_parts_and_gateway_error() {
+        let parts = r#"{"choices":[{"delta":{"content":[{"type":"text","text":"hel"},{"type":"text","text":"lo"}]}}]}"#;
+        assert_eq!(interpret_sse_payload(parts).content, "hello");
+
+        let error = interpret_sse_payload(
+            r#"{"error":{"code":"invalid_api_key","message":"Incorrect API key"}}"#,
+        );
+        assert_eq!(
+            error.error.as_deref(),
+            Some("invalid_api_key: Incorrect API key")
+        );
+    }
+
+    #[test]
+    fn empty_output_description_mentions_zero_tokens_and_raw_preview() {
+        let description = describe_empty_model_output(
+            12,
+            &SseAccumulator::default(),
+            "",
+            TokenUsage::default(),
+            "qwen3.6-flash",
+            "https://example.test/v1/chat/completions",
+        );
+        assert!(description.contains("没有返回任何可用正文"));
+        assert!(description.contains("Token 用量为 0"));
+        assert!(description.contains("qwen3.6-flash"));
+        assert!(description.contains("原始响应完全为空"));
     }
 }

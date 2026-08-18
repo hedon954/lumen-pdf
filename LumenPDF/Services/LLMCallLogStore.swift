@@ -187,6 +187,28 @@ final class LLMCallLogStore: ObservableObject {
             .appendingPathComponent("llm-call-log.json")
     }
 
+    static func listTimestamp(_ date: Date) -> String {
+        listDateFormatter.string(from: date)
+    }
+
+    static func detailTimestamp(_ date: Date) -> String {
+        detailDateFormatter.string(from: date)
+    }
+
+    private static let listDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "yyyy年M月d日 HH:mm"
+        return formatter
+    }()
+
+    private static let detailDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "yyyy年M月d日 HH:mm:ss"
+        return formatter
+    }()
+
     private static func displayModel(_ model: String) -> String {
         let trimmed = model.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? "未配置模型" : trimmed

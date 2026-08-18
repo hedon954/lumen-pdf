@@ -14,7 +14,7 @@ enum TranslationErrorFormatter {
             case .FallbackApiError(let message):
                 return "兜底翻译接口（MyMemory）失败：\(message)"
             case .SerializationError(let message):
-                return "译文解析失败（JSON 格式）：\(message)"
+                return serializationMessage(message)
             case .NotFound(let message):
                 return "未找到：\(message)"
             }
@@ -22,8 +22,27 @@ enum TranslationErrorFormatter {
         return "翻译失败：\(error.localizedDescription)"
     }
 
+    private static func serializationMessage(_ message: String) -> String {
+        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lowercased = trimmed.lowercased()
+        if trimmed.isEmpty || lowercased.contains("eof while parsing a value") {
+            return """
+            译文解析失败：模型没有返回任何内容（空响应）。\
+            \(trimmed.isEmpty ? "" : trimmed + "。")\
+            这通常表示请求未真正生成译文：网关返回了空 body、流式协议不匹配，或模型拒绝输出。\
+            请打开「设置 → 调用日志」查看原始响应后再判断。
+            """
+        }
+        return "译文解析失败（JSON 格式）：\(trimmed)"
+    }
+
     private static func cleanLLMMessage(_ message: String) -> String {
-        let lowercased = message.lowercased()
+        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.contains("模型没有返回") || trimmed.contains("没有返回任何可用正文") {
+            return trimmed
+        }
+
+        let lowercased = trimmed.lowercased()
         if lowercased.contains("invalid_api_key")
             || lowercased.contains("invalid api-key")
             || lowercased.contains("401 unauthorized") {

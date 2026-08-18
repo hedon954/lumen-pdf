@@ -163,9 +163,10 @@ struct TranslationBubble: View {
             Text("翻译未完成")
                 .font(.headline)
             Text(request.translationError?.isEmpty == false ? request.translationError! : "请检查网络与 LLM 设置后重试。")
-                .font(.caption)
+                .font(.callout)
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)

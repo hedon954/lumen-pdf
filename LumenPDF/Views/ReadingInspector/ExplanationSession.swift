@@ -40,6 +40,7 @@ struct ExplanationSession: Identifiable, Equatable {
     var isLoading: Bool
     var errorMessage: String?
     var savedNoteIdsByMessageId: [UUID: String]
+    var inFlightAssistantID: UUID?
 
     init(
         id: UUID = UUID(),
@@ -48,7 +49,8 @@ struct ExplanationSession: Identifiable, Equatable {
         summary: String = "",
         isLoading: Bool = false,
         errorMessage: String? = nil,
-        savedNoteIdsByMessageId: [UUID: String] = [:]
+        savedNoteIdsByMessageId: [UUID: String] = [:],
+        inFlightAssistantID: UUID? = nil
     ) {
         self.id = id
         self.selection = selection
@@ -57,6 +59,7 @@ struct ExplanationSession: Identifiable, Equatable {
         self.isLoading = isLoading
         self.errorMessage = errorMessage
         self.savedNoteIdsByMessageId = savedNoteIdsByMessageId
+        self.inFlightAssistantID = inFlightAssistantID
     }
 
     var completedAssistantMessages: [ExplanationMessage] {
@@ -70,7 +73,40 @@ struct ExplanationSession: Identifiable, Equatable {
     var hasSavedMessages: Bool {
         !savedNoteIdsByMessageId.isEmpty
     }
+
+    var isAwaitingReply: Bool {
+        guard let last = messages.last else { return isLoading }
+        if last.role == .user {
+            return true
+        }
+        if last.role == .assistant {
+            let empty = last.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            return empty && !last.isError
+        }
+        return isLoading
+    }
+
+    var canAcceptNewQuestion: Bool {
+        GuideConversationPolicy.canSend(self)
+    }
 }
+
+enum GuideConversationPolicy {
+    static func canSend(_ session: ExplanationSession) -> Bool {
+        !session.isLoading && !session.isAwaitingReply
+    }
+
+    static func isEmptySuccess(_ content: String) -> Bool {
+        content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    static func emptyReplyMessage(tokens: UInt64) -> String {
+        "AI 没有返回任何内容。这次调用的输出 Token 为 \(tokens)，模型很可能没有真正生成回复。请查看「设置 → 调用日志」中的原始响应。"
+    }
+}
+
+typealias ExplanationSessionUpdate = (ExplanationSession) -> ExplanationSession?
+typealias ExplanationSessionApply = (ExplanationSessionUpdate) -> ExplanationSession?
 
 enum ReadingInspectorMode: String, CaseIterable, Identifiable {
     case words

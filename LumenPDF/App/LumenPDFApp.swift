@@ -26,7 +26,12 @@ struct LumenPDFApp: App {
         Settings {
             SettingsView()
                 .environmentObject(appState)
+                .background(
+                    SettingsWindowConfigurator(minimumSize: NSSize(width: 860, height: 600))
+                )
         }
+        .defaultSize(width: 940, height: 680)
+        .windowResizability(.contentMinSize)
         .windowToolbarStyle(.unifiedCompact(showsTitle: true))
     }
 }
@@ -228,6 +233,60 @@ private struct WindowFramePersistence: NSViewRepresentable {
             layoutRestoreCompletionWorkItem?.cancel()
             observers.forEach(NotificationCenter.default.removeObserver)
         }
+    }
+}
+
+private struct SettingsWindowConfigurator: NSViewRepresentable {
+    let minimumSize: NSSize
+
+    func makeNSView(context: Context) -> SettingsWindowAttachmentView {
+        let view = SettingsWindowAttachmentView()
+        view.onWindowChange = { [weak coordinator = context.coordinator] window in
+            coordinator?.attach(window, minimumSize: minimumSize)
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: SettingsWindowAttachmentView, context: Context) {
+        nsView.onWindowChange = { [weak coordinator = context.coordinator] window in
+            coordinator?.attach(window, minimumSize: minimumSize)
+        }
+        context.coordinator.attach(nsView.window, minimumSize: minimumSize)
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    final class Coordinator {
+        private weak var window: NSWindow?
+        private var didRestoreFrame = false
+
+        func attach(_ window: NSWindow?, minimumSize: NSSize) {
+            guard let window else { return }
+            if self.window !== window {
+                self.window = window
+                didRestoreFrame = false
+            }
+            window.styleMask.insert(.resizable)
+            window.minSize = NSSize(
+                width: max(window.minSize.width, minimumSize.width),
+                height: max(window.minSize.height, minimumSize.height)
+            )
+            _ = window.setFrameAutosaveName("LumenPDFSettings")
+            guard !didRestoreFrame else { return }
+            didRestoreFrame = true
+            _ = window.setFrameUsingName("LumenPDFSettings")
+        }
+    }
+}
+
+private final class SettingsWindowAttachmentView: NSView {
+    var onWindowChange: ((NSWindow?) -> Void)?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        onWindowChange?(window)
     }
 }
 

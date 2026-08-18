@@ -428,6 +428,7 @@ struct LLMCallLogSettingsPage: View {
                 List(selection: $selectedID) {
                     ForEach(store.entries) { entry in
                         LogRow(entry: entry)
+                            .equatable()
                             .tag(entry.id)
                     }
                 }
@@ -463,7 +464,9 @@ struct LLMCallLogSettingsPage: View {
         }
         .onAppear {
             if selectedID == nil {
-                selectedID = store.entries.first?.id
+                DispatchQueue.main.async {
+                    selectedID = store.entries.first?.id
+                }
             }
         }
     }
@@ -473,15 +476,29 @@ struct LLMCallLogSettingsPage: View {
     }
 }
 
-private struct LogRow: View {
-    let entry: LLMCallLogEntry
+private struct LogRow: View, Equatable {
+    let title: String
+    let model: String
+    let timestamp: String
+    let tokenLabel: String?
+    let status: LLMCallStatus
+    let kindImage: String
+
+    init(entry: LLMCallLogEntry) {
+        title = entry.kind.title
+        model = entry.model
+        timestamp = LLMCallLogStore.listTimestamp(entry.startedAt)
+        tokenLabel = entry.totalTokens > 0 ? "\(entry.totalTokens.formatted()) Token" : nil
+        status = entry.status
+        kindImage = entry.kind.logSystemImage
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             ZStack {
                 Circle()
                     .fill(statusColor.opacity(0.12))
-                Image(systemName: entry.kind.logSystemImage)
+                Image(systemName: kindImage)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(statusColor)
             }
@@ -489,7 +506,7 @@ private struct LogRow: View {
 
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 6) {
-                    Text(entry.kind.title)
+                    Text(title)
                         .font(.body.weight(.semibold))
                         .lineLimit(1)
                     Spacer(minLength: 4)
@@ -498,15 +515,15 @@ private struct LogRow: View {
                         .frame(width: 7, height: 7)
                         .help(statusTitle)
                 }
-                Text(entry.model)
+                Text(model)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 HStack(spacing: 6) {
-                    Text(entry.startedAt.formatted(date: .abbreviated, time: .shortened))
-                    if entry.totalTokens > 0 {
+                    Text(timestamp)
+                    if let tokenLabel {
                         Text("·")
-                        Text("\(entry.totalTokens.formatted()) Token")
+                        Text(tokenLabel)
                     }
                 }
                 .font(.caption2.monospacedDigit())
@@ -517,7 +534,7 @@ private struct LogRow: View {
     }
 
     private var statusColor: Color {
-        switch entry.status {
+        switch status {
         case .running: return .orange
         case .succeeded: return .green
         case .failed: return .red
@@ -525,7 +542,7 @@ private struct LogRow: View {
     }
 
     private var statusTitle: String {
-        switch entry.status {
+        switch status {
         case .running: return "进行中"
         case .succeeded: return "成功"
         case .failed: return "失败"
@@ -535,6 +552,7 @@ private struct LogRow: View {
 
 private struct LLMCallLogDetail: View {
     let entry: LLMCallLogEntry
+    @State private var expandedSections: Set<String> = []
 
     var body: some View {
         ScrollView {
@@ -582,7 +600,7 @@ private struct LLMCallLogDetail: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(entry.kind.title)
                         .font(.title3.weight(.semibold))
-                    Text(entry.startedAt.formatted(date: .long, time: .standard))
+                    Text(LLMCallLogStore.detailTimestamp(entry.startedAt))
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
@@ -641,15 +659,31 @@ private struct LLMCallLogDetail: View {
         text: String,
         tint: Color
     ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let limit = 2_400
+        let isLong = text.count > limit
+        let expanded = expandedSections.contains(title)
+        let shown = (!isLong || expanded) ? text : String(text.prefix(limit)) + "\n…"
+        return VStack(alignment: .leading, spacing: 10) {
             Label(title, systemImage: systemImage)
                 .font(.headline)
                 .foregroundStyle(tint)
-            Text(text)
+            Text(shown)
                 .font(.callout)
                 .lineSpacing(3)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
+            if isLong {
+                Button(expanded ? "收起" : "显示全部 \(text.count) 字符") {
+                    if expanded {
+                        expandedSections.remove(title)
+                    } else {
+                        expandedSections.insert(title)
+                    }
+                }
+                .buttonStyle(.plain)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+            }
         }
         .padding(16)
         .background(tint.opacity(0.055), in: RoundedRectangle(cornerRadius: 12))

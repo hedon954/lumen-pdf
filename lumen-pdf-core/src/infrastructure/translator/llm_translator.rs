@@ -5,7 +5,8 @@ use crate::domain::translation::{
 use crate::error::LumenError;
 use crate::infrastructure::translator::http_client::shared_client;
 use crate::infrastructure::translator::streaming::{
-    extract_complete_string_fields, extract_streaming_string_value, SseAccumulator, TokenUsage,
+    describe_empty_model_output, extract_complete_string_fields, extract_message_content_from_json,
+    extract_streaming_string_value, preview_text, SseAccumulator, SseChunkOutcome, TokenUsage,
 };
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -319,13 +320,7 @@ impl LlmTranslator {
         let body = self.build_sentence_request(sentence, false);
         let completion = self.send_chat_request(&body).await?;
 
-        let parsed: SentencePromptJson =
-            serde_json::from_str(&completion.content).map_err(|e| {
-                LumenError::SerializationError {
-                    message: e.to_string(),
-                }
-            })?;
-
+        let parsed: SentencePromptJson = parse_model_json(&completion.content)?;
         Ok(parsed.into_result(sentence, completion.usage))
     }
 
@@ -370,12 +365,7 @@ impl LlmTranslator {
         // Final, authoritative parse: the streaming extractor is permissive
         // (string-only). At end of stream we run a strict JSON parse so we
         // can extract `breakdown` and guarantee a clean final result.
-        let parsed: SentencePromptJson =
-            serde_json::from_str(&completion.content).map_err(|e| {
-                LumenError::SerializationError {
-                    message: e.to_string(),
-                }
-            })?;
+        let parsed: SentencePromptJson = parse_model_json(&completion.content)?;
         let final_result = parsed.into_result(sentence, completion.usage);
         // Emit a terminal progress event so the UI gets the breakdown without
         // having to wait for the outer caller to wire it.
@@ -576,20 +566,42 @@ impl LlmTranslator {
             });
         }
 
-        let chat: ChatResponse = resp.json().await.map_err(|e| LumenError::LlmApiError {
+        let raw = resp.text().await.map_err(|e| LumenError::LlmApiError {
             message: e.to_string(),
         })?;
+        let chat: ChatResponse =
+            serde_json::from_str(&raw).map_err(|e| LumenError::LlmApiError {
+                message: format!(
+                    "无法解析模型响应 JSON：{e}。原始响应预览：{}",
+                    preview_text(&raw, 420)
+                ),
+            })?;
 
-        let content = chat
-            .choices
-            .into_iter()
-            .next()
-            .map(|c| c.message.content)
+        let message = chat.choices.into_iter().next().map(|choice| choice.message);
+        let content = message
+            .as_ref()
+            .and_then(|item| item.content.clone())
             .unwrap_or_default();
-        Ok(CompletionOutput {
-            content,
-            usage: chat.usage.unwrap_or_default(),
-        })
+        let reasoning = message
+            .as_ref()
+            .and_then(|item| item.reasoning_content.clone())
+            .unwrap_or_default();
+        let usage = chat.usage.unwrap_or_default();
+        if content.trim().is_empty() {
+            let mut accumulator = SseAccumulator::default();
+            accumulator.reasoning = reasoning;
+            return Err(LumenError::LlmApiError {
+                message: describe_empty_model_output(
+                    raw.len(),
+                    &accumulator,
+                    &raw,
+                    usage,
+                    &self.config.model,
+                    &url,
+                ),
+            });
+        }
+        Ok(CompletionOutput { content, usage })
     }
 
     /// Drive an OpenAI-compatible streaming completion: fire the request,
@@ -659,11 +671,15 @@ impl LlmTranslator {
         let mut scratch = String::new();
         let mut stream = resp.bytes_stream();
         let mut usage = TokenUsage::default();
+        let mut raw_preview = String::new();
+        let mut bytes_received = 0usize;
 
         while let Some(item) = stream.next().await {
             let bytes = item.map_err(|e| LumenError::LlmApiError {
                 message: e.to_string(),
             })?;
+            bytes_received += bytes.len();
+            append_raw_preview(&mut raw_preview, &bytes, 8_000);
             byte_buf.extend_from_slice(&bytes);
             // Decode the longest valid-UTF-8 prefix; keep any trailing partial
             // multi-byte char in `byte_buf` for the next iteration so we never
@@ -682,22 +698,154 @@ impl LlmTranslator {
             byte_buf.drain(..valid_len);
 
             let outcome = sse.feed(&valid_str);
-            if let Some(reported_usage) = outcome.usage {
-                usage = reported_usage;
-            }
-            if !outcome.content_deltas.is_empty() {
-                content_buf.push_str(&outcome.content_deltas);
-                on_chunk(&content_buf, &mut scratch);
-            }
-            if outcome.done {
+            let done = outcome.done;
+            apply_stream_outcome(
+                outcome,
+                &mut usage,
+                &mut content_buf,
+                &mut on_chunk,
+                &mut scratch,
+            );
+            if sse.gateway_error.is_some() || done {
                 break;
             }
+        }
+
+        let flushed = sse.flush();
+        apply_stream_outcome(
+            flushed,
+            &mut usage,
+            &mut content_buf,
+            &mut on_chunk,
+            &mut scratch,
+        );
+
+        if let Some(error) = sse.gateway_error.clone() {
+            return Err(LumenError::LlmApiError {
+                message: format!(
+                    "{error} {}",
+                    describe_empty_model_output(
+                        bytes_received,
+                        &sse,
+                        &raw_preview,
+                        usage,
+                        &self.config.model,
+                        url
+                    )
+                ),
+            });
+        }
+
+        if content_buf.trim().is_empty() {
+            if let Some((extracted, extracted_usage)) =
+                extract_message_content_from_json(&raw_preview)
+            {
+                content_buf = extracted;
+                if usage.total_tokens == 0 {
+                    usage = extracted_usage;
+                }
+                on_chunk(&content_buf, &mut scratch);
+            }
+        }
+
+        if content_buf.trim().is_empty() {
+            return Err(LumenError::LlmApiError {
+                message: describe_empty_model_output(
+                    bytes_received,
+                    &sse,
+                    &raw_preview,
+                    usage,
+                    &self.config.model,
+                    url,
+                ),
+            });
         }
 
         Ok(CompletionOutput {
             content: content_buf,
             usage,
         })
+    }
+}
+
+fn apply_stream_outcome<F>(
+    outcome: SseChunkOutcome,
+    usage: &mut TokenUsage,
+    content_buf: &mut String,
+    on_chunk: &mut F,
+    scratch: &mut String,
+) where
+    F: FnMut(&str, &mut String),
+{
+    if let Some(reported_usage) = outcome.usage {
+        *usage = reported_usage;
+    }
+    if !outcome.content_deltas.is_empty() {
+        content_buf.push_str(&outcome.content_deltas);
+        on_chunk(content_buf, scratch);
+    }
+}
+
+fn append_raw_preview(preview: &mut String, bytes: &[u8], limit: usize) {
+    if preview.len() >= limit {
+        return;
+    }
+    let remaining = limit - preview.len();
+    let take = bytes.len().min(remaining);
+    preview.push_str(&String::from_utf8_lossy(&bytes[..take]));
+}
+
+fn parse_model_json<T: serde::de::DeserializeOwned>(raw: &str) -> Result<T, LumenError> {
+    let normalized = normalize_json_payload(raw);
+    serde_json::from_str(&normalized)
+        .or_else(|_| serde_json::from_str(raw.trim()))
+        .map_err(|err| json_parse_error(raw, err))
+}
+
+fn normalize_json_payload(raw: &str) -> String {
+    let unfenced = strip_code_fence(raw.trim());
+    extract_json_span(&unfenced)
+        .map(ToOwned::to_owned)
+        .unwrap_or(unfenced)
+}
+
+fn strip_code_fence(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if !trimmed.starts_with("```") {
+        return trimmed.to_string();
+    }
+    let mut lines = trimmed.lines();
+    let _ = lines.next();
+    let mut body: Vec<&str> = lines.collect();
+    if body.last().is_some_and(|line| line.trim() == "```") {
+        body.pop();
+    }
+    body.join("\n").trim().to_string()
+}
+
+fn extract_json_span(raw: &str) -> Option<&str> {
+    let start = raw.find('{')?;
+    let end = raw.rfind('}')?;
+    if end >= start {
+        Some(&raw[start..=end])
+    } else {
+        None
+    }
+}
+
+fn json_parse_error(raw: &str, err: serde_json::Error) -> LumenError {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return LumenError::LlmApiError {
+            message: "模型没有返回任何内容（空响应），因此无法解析 JSON。常见原因：网关返回空 body、流式协议不匹配，或模型拒绝输出。".into(),
+        };
+    }
+    LumenError::SerializationError {
+        message: format!(
+            "{err}。响应长度 {} 字符。内容预览：{}",
+            trimmed.chars().count(),
+            preview_text(trimmed, 400)
+        ),
     }
 }
 
@@ -844,6 +992,7 @@ struct ResponseFormat {
 
 #[derive(Deserialize)]
 struct ChatResponse {
+    #[serde(default)]
     choices: Vec<Choice>,
     #[serde(default)]
     usage: Option<TokenUsage>,
@@ -861,7 +1010,10 @@ struct Choice {
 
 #[derive(Deserialize)]
 struct ResponseMessageContent {
-    content: String,
+    #[serde(default)]
+    content: Option<String>,
+    #[serde(default)]
+    reasoning_content: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -955,12 +1107,7 @@ impl Translator for LlmTranslator {
         let body = self.build_word_request(word, sentence, false);
         let completion = self.send_chat_request(&body).await?;
 
-        let parsed: LlmTranslationJson =
-            serde_json::from_str(&completion.content).map_err(|e| {
-                LumenError::SerializationError {
-                    message: e.to_string(),
-                }
-            })?;
+        let parsed: LlmTranslationJson = parse_model_json(&completion.content)?;
 
         Ok(parsed.into_result(word, completion.usage))
     }
@@ -1004,12 +1151,7 @@ impl Translator for LlmTranslator {
 
         // End-of-stream: strict parse so missing optional fields default to
         // empty strings via serde and we always return a complete result.
-        let parsed: LlmTranslationJson =
-            serde_json::from_str(&completion.content).map_err(|e| {
-                LumenError::SerializationError {
-                    message: e.to_string(),
-                }
-            })?;
+        let parsed: LlmTranslationJson = parse_model_json(&completion.content)?;
         Ok(parsed.into_result(word, completion.usage))
     }
 }
@@ -1131,5 +1273,25 @@ mod tests {
         customized.word_prompt_template = "custom {word} {sentence} {lang}".into();
 
         assert_ne!(config.word_cache_scope(), customized.word_cache_scope());
+    }
+
+    #[test]
+    fn parse_model_json_strips_code_fences_and_surrounding_text() {
+        let parsed: SentencePromptJson = parse_model_json(
+            "here you go\n```json\n{\"translation\":\"你好\",\"breakdown\":[]}\n```\n",
+        )
+        .expect("fenced JSON should parse");
+        assert_eq!(parsed.translation.as_deref(), Some("你好"));
+    }
+
+    #[test]
+    fn empty_json_payload_becomes_llm_api_error() {
+        match parse_model_json::<SentencePromptJson>("") {
+            Err(LumenError::LlmApiError { message }) => {
+                assert!(message.contains("空响应"));
+            }
+            Err(other) => panic!("unexpected error: {other}"),
+            Ok(_) => panic!("empty payload should not parse"),
+        }
     }
 }

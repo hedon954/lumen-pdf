@@ -35,22 +35,16 @@ struct PDFReaderView: View {
                         scrollOffset: offset
                     )
                 },
-                onTextSelected: { word, sentence, bounds, boundsStr, page, anchor, selectionAnchorRect in
-                    guard !word.isEmpty else { return }
-                    let selection = SelectionInfo(
-                        word: word, sentence: sentence,
-                        bounds: bounds, boundsStr: boundsStr,
-                        page: page, menuAnchor: anchor,
-                        selectionAnchorRect: selectionAnchorRect
-                    )
+                onTextSelected: { selection in
+                    guard !selection.word.isEmpty else { return }
                     let readerFrame = proxy.frame(in: .named(ReaderRootCoordinateSpace.name))
-                    let rootSelectionRect = selectionAnchorRect.offsetBy(
+                    let rootSelectionRect = selection.selectionAnchorRect.offsetBy(
                         dx: readerFrame.minX,
                         dy: readerFrame.minY
                     )
                     selectionActionBarModel.present(
                         anchorRect: rootSelectionRect,
-                        hasExistingNote: exactUnderlineNote(boundsStr: boundsStr, page: page) != nil,
+                        hasExistingNote: exactUnderlineNote(boundsStr: selection.boundsStr, page: selection.page) != nil,
                         onAction: { action in
                             handleSelectionAction(
                                 action,
@@ -305,9 +299,9 @@ struct PDFReaderView: View {
                 )
             )
         case .highlight:
-            postFreeAnnotation(type: "highlight", boundsStr: selection.boundsStr, page: selection.page)
+            postFreeAnnotations(type: "highlight", selection: selection)
         case .underline:
-            postFreeAnnotation(type: "underline", boundsStr: selection.boundsStr, page: selection.page)
+            postFreeAnnotations(type: "underline", selection: selection)
         case .addNote:
             closeOtherReadingOverlays()
             let existingNote = exactUnderlineNote(boundsStr: selection.boundsStr, page: selection.page)
@@ -329,11 +323,10 @@ struct PDFReaderView: View {
         }
     }
 
-    private func postFreeAnnotation(type: String, boundsStr: String, page: Int) {
-        ReaderEventBus.shared.postFreeAnnotation(
+    private func postFreeAnnotations(type: String, selection: SelectionInfo) {
+        ReaderEventBus.shared.postFreeAnnotations(
             type: type,
-            boundsStr: boundsStr,
-            page: page,
+            markups: selection.effectivePageMarkups,
             filePath: document.filePath
         )
     }

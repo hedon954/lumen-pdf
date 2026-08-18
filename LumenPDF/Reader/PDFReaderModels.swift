@@ -16,6 +16,22 @@ struct SelectionInfo: Equatable {
     let menuAnchor: CGPoint
     /// Selection bounds converted to SwiftUI coordinates (relative to PDFKitView's frame).
     let selectionAnchorRect: CGRect
+    /// Body-text markups for every page covered by the selection.
+    /// Running headers/footers are dropped when they repeat on neighboring pages.
+    let pageMarkups: [PDFPageMarkup]
+
+    var effectivePageMarkups: [PDFPageMarkup] {
+        if pageMarkups.isEmpty {
+            return [
+                PDFPageMarkup(
+                    pageIndex: page,
+                    lineRects: AnnotationBoundsCodec.parse(boundsStr),
+                    text: word
+                )
+            ]
+        }
+        return pageMarkups
+    }
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.word == rhs.word && lhs.page == rhs.page && lhs.bounds == rhs.bounds

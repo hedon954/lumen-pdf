@@ -52,7 +52,7 @@ struct SettingsView: View {
             refreshPromptUpdateState()
             _ = applyRuntimeConfig()
         }
-        .frame(minWidth: 860, idealWidth: 940, minHeight: 600, idealHeight: 680)
+        .frame(minWidth: 860, maxWidth: .infinity, minHeight: 600, maxHeight: .infinity)
     }
 
     private var saveBar: some View {

@@ -3,6 +3,21 @@ import XCTest
 
 @MainActor
 final class LLMCallLogStoreTests: XCTestCase {
+    func testEmptyModelIsRecordedAsUnconfigured() throws {
+        let fileURL = temporaryLogURL()
+        defer { try? FileManager.default.removeItem(at: fileURL.deletingLastPathComponent()) }
+
+        let store = LLMCallLogStore(fileURL: fileURL)
+        _ = store.begin(
+            kind: .selectionExplanation,
+            model: "  ",
+            baseURL: "https://api.openai.com/v1",
+            input: "selection"
+        )
+
+        XCTAssertEqual(store.entries.first?.model, "未配置模型")
+    }
+
     func testFinishedCallPersistsUsageAndCanBeReloaded() throws {
         let fileURL = temporaryLogURL()
         defer { try? FileManager.default.removeItem(at: fileURL.deletingLastPathComponent()) }

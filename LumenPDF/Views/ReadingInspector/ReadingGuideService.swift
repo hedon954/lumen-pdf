@@ -9,7 +9,7 @@ final class ReadingGuideService {
         _ question: String,
         imageURLs: [URL],
         session: ExplanationSession,
-        onSessionChange: @escaping @MainActor (ExplanationSession) -> Void
+        onSessionChange: @escaping ExplanationSessionApply
     ) {
         bridge.initializeIfNeeded()
 
@@ -30,8 +30,8 @@ final class ReadingGuideService {
         let focus = Self.explanationFocusPrompt(
             userQuestion: trimmedQuestion,
             compressedContext: compressedContext,
-            originalSelection: session.selection.selectedText,
-            originalContext: session.selection.surroundingText
+            originalSelection: PDFExtractedTextCollapser.collapse(session.selection.selectedText),
+            originalContext: PDFExtractedTextCollapser.collapse(session.selection.surroundingText)
         )
         let retryRequest = ExplanationRetryRequest(focus: focus, imageURLs: imageURLs)
         let assistantMessage = ExplanationMessage(
@@ -40,18 +40,27 @@ final class ReadingGuideService {
             retryRequest: retryRequest
         )
 
-        var pending = session
-        pending.messages.append(userMessage)
-        pending.messages.append(assistantMessage)
-        pending.summary = compressedContext
-        pending.isLoading = true
-        pending.errorMessage = nil
-        onSessionChange(pending)
+        let pending = onSessionChange { current in
+            guard current.id == session.id, GuideConversationPolicy.canSend(current) else {
+                return nil
+            }
+            var updated = current
+            updated.messages.append(userMessage)
+            updated.messages.append(assistantMessage)
+            updated.summary = compressedContext
+            updated.isLoading = true
+            updated.errorMessage = nil
+            updated.inFlightAssistantID = assistantMessage.id
+            return updated
+        }
+        guard let pending else { return }
 
         execute(
             retryRequest,
             assistantID: assistantMessage.id,
-            pending: pending,
+            sessionID: pending.id,
+            selection: PDFExtractedTextCollapser.collapse(pending.selection.selectedText),
+            context: PDFExtractedTextCollapser.collapse(pending.selection.surroundingText),
             onSessionChange: onSessionChange
         )
     }
@@ -59,29 +68,38 @@ final class ReadingGuideService {
     func retryMessage(
         _ messageID: UUID,
         session: ExplanationSession,
-        onSessionChange: @escaping @MainActor (ExplanationSession) -> Void
+        onSessionChange: @escaping ExplanationSessionApply
     ) {
         guard let message = session.messages.first(where: { $0.id == messageID }),
               message.role == .assistant,
               let request = message.retryRequest
         else { return }
 
-        var pending = session
-        pending.messages = Self.updatingAssistantMessage(
-            in: pending.messages,
-            id: messageID,
-            content: "",
-            isError: false,
-            retryRequest: request
-        )
-        pending.isLoading = true
-        pending.errorMessage = nil
-        onSessionChange(pending)
+        let pending = onSessionChange { current in
+            guard current.id == session.id, !current.isLoading else {
+                return nil
+            }
+            var updated = current
+            updated.messages = Self.updatingAssistantMessage(
+                in: updated.messages,
+                id: messageID,
+                content: "",
+                isError: false,
+                retryRequest: request
+            )
+            updated.isLoading = true
+            updated.errorMessage = nil
+            updated.inFlightAssistantID = messageID
+            return updated
+        }
+        guard let pending else { return }
 
         execute(
             request,
             assistantID: messageID,
-            pending: pending,
+            sessionID: pending.id,
+            selection: PDFExtractedTextCollapser.collapse(pending.selection.selectedText),
+            context: PDFExtractedTextCollapser.collapse(pending.selection.surroundingText),
             onSessionChange: onSessionChange
         )
     }
@@ -89,11 +107,11 @@ final class ReadingGuideService {
     private func execute(
         _ request: ExplanationRetryRequest,
         assistantID: UUID,
-        pending: ExplanationSession,
-        onSessionChange: @escaping @MainActor (ExplanationSession) -> Void
+        sessionID: UUID,
+        selection: String,
+        context: String,
+        onSessionChange: @escaping ExplanationSessionApply
     ) {
-        let sessionId = pending.id
-
         Task {
             do {
                 let preparedImages = try await Task.detached(priority: .userInitiated) {
@@ -107,47 +125,67 @@ final class ReadingGuideService {
                     )
                 }
                 let result = try await bridge.explainSelectionStreaming(
-                    selection: pending.selection.selectedText,
-                    context: pending.selection.surroundingText,
+                    selection: selection,
+                    context: context,
                     focus: request.focus,
                     images: images,
                     onPartial: { partial in
-                        var updated = pending
-                        guard updated.id == sessionId else { return }
-                        updated.messages = Self.updatingAssistantMessage(
-                            in: updated.messages,
-                            id: assistantID,
-                            content: partial.contextExplanation,
-                            retryRequest: request
-                        )
-                        updated.errorMessage = nil
-                        onSessionChange(updated)
+                        _ = onSessionChange { current in
+                            guard current.id == sessionID,
+                                  current.inFlightAssistantID == assistantID else { return nil }
+                            var updated = current
+                            updated.messages = Self.updatingAssistantMessage(
+                                in: updated.messages,
+                                id: assistantID,
+                                content: partial.contextExplanation,
+                                retryRequest: request
+                            )
+                            updated.errorMessage = nil
+                            return updated
+                        }
                     }
                 )
 
-                var completed = pending
-                completed.messages = Self.updatingAssistantMessage(
-                    in: completed.messages,
-                    id: assistantID,
-                    content: result.contextExplanation,
-                    retryRequest: nil
-                )
-                completed.errorMessage = nil
-                completed.isLoading = false
-                onSessionChange(completed)
+                let explanation = result.contextExplanation
+                if GuideConversationPolicy.isEmptySuccess(explanation) {
+                    throw GuideEmptyReplyError(
+                        message: GuideConversationPolicy.emptyReplyMessage(tokens: result.completionTokens)
+                    )
+                }
+
+                _ = onSessionChange { current in
+                    guard current.id == sessionID,
+                          current.inFlightAssistantID == assistantID else { return nil }
+                    var completed = current
+                    completed.messages = Self.updatingAssistantMessage(
+                        in: completed.messages,
+                        id: assistantID,
+                        content: explanation,
+                        retryRequest: nil
+                    )
+                    completed.errorMessage = nil
+                    completed.isLoading = false
+                    completed.inFlightAssistantID = nil
+                    return completed
+                }
             } catch {
-                var failed = pending
-                let detail = Self.guideErrorMessage(from: error)
-                failed.messages = Self.updatingAssistantMessage(
-                    in: failed.messages,
-                    id: assistantID,
-                    content: detail,
-                    isError: true,
-                    retryRequest: request
-                )
-                failed.errorMessage = nil
-                failed.isLoading = false
-                onSessionChange(failed)
+                _ = onSessionChange { current in
+                    guard current.id == sessionID,
+                          current.inFlightAssistantID == assistantID else { return nil }
+                    var failed = current
+                    let detail = Self.guideErrorMessage(from: error)
+                    failed.messages = Self.updatingAssistantMessage(
+                        in: failed.messages,
+                        id: assistantID,
+                        content: detail,
+                        isError: true,
+                        retryRequest: request
+                    )
+                    failed.errorMessage = nil
+                    failed.isLoading = false
+                    failed.inFlightAssistantID = nil
+                    return failed
+                }
             }
         }
     }
@@ -233,6 +271,9 @@ final class ReadingGuideService {
     }
 
     private static func guideErrorMessage(from error: Error) -> String {
+        if let empty = error as? GuideEmptyReplyError {
+            return empty.localizedDescription
+        }
         let detail = TranslationErrorFormatter.userMessage(from: error)
             .replacingOccurrences(of: "翻译失败：", with: "AI 调用失败：")
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -315,6 +356,21 @@ private struct PreparedGuideImage: Sendable {
     let fileName: String
     let mimeType: String
     let base64Data: String
+}
+
+private enum GuideEmptyReplyError: LocalizedError {
+    case message(String)
+
+    init(message: String) {
+        self = .message(message)
+    }
+
+    var errorDescription: String? {
+        switch self {
+        case .message(let text):
+            return text
+        }
+    }
 }
 
 private enum GuideImagePreparationError: LocalizedError {

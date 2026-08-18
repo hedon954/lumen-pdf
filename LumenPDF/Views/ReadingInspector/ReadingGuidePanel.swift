@@ -74,8 +74,11 @@ struct ReadingGuidePanel: View {
                                 .padding(.vertical, 6)
                         } else {
                             ForEach(session.messages) { message in
-                                messageView(message, isStreaming: session.isLoading && session.messages.last?.id == message.id)
-                                    .id(message.id)
+                                messageView(
+                                    message,
+                                    isStreaming: session.isLoading && session.inFlightAssistantID == message.id
+                                )
+                                .id(message.id)
                             }
                         }
 
@@ -192,10 +195,15 @@ struct ReadingGuidePanel: View {
         case .assistant:
             if message.isError {
                 assistantFailureMessage(message.content, retryMessageID: message.id)
-            } else if message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && isStreaming {
-                assistantThinking
             } else if message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                EmptyView()
+                if isStreaming {
+                    assistantThinking
+                } else {
+                    assistantFailureMessage(
+                        GuideConversationPolicy.emptyReplyMessage(tokens: 0),
+                        retryMessageID: message.retryRequest == nil ? nil : message.id
+                    )
+                }
             } else {
                 assistantMessage(message, isStreaming: isStreaming)
             }
@@ -306,7 +314,7 @@ struct ReadingGuidePanel: View {
 
     private func footer(_ session: ExplanationSession) -> some View {
         VStack(spacing: 8) {
-            questionBar(isLoading: session.isLoading)
+            questionBar(canSend: session.canAcceptNewQuestion)
             HStack {
                 Spacer()
                 if session.hasSavedMessages {
@@ -339,7 +347,7 @@ struct ReadingGuidePanel: View {
         .padding(12)
     }
 
-    private func questionBar(isLoading: Bool) -> some View {
+    private func questionBar(canSend: Bool) -> some View {
         HStack(spacing: 8) {
             VStack(spacing: 6) {
                 HStack(alignment: .center, spacing: 8) {
@@ -357,7 +365,7 @@ struct ReadingGuidePanel: View {
                     .textFieldStyle(.plain)
                     .lineLimit(1...10)
                     .focused($isQuestionFocused)
-                    .disabled(isLoading)
+                    .disabled(!canSend)
                     .padding(.vertical, 6)
 
                     Button {
@@ -369,7 +377,7 @@ struct ReadingGuidePanel: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(
-                        isLoading
+                        !canSend
                             || model.isCheckingImageInputCapability
                             || model.imageInputCapability == .unsupported
                     )
@@ -383,9 +391,9 @@ struct ReadingGuidePanel: View {
                             .symbolRenderingMode(.hierarchical)
                     }
                     .buttonStyle(.plain)
-                    .disabled(isLoading)
+                    .disabled(!canSend)
                     .keyboardShortcut(.defaultAction)
-                    .help("发送（⌘↩ 或默认按钮）")
+                    .help(canSend ? "发送（⌘↩ 或默认按钮）" : "请等待上一条 AI 回复完成后再发送")
                 }
 
                 if !attachedImageURLs.isEmpty {
@@ -457,6 +465,7 @@ struct ReadingGuidePanel: View {
     }
 
     private func submitQuestion() {
+        guard model.guideSession?.canAcceptNewQuestion == true else { return }
         shouldFollowStream = true
         let questionToSubmit = question
         let imageURLs = attachedImageURLs

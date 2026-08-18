@@ -54,23 +54,25 @@ final class ReadingInspectorModel: ObservableObject {
     }
 
     func submitGuideQuestion(_ question: String, imageURLs: [URL] = []) {
-        guard let session = guideSession, !session.isLoading else { return }
+        guard let session = guideSession, session.canAcceptNewQuestion else { return }
         guideService.submitQuestion(
             question,
             imageURLs: imageURLs,
-            session: session
-        ) { [weak self] updated in
-            guard self?.guideSession?.id == updated.id else { return }
-            self?.guideSession = updated
-        }
+            session: session,
+            onSessionChange: applyGuideSession
+        )
     }
 
     func retryGuideMessage(_ messageID: UUID) {
         guard let session = guideSession, !session.isLoading else { return }
-        guideService.retryMessage(messageID, session: session) { [weak self] updated in
-            guard self?.guideSession?.id == updated.id else { return }
-            self?.guideSession = updated
-        }
+        guideService.retryMessage(messageID, session: session, onSessionChange: applyGuideSession)
+    }
+
+    @discardableResult
+    private func applyGuideSession(_ update: ExplanationSessionUpdate) -> ExplanationSession? {
+        guard let session = guideSession, let updated = update(session) else { return nil }
+        guideSession = updated
+        return updated
     }
 
     func refreshImageInputCapability() async {
