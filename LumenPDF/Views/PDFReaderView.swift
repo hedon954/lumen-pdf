@@ -606,18 +606,28 @@ struct PDFReaderView: View {
             existingEntryId: existingEntryId,
             isSentenceMode: isSentenceMode
         )
-        translationOverlayModel.present(request)
+        let overlay = translationOverlayModel
+        overlay.present(request)
+        overlay.bindRetryHandler { request in
+            Self.launchTranslation(on: overlay, request: request, skipCache: true)
+        }
+        Self.launchTranslation(on: overlay, request: request, skipCache: false)
+    }
 
-        // Track which translation request this Task belongs to, so a delayed
-        // streaming callback from a previous selection can't overwrite the
-        // bubble of a fresh one (user dismissed and selected something else).
+    @MainActor
+    private static func launchTranslation(
+        on overlay: TranslationOverlayModel,
+        request: TranslationBubbleRequest,
+        skipCache: Bool
+    ) {
         let requestId = request.id
+        let isSentenceMode = request.isSentenceMode
+        let word = request.word
+        let sentence = request.sentence
 
-        Task {
-            // Updates the bubble's `result` field as fields stream in.
-            // Captured by both streaming-mode branches below.
+        let task = Task {
             @MainActor func applyPartial(_ partial: TranslationResult) {
-                translationOverlayModel.applyPartial(partial, requestID: requestId)
+                overlay.applyPartial(partial, requestID: requestId)
             }
 
             do {
@@ -631,23 +641,29 @@ struct PDFReaderView: View {
                     result = try await ReaderPersistence.shared.translateStreaming(
                         word: word,
                         sentence: sentence,
+                        skipCache: skipCache,
                         onPartial: { partial in applyPartial(partial) }
                     )
                 }
 
+                guard !Task.isCancelled else { return }
                 await MainActor.run {
-                    translationOverlayModel.complete(result, requestID: requestId)
+                    overlay.complete(result, requestID: requestId)
                 }
+            } catch is CancellationError {
+                return
             } catch {
+                guard !Task.isCancelled else { return }
                 await MainActor.run {
                     var detail = TranslationErrorFormatter.userMessage(from: error)
                     if detail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         detail = "翻译失败：\(String(describing: error))"
                     }
-                    translationOverlayModel.fail(detail, requestID: requestId)
+                    overlay.fail(detail, requestID: requestId)
                 }
             }
         }
+        overlay.track(task)
     }
 }
 

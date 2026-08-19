@@ -34,16 +34,19 @@ private struct LibraryRow: View {
     let doc: PdfDocument
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(doc.fileName)
-                .font(.callout)
-                .fontWeight(.medium)
-                .lineLimit(2)
+        HStack(alignment: .center, spacing: 10) {
+            PDFCoverThumbnailView(filePath: doc.filePath)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(doc.fileName)
+                    .font(.callout)
+                    .fontWeight(.medium)
+                    .lineLimit(2)
 
-            if doc.totalPages > 0 {
-                Text("P\(doc.lastPage + 1) / \(doc.totalPages)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if doc.totalPages > 0 {
+                    Text("P\(doc.lastPage + 1) / \(doc.totalPages)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .padding(.vertical, 2)

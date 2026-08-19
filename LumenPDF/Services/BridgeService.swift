@@ -152,6 +152,7 @@ final class BridgeService {
     func translateStreaming(
         word: String,
         sentence: String,
+        skipCache: Bool = false,
         onPartial: @escaping @MainActor (TranslationResult) -> Void
     ) async throws -> TranslationResult {
         let word = PDFExtractedTextCollapser.collapse(word)
@@ -164,7 +165,8 @@ final class BridgeService {
         do {
             let result = try await LumenPDF.translateStreaming(
                 request: TranslationRequest(word: word, sentence: sentence),
-                callback: receiver
+                callback: receiver,
+                skipCache: skipCache
             )
             await finishAudit(auditID, result: result)
             return result

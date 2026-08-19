@@ -67,7 +67,14 @@ impl TranslationUseCase {
         &self,
         request: TranslationRequest,
         on_progress: StreamProgress,
+        skip_cache: bool,
     ) -> Result<TranslationResult, LumenError> {
-        self.service.translate_streaming(request, on_progress).await
+        if skip_cache {
+            self.service
+                .translate_streaming_skipping_cache(request, on_progress)
+                .await
+        } else {
+            self.service.translate_streaming(request, on_progress).await
+        }
     }
 }

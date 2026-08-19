@@ -173,15 +173,18 @@ pub trait TranslationStreamCallback: Send + Sync {
 
 /// Streaming variant of `translate`. Returns the same final `TranslationResult`
 /// as `translate`, but invokes `callback.on_progress` repeatedly while the
-/// response streams in. Cache hits emit exactly once.
+/// response streams in. Cache hits emit exactly once unless `skip_cache` is
+/// true, which forces a fresh LLM call so the user can regenerate an
+/// unsatisfactory explanation.
 #[uniffi::export(async_runtime = "tokio")]
 pub async fn translate_streaming(
     request: TranslationRequest,
     callback: Arc<dyn TranslationStreamCallback>,
+    skip_cache: bool,
 ) -> Result<TranslationResult, LumenError> {
     let config = llm_config()?;
     translation_use_case(&config)?
-        .translate_streaming(request, stream_progress(callback))
+        .translate_streaming(request, stream_progress(callback), skip_cache)
         .await
 }
 

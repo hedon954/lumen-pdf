@@ -113,6 +113,7 @@ struct ContentView: View {
                                 request: request
                             )
                         },
+                        onRetry: translationOverlayModel.retry,
                         onDismiss: translationOverlayModel.dismiss
                     )
                     .transition(.opacity.combined(with: .scale(scale: 0.95)))
@@ -134,7 +135,7 @@ struct ContentView: View {
                 .accessibilityIdentifier("toolbar.library")
                 .popover(isPresented: $showLibrary, arrowEdge: .bottom) {
                     LibraryPickerView()
-                        .frame(width: 280, height: 360)
+                        .frame(width: 320, height: 360)
                 }
             }
 
@@ -429,7 +430,8 @@ private struct LibraryPickerView: View {
                         appState.selectedDocument = doc
                         appState.activeTab = .reader
                     } label: {
-                        HStack {
+                        HStack(alignment: .center, spacing: 10) {
+                            PDFCoverThumbnailView(filePath: doc.filePath)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(doc.fileName)
                                     .font(.callout)
@@ -442,13 +444,14 @@ private struct LibraryPickerView: View {
                                         .foregroundStyle(.secondary)
                                 }
                             }
-                            Spacer()
+                            Spacer(minLength: 8)
                             if appState.selectedDocument?.id == doc.id {
                                 Image(systemName: "checkmark")
                                     .foregroundStyle(.blue)
                                     .font(.caption)
                             }
                         }
+                        .padding(.vertical, 2)
                     }
                     .buttonStyle(.plain)
                     .contextMenu {

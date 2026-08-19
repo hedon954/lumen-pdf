@@ -16,9 +16,15 @@ final class ReaderPersistence {
     func translateStreaming(
         word: String,
         sentence: String,
+        skipCache: Bool = false,
         onPartial: @escaping @MainActor (TranslationResult) -> Void
     ) async throws -> TranslationResult {
-        try await bridge.translateStreaming(word: word, sentence: sentence, onPartial: onPartial)
+        try await bridge.translateStreaming(
+            word: word,
+            sentence: sentence,
+            skipCache: skipCache,
+            onPartial: onPartial
+        )
     }
 
     func translateSentenceStreaming(

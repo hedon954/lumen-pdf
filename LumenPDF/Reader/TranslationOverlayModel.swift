@@ -5,9 +5,41 @@ final class TranslationOverlayModel: ObservableObject {
     @Published private(set) var request: TranslationBubbleRequest?
     @Published private(set) var isLoading = false
 
+    private var inFlight: Task<Void, Never>?
+    private var retryHandler: (@MainActor (TranslationBubbleRequest) -> Void)?
+
+    var canRetry: Bool {
+        guard !isLoading, let request else { return false }
+        return request.result != nil || request.translationError != nil
+    }
+
     func present(_ request: TranslationBubbleRequest) {
+        cancelInFlight()
         self.request = request
         isLoading = true
+    }
+
+    func bindRetryHandler(_ handler: @escaping @MainActor (TranslationBubbleRequest) -> Void) {
+        retryHandler = handler
+    }
+
+    func retry() {
+        guard canRetry, let request else { return }
+        beginRetry()
+        retryHandler?(request)
+    }
+
+    func beginRetry() {
+        cancelInFlight()
+        guard var request else { return }
+        request.result = nil
+        request.translationError = nil
+        self.request = request
+        isLoading = true
+    }
+
+    func track(_ task: Task<Void, Never>) {
+        inFlight = task
     }
 
     func applyPartial(_ result: TranslationResult, requestID: UUID) {
@@ -33,8 +65,15 @@ final class TranslationOverlayModel: ObservableObject {
     }
 
     func dismiss() {
+        cancelInFlight()
+        retryHandler = nil
         request = nil
         isLoading = false
+    }
+
+    private func cancelInFlight() {
+        inFlight?.cancel()
+        inFlight = nil
     }
 
     @discardableResult

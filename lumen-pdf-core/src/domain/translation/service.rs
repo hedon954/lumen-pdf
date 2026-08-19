@@ -155,11 +155,28 @@ impl TranslationDomainService {
         &self,
         request: TranslationRequest,
     ) -> Result<TranslationResult, LumenError> {
+        self.translate_impl(request, false).await
+    }
+
+    pub async fn translate_skipping_cache(
+        &self,
+        request: TranslationRequest,
+    ) -> Result<TranslationResult, LumenError> {
+        self.translate_impl(request, true).await
+    }
+
+    async fn translate_impl(
+        &self,
+        request: TranslationRequest,
+        skip_cache: bool,
+    ) -> Result<TranslationResult, LumenError> {
         let word_lower = request.word.to_lowercase();
         let hash = Self::sentence_hash(&request.sentence);
 
-        if let Some(cached) = self.cached_result(&request, &word_lower, &hash).await? {
-            return Ok(cached);
+        if !skip_cache {
+            if let Some(cached) = self.cached_result(&request, &word_lower, &hash).await? {
+                return Ok(cached);
+            }
         }
 
         // Level 2: LLM. Fetch the authoritative phonetic concurrently so it
@@ -204,6 +221,25 @@ impl TranslationDomainService {
         request: TranslationRequest,
         on_progress: StreamProgress,
     ) -> Result<TranslationResult, LumenError> {
+        self.translate_streaming_impl(request, on_progress, false)
+            .await
+    }
+
+    pub async fn translate_streaming_skipping_cache(
+        &self,
+        request: TranslationRequest,
+        on_progress: StreamProgress,
+    ) -> Result<TranslationResult, LumenError> {
+        self.translate_streaming_impl(request, on_progress, true)
+            .await
+    }
+
+    async fn translate_streaming_impl(
+        &self,
+        request: TranslationRequest,
+        on_progress: StreamProgress,
+        skip_cache: bool,
+    ) -> Result<TranslationResult, LumenError> {
         let word_lower = request.word.to_lowercase();
         let hash = Self::sentence_hash(&request.sentence);
 
@@ -219,9 +255,11 @@ impl TranslationDomainService {
             }
         };
 
-        if let Some(cached) = self.cached_result(&request, &word_lower, &hash).await? {
-            emit(cached.clone());
-            return Ok(cached);
+        if !skip_cache {
+            if let Some(cached) = self.cached_result(&request, &word_lower, &hash).await? {
+                emit(cached.clone());
+                return Ok(cached);
+            }
         }
 
         // Level 2: LLM (streaming). The forwarder stamps the canonical source
@@ -351,6 +389,26 @@ mod tests {
             Ok(TranslationResult {
                 word: word.to_string(),
                 general_definition: self.word_result.to_string(),
+                ..Default::default()
+            })
+        }
+    }
+
+    struct SequenceLlm {
+        results: Mutex<Vec<&'static str>>,
+    }
+
+    #[async_trait::async_trait]
+    impl Translator for SequenceLlm {
+        async fn translate(
+            &self,
+            word: &str,
+            _sentence: &str,
+        ) -> Result<TranslationResult, LumenError> {
+            let next = self.results.lock().unwrap().remove(0);
+            Ok(TranslationResult {
+                word: word.to_string(),
+                general_definition: next.to_string(),
                 ..Default::default()
             })
         }
@@ -852,5 +910,86 @@ mod tests {
         assert!(!is_single_word("a sentence here"));
         assert!(!is_single_word(""));
         assert!(!is_single_word("word1"));
+    }
+
+    fn word_request() -> TranslationRequest {
+        TranslationRequest {
+            word: "run".to_string(),
+            sentence: "the quick brown fox".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn skip_cache_calls_llm_and_overwrites_cached_result() {
+        let cache = FakeCache::new();
+        let hash = TranslationDomainService::sentence_hash("the quick brown fox");
+        cache
+            .set(
+                "run",
+                &hash,
+                "",
+                &TranslationResult {
+                    word: "run".to_string(),
+                    general_definition: "cached".to_string(),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        let llm = SequenceLlm {
+            results: Mutex::new(vec!["fresh"]),
+        };
+        let svc = TranslationDomainService::new(cache.clone(), Arc::new(llm), Arc::new(FailingLlm));
+
+        let cached = svc.translate(word_request()).await.unwrap();
+        assert_eq!(cached.source, "cache");
+        assert_eq!(cached.general_definition, "cached");
+
+        let fresh = svc.translate_skipping_cache(word_request()).await.unwrap();
+        assert_eq!(fresh.source, "llm");
+        assert_eq!(fresh.general_definition, "fresh");
+
+        let stored = cache.get("run", &hash, "").unwrap().unwrap();
+        assert_eq!(stored.general_definition, "fresh");
+    }
+
+    #[tokio::test]
+    async fn streaming_skip_cache_bypasses_hit_and_emits_llm_result() {
+        let cache = FakeCache::new();
+        let hash = TranslationDomainService::sentence_hash("the quick brown fox");
+        cache
+            .set(
+                "run",
+                &hash,
+                "",
+                &TranslationResult {
+                    word: "run".to_string(),
+                    general_definition: "cached".to_string(),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        let llm = SequenceLlm {
+            results: Mutex::new(vec!["streamed-fresh"]),
+        };
+        let svc = TranslationDomainService::new(cache.clone(), Arc::new(llm), Arc::new(FailingLlm));
+        let emitted = Arc::new(Mutex::new(Vec::<TranslationResult>::new()));
+        let emitted_capture = emitted.clone();
+        let cb: StreamProgress = Box::new(move |r| emitted_capture.lock().unwrap().push(r));
+
+        let result = svc
+            .translate_streaming_skipping_cache(word_request(), cb)
+            .await
+            .unwrap();
+
+        assert_eq!(result.source, "llm");
+        assert_eq!(result.general_definition, "streamed-fresh");
+        let emitted = emitted.lock().unwrap();
+        assert!(emitted.iter().all(|item| item.source != "cache"));
+        assert_eq!(
+            emitted.last().map(|item| item.general_definition.as_str()),
+            Some("streamed-fresh")
+        );
     }
 }

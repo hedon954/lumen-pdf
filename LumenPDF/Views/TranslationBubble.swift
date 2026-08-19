@@ -7,6 +7,7 @@ struct TranslationBubble: View {
     let availableSize: CGSize
     let onSave: (TranslationResult) -> String?
     let onDelete: (String, Bool) -> Void
+    let onRetry: () -> Void
     let onDismiss: () -> Void
 
     @StateObject private var audio = AudioService()
@@ -55,6 +56,17 @@ struct TranslationBubble: View {
         return !isLoading && !result.isCompleteFailure && Self.hasAnyContent(result)
     }
 
+    private var showsRefreshButton: Bool {
+        !isLoading && (request.result != nil || request.translationError != nil)
+    }
+
+    private var refreshHelp: String {
+        if request.result?.isCompleteFailure == true || request.translationError != nil {
+            return "重试"
+        }
+        return "重新生成"
+    }
+
     private var header: some View {
         HStack(alignment: .top, spacing: 10) {
             VStack(alignment: .leading, spacing: 5) {
@@ -92,6 +104,15 @@ struct TranslationBubble: View {
                 .buttonStyle(.plain)
                 .disabled(isLoading)
                 .help("朗读")
+
+                if showsRefreshButton {
+                    Button(action: onRetry) {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("translation.retry")
+                    .help(refreshHelp)
+                }
 
                 Button(action: onDismiss) {
                     Image(systemName: "xmark")
