@@ -3,6 +3,16 @@
 LumenPDF 的版本记录由人工/AI 维护。每个版本只记录对用户或后续开发有意义的变化，并为具体变更附上对应的 GitHub commit URL。
 
 ---
+## [1.0.25](https://github.com/hedon954/lumen-pdf/compare/v1.0.24..v1.0.25) - 2026-08-20
+
+这一版让已打开的 PDF 更容易辨认，并对不满意或失败的翻译提供一键重新生成。
+
+### 主要变化
+
+- 「已打开的文件」列表为每个 PDF 显示首页封面缩略图，文件名和阅读进度仍显示在右侧（[fa0e7c7](https://github.com/hedon954/lumen-pdf/commit/fa0e7c7166b3d1d1910b18abb5a9fc15fc0982b8)）。
+- 翻译浮窗在成功或失败后提供刷新按钮：失败可以重试，成功会跳过本地缓存重新生成解释（[fa0e7c7](https://github.com/hedon954/lumen-pdf/commit/fa0e7c7166b3d1d1910b18abb5a9fc15fc0982b8)）。
+
+---
 ## [1.0.24](https://github.com/hedon954/lumen-pdf/compare/v1.0.23..v1.0.24) - 2026-08-19
 
 这一版让跨页划线落到每一页正文上，并把 LLM 失败原因、导读追问和设置窗口补齐：空响应能看出具体原因，追问必须等上一条回复完成，设置窗口也可以拖边缩放。
