@@ -35,7 +35,7 @@ PRD 记录**用户可感知的行为与验收标准**。TDD 记录**如何实现
 | v1.0.23 | 2026-08-15 | 用量统计、设置打磨与根层浮窗 | [prd-2026-08-15-settings-usage-overlay.md](prd/prd-2026-08-15-settings-usage-overlay.md) | [tdd-2026-08-15-settings-usage-overlay.md](tdd/tdd-2026-08-15-settings-usage-overlay.md) |
 | v1.0.24 | 2026-08-19 | 跨页划线与失败诊断 | [prd-2026-08-19-markup-diagnostics.md](prd/prd-2026-08-19-markup-diagnostics.md) | [tdd-2026-08-19-markup-diagnostics.md](tdd/tdd-2026-08-19-markup-diagnostics.md) |
 | v1.0.25 | 2026-08-20 | 文库封面与翻译重新生成 | [prd-2026-08-20-library-cover-translation-retry.md](prd/prd-2026-08-20-library-cover-translation-retry.md) | [tdd-2026-08-20-library-cover-translation-retry.md](tdd/tdd-2026-08-20-library-cover-translation-retry.md) |
-| 未发布 | 2026-08-20 | 笔记自动保存与翻译浮窗位置稳定 | [prd-2026-08-20-note-autosave-overlay-stability.md](prd/prd-2026-08-20-note-autosave-overlay-stability.md) | [tdd-2026-08-20-note-autosave-overlay-stability.md](tdd/tdd-2026-08-20-note-autosave-overlay-stability.md) |
+| v1.0.26 | 2026-08-20 | 笔记自动保存与翻译浮窗位置稳定 | [prd-2026-08-20-note-autosave-overlay-stability.md](prd/prd-2026-08-20-note-autosave-overlay-stability.md) | [tdd-2026-08-20-note-autosave-overlay-stability.md](tdd/tdd-2026-08-20-note-autosave-overlay-stability.md) |
 
 未单独成对的发布：
 
@@ -52,7 +52,7 @@ v1.0.15 公共窗口外壳
   → v1.0.20 拖动手柄与关闭命中
   → v1.0.21 统一定位（下/上/右/左/最小遮挡）
   → v1.0.23 翻译浮窗提升到阅读窗口根层
-  → 2026-08-20 首次定位后锁定原点，内容变高不再换边跳位
+  → v1.0.26 首次定位后锁定原点，内容变高不再换边跳位
 ```
 
 v1.0.21 曾要求内容变高后重新换边避让；2026-08-20 修订为「首次位置固定」，以 v1.0.15 的稳定方向为优先体验。
@@ -64,7 +64,7 @@ v1.0.2 笔记 + 划线
   → v1.0.12 / v1.0.13 侧栏与 Inspector 展示
   → v1.0.15 原文回顾浮窗、删除、空内容禁止提交
   → v1.0.22 回顾浮窗内删除单条/全部
-  → 2026-08-20 Inspector、回顾浮窗、笔记列表可编辑并自动保存
+  → v1.0.26 Inspector、回顾浮窗、笔记列表可编辑并自动保存
 ```
 
 ### LLM 与 AI 导读

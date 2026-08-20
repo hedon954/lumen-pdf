@@ -3,6 +3,20 @@
 LumenPDF 的版本记录由人工/AI 维护。每个版本只记录对用户或后续开发有意义的变化，并为具体变更附上对应的 GitHub commit URL。
 
 ---
+## [1.0.26](https://github.com/hedon954/lumen-pdf/compare/v1.0.25..v1.0.26) - 2026-08-20
+
+这一版让已有笔记可以直接改、停顿后自动保存，并让翻译浮窗在内容变高时留在第一次出现的位置。
+
+### 主要变化
+
+- Inspector、原文回顾浮窗和笔记列表支持直接编辑笔记；停止输入后自动保存，成功后显示「保存成功」，不再需要单独的保存按钮（[8830fa4](https://github.com/hedon954/lumen-pdf/commit/8830fa444f5fdfeec1fff427b31a8aa3d7151a4c)）。
+- 翻译浮窗首次定位后锁定位置，翻译完成、内容变高时不再换边闪跳（[8830fa4](https://github.com/hedon954/lumen-pdf/commit/8830fa444f5fdfeec1fff427b31a8aa3d7151a4c)）。
+
+### 工程与文档
+
+- 补全 v1.0.22 起缺失的成对 PRD/TDD，并把版本、日期、前序后续放到 YAML frontmatter（[eb14115](https://github.com/hedon954/lumen-pdf/commit/eb14115af6732fef0bcbbb7ece306d77b1c9e795)、[9f8c370](https://github.com/hedon954/lumen-pdf/commit/9f8c370b78dddc7ddf07ee43b906b62cef8879db)）。
+
+---
 ## [1.0.25](https://github.com/hedon954/lumen-pdf/compare/v1.0.24..v1.0.25) - 2026-08-20
 
 这一版让已打开的 PDF 更容易辨认，并对不满意或失败的翻译提供一键重新生成。

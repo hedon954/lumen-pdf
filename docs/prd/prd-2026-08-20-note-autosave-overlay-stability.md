@@ -1,5 +1,5 @@
 ---
-version: unreleased
+version: v1.0.26
 date: 2026-08-20
 tdd: tdd/tdd-2026-08-20-note-autosave-overlay-stability.md
 predecessor:
