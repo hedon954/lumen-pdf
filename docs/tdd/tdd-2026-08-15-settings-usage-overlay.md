@@ -1,13 +1,15 @@
+---
+version: v1.0.23
+date: 2026-08-15
+prd: prd/prd-2026-08-15-settings-usage-overlay.md
+predecessor:
+  - tdd/tdd-2026-08-14-ai-settings-notes.md
+  - tdd/tdd-2026-08-09-selection-overlay-placement.md
+successor:
+  - tdd/tdd-2026-08-19-markup-diagnostics.md
+---
+
 # LumenPDF — 用量统计、设置打磨与根层浮窗 TDD
-
-**版本**: v1.0.23 · **日期**: 2026-08-15
-
-## 文档关系
-
-- 对应 PRD：[`prd-2026-08-15-settings-usage-overlay.md`](../prd/prd-2026-08-15-settings-usage-overlay.md)
-- 前序：[v1.0.22 TDD](tdd-2026-08-14-ai-settings-notes.md) · [定位 TDD](tdd-2026-08-09-selection-overlay-placement.md)
-- 后续：[v1.0.24 TDD](tdd-2026-08-19-markup-diagnostics.md)
-- 索引：[`docs/README.md`](../README.md)
 
 ## 1. 技术结论
 

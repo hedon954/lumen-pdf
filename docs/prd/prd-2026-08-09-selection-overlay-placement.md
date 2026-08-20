@@ -1,13 +1,15 @@
+---
+version: v1.0.21
+date: 2026-08-09
+tdd: tdd/tdd-2026-08-09-selection-overlay-placement.md
+predecessor:
+  - prd/prd-2026-08-05-viewport-restore-overlay-drag.md
+  - prd/prd-2026-07-10-note-overlay-optimization.md
+successor:
+  - prd/prd-2026-08-20-note-autosave-overlay-stability.md
+---
+
 # LumenPDF — 选区浮层统一定位 PRD
-
-**版本**: v1.0.21 · **日期**: 2026-08-09
-
-## 文档关系
-
-- 对应 TDD：[`tdd-2026-08-09-selection-overlay-placement.md`](../tdd/tdd-2026-08-09-selection-overlay-placement.md)
-- 前序：[`prd-2026-08-05-viewport-restore-overlay-drag.md`](prd-2026-08-05-viewport-restore-overlay-drag.md) · [`prd-2026-07-10-note-overlay-optimization.md`](prd-2026-07-10-note-overlay-optimization.md)
-- 后续修订：[`prd-2026-08-20-note-autosave-overlay-stability.md`](prd-2026-08-20-note-autosave-overlay-stability.md)（翻译完成时不再因增高换边）
-- 索引：[`docs/README.md`](../README.md)
 
 ## 1. 产品结论
 

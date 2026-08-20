@@ -1,13 +1,14 @@
+---
+version: v1.0.16
+date: 2026-07-13
+tdd: tdd/tdd-2026-07-13-v1016-reader-selection-overlays.md
+predecessor:
+  - prd/prd-2026-07-10-note-overlay-optimization.md
+successor:
+  - prd/prd-2026-08-05-viewport-restore-overlay-drag.md
+---
+
 # LumenPDF — 阅读选择控件与窗口延续性优化 PRD
-
-**版本**: v1.0.16 · **日期**: 2026-07-13
-
-## 文档关系
-
-- 对应 TDD：[`tdd-2026-07-13-v1016-reader-selection-overlays.md`](../tdd/tdd-2026-07-13-v1016-reader-selection-overlays.md)
-- 前序：[`prd-2026-07-10-note-overlay-optimization.md`](prd-2026-07-10-note-overlay-optimization.md)
-- 后续：[`prd-2026-08-05-viewport-restore-overlay-drag.md`](prd-2026-08-05-viewport-restore-overlay-drag.md)
-- 索引：[`docs/README.md`](../README.md)
 
 ## 1. 产品结论
 

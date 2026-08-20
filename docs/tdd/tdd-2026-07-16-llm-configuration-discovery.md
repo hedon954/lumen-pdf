@@ -1,11 +1,14 @@
+---
+version: v1.0.19
+date: 2026-07-16
+prd: prd/prd-2026-07-16-llm-configuration-discovery.md
+successor:
+  - tdd/tdd-2026-08-14-ai-settings-notes.md
+related:
+  - tdd/tdd-2026-07-16-reading-ai-input-selection.md
+---
+
 # TDD - 2026-07-16：LLM 配置发现与快速选择
-
-## 文档关系
-
-- 对应 PRD：[`prd-2026-07-16-llm-configuration-discovery.md`](../prd/prd-2026-07-16-llm-configuration-discovery.md)
-- 并行主题：[`tdd-2026-07-16-reading-ai-input-selection.md`](tdd-2026-07-16-reading-ai-input-selection.md)
-- 后续：[`tdd-2026-08-14-ai-settings-notes.md`](tdd-2026-08-14-ai-settings-notes.md)
-- 索引：[`docs/README.md`](../README.md)
 
 ## 设计概览
 

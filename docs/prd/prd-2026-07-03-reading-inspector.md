@@ -1,13 +1,15 @@
+---
+version: v1.0.13
+date: 2026-07-03
+tdd: tdd/tdd-2026-07-03-reading-inspector.md
+predecessor:
+  - prd/prd-2026-07-02-reading-context-sidebar.md
+successor:
+  - prd/prd-2026-07-04-v1014-refactor-automation.md
+  - prd/prd-2026-08-20-note-autosave-overlay-stability.md
+---
+
 # LumenPDF — 阅读 Inspector PRD
-
-**版本**: v1.0.13 · **日期**: 2026-07-03
-
-## 文档关系
-
-- 对应 TDD：[`tdd-2026-07-03-reading-inspector.md`](../tdd/tdd-2026-07-03-reading-inspector.md)
-- 前序：[`prd-2026-07-02-reading-context-sidebar.md`](prd-2026-07-02-reading-context-sidebar.md)
-- 后续：[`prd-2026-07-04-v1014-refactor-automation.md`](prd-2026-07-04-v1014-refactor-automation.md) · [笔记自动保存](prd-2026-08-20-note-autosave-overlay-stability.md)（落实轻量编辑）
-- 索引：[`docs/README.md`](../README.md)
 
 ## 1. 产品结论
 

@@ -1,13 +1,14 @@
+---
+version: unreleased
+date: 2026-08-20
+prd: prd/prd-2026-08-20-note-autosave-overlay-stability.md
+predecessor:
+  - tdd/tdd-2026-07-03-reading-inspector.md
+  - tdd/tdd-2026-07-10-note-overlay-optimization.md
+  - tdd/tdd-2026-08-09-selection-overlay-placement.md
+---
+
 # LumenPDF — 笔记自动保存与翻译浮窗位置稳定 TDD
-
-**版本**: 未发布 · **日期**: 2026-08-20
-
-## 文档关系
-
-- 对应 PRD：[`prd-2026-08-20-note-autosave-overlay-stability.md`](../prd/prd-2026-08-20-note-autosave-overlay-stability.md)
-- 前序：[阅读 Inspector TDD](tdd-2026-07-03-reading-inspector.md) · [阅读浮层 TDD](tdd-2026-07-10-note-overlay-optimization.md) · [定位 TDD](tdd-2026-08-09-selection-overlay-placement.md)
-- 修订：`place(_:keeping:)` 不再在内容变高后重新搜索方向；`ReadingOverlayWindow` 锁定首次 origin
-- 索引：[`docs/README.md`](../README.md)
 
 ## 1. 技术结论
 

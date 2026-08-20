@@ -1,13 +1,14 @@
+---
+version: v1.0.14
+date: 2026-07-04
+prd: prd/prd-2026-07-04-v1014-refactor-automation.md
+predecessor:
+  - tdd/tdd-2026-07-03-reading-inspector.md
+successor:
+  - tdd/tdd-2026-07-10-note-overlay-optimization.md
+---
+
 # LumenPDF — v1.0.14 重构与验证收口 TDD
-
-**版本**: v1.0.14 · **日期**: 2026-07-04
-
-## 文档关系
-
-- 对应 PRD：[`prd-2026-07-04-v1014-refactor-automation.md`](../prd/prd-2026-07-04-v1014-refactor-automation.md)
-- 前序：[`tdd-2026-07-03-reading-inspector.md`](tdd-2026-07-03-reading-inspector.md)
-- 后续：[`tdd-2026-07-10-note-overlay-optimization.md`](tdd-2026-07-10-note-overlay-optimization.md)
-- 索引：[`docs/README.md`](../README.md)
 
 ## 1. 技术结论
 

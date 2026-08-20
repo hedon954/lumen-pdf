@@ -1,13 +1,17 @@
+---
+version: v1.0.22
+date: 2026-08-14
+tdd: tdd/tdd-2026-08-14-ai-settings-notes.md
+predecessor:
+  - prd/prd-2026-07-03-reading-inspector.md
+  - prd/prd-2026-07-16-llm-configuration-discovery.md
+  - prd/prd-2026-07-16-reading-ai-input-selection.md
+  - prd/prd-2026-07-10-note-overlay-optimization.md
+successor:
+  - prd/prd-2026-08-15-settings-usage-overlay.md
+---
+
 # LumenPDF — AI 阅读、设置与笔记删除 PRD
-
-**版本**: v1.0.22 · **日期**: 2026-08-14
-
-## 文档关系
-
-- 对应 TDD：[`tdd-2026-08-14-ai-settings-notes.md`](../tdd/tdd-2026-08-14-ai-settings-notes.md)
-- 前序：[阅读 Inspector](prd-2026-07-03-reading-inspector.md) · [LLM 配置发现](prd-2026-07-16-llm-configuration-discovery.md) · [阅读 AI 输入](prd-2026-07-16-reading-ai-input-selection.md) · [阅读浮层](prd-2026-07-10-note-overlay-optimization.md)
-- 后续：[v1.0.23 用量与根层浮窗](prd-2026-08-15-settings-usage-overlay.md)
-- 索引：[`docs/README.md`](../README.md)
 
 ## 1. 产品结论
 

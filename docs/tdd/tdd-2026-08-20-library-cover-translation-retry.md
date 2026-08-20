@@ -1,13 +1,14 @@
+---
+version: v1.0.25
+date: 2026-08-20
+prd: prd/prd-2026-08-20-library-cover-translation-retry.md
+predecessor:
+  - tdd/tdd-2026-08-19-markup-diagnostics.md
+successor:
+  - tdd/tdd-2026-08-20-note-autosave-overlay-stability.md
+---
+
 # LumenPDF — 文库封面与翻译重新生成 TDD
-
-**版本**: v1.0.25 · **日期**: 2026-08-20
-
-## 文档关系
-
-- 对应 PRD：[`prd-2026-08-20-library-cover-translation-retry.md`](../prd/prd-2026-08-20-library-cover-translation-retry.md)
-- 前序：[v1.0.24 TDD](tdd-2026-08-19-markup-diagnostics.md)
-- 后续：[笔记自动保存与浮窗稳定 TDD](tdd-2026-08-20-note-autosave-overlay-stability.md)
-- 索引：[`docs/README.md`](../README.md)
 
 ## 1. 技术结论
 

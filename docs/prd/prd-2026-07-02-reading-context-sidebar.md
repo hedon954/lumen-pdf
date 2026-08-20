@@ -1,13 +1,14 @@
+---
+version: v1.0.12
+date: 2026-07-03
+tdd: tdd/tdd-2026-07-02-reading-context-sidebar.md
+predecessor:
+  - prd/prd-2026-06-26-v1011.md
+successor:
+  - prd/prd-2026-07-03-reading-inspector.md
+---
+
 # LumenPDF — 阅读上下文与 AI 导读 PRD
-
-**版本**: v1.0.12 · **日期**: 2026-07-03
-
-## 文档关系
-
-- 对应 TDD：[`tdd-2026-07-02-reading-context-sidebar.md`](../tdd/tdd-2026-07-02-reading-context-sidebar.md)
-- 前序：[`prd-2026-06-26-v1011.md`](prd-2026-06-26-v1011.md)
-- 后续：[`prd-2026-07-03-reading-inspector.md`](prd-2026-07-03-reading-inspector.md)
-- 索引：[`docs/README.md`](../README.md)
 
 ## 1. 产品结论
 

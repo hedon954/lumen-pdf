@@ -1,13 +1,14 @@
+---
+version: v1.0.24
+date: 2026-08-19
+prd: prd/prd-2026-08-19-markup-diagnostics.md
+predecessor:
+  - tdd/tdd-2026-08-15-settings-usage-overlay.md
+successor:
+  - tdd/tdd-2026-08-20-library-cover-translation-retry.md
+---
+
 # LumenPDF — 跨页划线与失败诊断 TDD
-
-**版本**: v1.0.24 · **日期**: 2026-08-19
-
-## 文档关系
-
-- 对应 PRD：[`prd-2026-08-19-markup-diagnostics.md`](../prd/prd-2026-08-19-markup-diagnostics.md)
-- 前序：[v1.0.23 TDD](tdd-2026-08-15-settings-usage-overlay.md)
-- 后续：[v1.0.25 TDD](tdd-2026-08-20-library-cover-translation-retry.md)
-- 索引：[`docs/README.md`](../README.md)
 
 ## 1. 技术结论
 

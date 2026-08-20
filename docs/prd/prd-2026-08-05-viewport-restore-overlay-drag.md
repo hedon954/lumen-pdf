@@ -1,13 +1,14 @@
+---
+version: v1.0.20
+date: 2026-08-05
+tdd: tdd/tdd-2026-08-05-viewport-restore-overlay-drag.md
+predecessor:
+  - prd/prd-2026-07-13-v1016-reader-selection-overlays.md
+successor:
+  - prd/prd-2026-08-09-selection-overlay-placement.md
+---
+
 # LumenPDF — 阅读位置恢复与浮窗拖动 PRD
-
-**版本**: v1.0.20 · **日期**: 2026-08-05
-
-## 文档关系
-
-- 对应 TDD：[`tdd-2026-08-05-viewport-restore-overlay-drag.md`](../tdd/tdd-2026-08-05-viewport-restore-overlay-drag.md)
-- 前序：[`prd-2026-07-13-v1016-reader-selection-overlays.md`](prd-2026-07-13-v1016-reader-selection-overlays.md)
-- 后续：[`prd-2026-08-09-selection-overlay-placement.md`](prd-2026-08-09-selection-overlay-placement.md)
-- 索引：[`docs/README.md`](../README.md)
 
 ## 1. 产品结论
 

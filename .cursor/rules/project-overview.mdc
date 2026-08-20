@@ -37,7 +37,7 @@ Swift UI  →  UniFFI 桥接  →  Rust interfaces  →  application  →  domai
 
 ## PRD 与 TDD
 
-用户可感知行为或模块边界变化时，同一 PR 必须更新或新增成对的 PRD 与 TDD，并在双方 `## 文档关系` 中互链（对应、前序、后续、索引）。后一份文档改写前一份需求时，要在旧条款旁标注修订链接。详见 `CLAUDE.md` 的「PRD 与 TDD」和 `docs/README.md`。
+用户可感知行为或模块边界变化时，同一 PR 必须更新或新增成对的 PRD 与 TDD，并在 YAML frontmatter 中互链（`tdd`/`prd`、`predecessor`、`successor`）。后一份文档改写前一份需求时，要在旧条款旁标注修订链接。详见 `CLAUDE.md` 的「PRD 与 TDD」和 `docs/README.md`。
 
 ## 翻译降级策略
 
