@@ -2,7 +2,12 @@
 
 **版本**: v1.0.15 · **日期**: 2026-07-10
 
-对应 PRD：`docs/prd/prd-2026-07-10-note-overlay-optimization.md`
+## 文档关系
+
+- 对应 PRD：[`prd-2026-07-10-note-overlay-optimization.md`](../prd/prd-2026-07-10-note-overlay-optimization.md)
+- 前序：[`tdd-2026-07-04-v1014-refactor-automation.md`](tdd-2026-07-04-v1014-refactor-automation.md)
+- 后续：[`tdd-2026-07-13-v1016-reader-selection-overlays.md`](tdd-2026-07-13-v1016-reader-selection-overlays.md) · [浮窗位置稳定 TDD](tdd-2026-08-20-note-autosave-overlay-stability.md)
+- 索引：[`docs/README.md`](../README.md)
 
 ## 1. 技术结论
 

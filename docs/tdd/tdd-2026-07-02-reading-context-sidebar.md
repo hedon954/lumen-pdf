@@ -2,7 +2,12 @@
 
 **版本**: v1.0.12 · **日期**: 2026-07-03
 
-对应 PRD：`docs/prd/prd-2026-07-02-reading-context-sidebar.md`
+## 文档关系
+
+- 对应 PRD：[`prd-2026-07-02-reading-context-sidebar.md`](../prd/prd-2026-07-02-reading-context-sidebar.md)
+- 前序：[`tdd-2026-06-26-v1011.md`](tdd-2026-06-26-v1011.md)
+- 后续：[`tdd-2026-07-03-reading-inspector.md`](tdd-2026-07-03-reading-inspector.md)
+- 索引：[`docs/README.md`](../README.md)
 
 ## 1. 技术结论
 

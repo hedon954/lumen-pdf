@@ -2,6 +2,13 @@
 
 **版本**: v1.0.12 · **日期**: 2026-07-03
 
+## 文档关系
+
+- 对应 TDD：[`tdd-2026-07-02-reading-context-sidebar.md`](../tdd/tdd-2026-07-02-reading-context-sidebar.md)
+- 前序：[`prd-2026-06-26-v1011.md`](prd-2026-06-26-v1011.md)
+- 后续：[`prd-2026-07-03-reading-inspector.md`](prd-2026-07-03-reading-inspector.md)
+- 索引：[`docs/README.md`](../README.md)
+
 ## 1. 产品结论
 
 LumenPDF 的阅读页需要同时承担阅读、理解、标注和复习。当前版本在 PDF 右侧提供当前文档的单词和笔记上下文；在选区解释中提供可追问、可保存、可缩放的 AI 导读窗口；在笔记系统中支持同一选区的多条笔记分开展示。

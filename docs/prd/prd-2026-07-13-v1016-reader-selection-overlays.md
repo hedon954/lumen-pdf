@@ -2,6 +2,13 @@
 
 **版本**: v1.0.16 · **日期**: 2026-07-13
 
+## 文档关系
+
+- 对应 TDD：[`tdd-2026-07-13-v1016-reader-selection-overlays.md`](../tdd/tdd-2026-07-13-v1016-reader-selection-overlays.md)
+- 前序：[`prd-2026-07-10-note-overlay-optimization.md`](prd-2026-07-10-note-overlay-optimization.md)
+- 后续：[`prd-2026-08-05-viewport-restore-overlay-drag.md`](prd-2026-08-05-viewport-restore-overlay-drag.md)
+- 索引：[`docs/README.md`](../README.md)
+
 ## 1. 产品结论
 
 v1.0.16 优化 PDF 阅读页中两类贴近原文的轻量控件：已有笔记的快捷按钮，以及选中文本后出现的操作栏；同时恢复上次退出前的主窗口与阅读布局，让重新打开应用成为阅读过程的延续，而不是一次新的布局初始化。

@@ -1,5 +1,12 @@
 # TDD - 2026-07-16：LLM 配置发现与快速选择
 
+## 文档关系
+
+- 对应 PRD：[`prd-2026-07-16-llm-configuration-discovery.md`](../prd/prd-2026-07-16-llm-configuration-discovery.md)
+- 并行主题：[`tdd-2026-07-16-reading-ai-input-selection.md`](tdd-2026-07-16-reading-ai-input-selection.md)
+- 后续：[`tdd-2026-08-14-ai-settings-notes.md`](tdd-2026-08-14-ai-settings-notes.md)
+- 索引：[`docs/README.md`](../README.md)
+
 ## 设计概览
 
 功能保持在 Swift 设置与服务层，不修改 Rust LLM 调用协议。视图只负责布局和事件转发；模型列表请求、状态协调和历史持久化分别放在独立类型中。

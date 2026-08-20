@@ -2,6 +2,13 @@
 
 **版本**: v1.0.13 · **日期**: 2026-07-03
 
+## 文档关系
+
+- 对应 TDD：[`tdd-2026-07-03-reading-inspector.md`](../tdd/tdd-2026-07-03-reading-inspector.md)
+- 前序：[`prd-2026-07-02-reading-context-sidebar.md`](prd-2026-07-02-reading-context-sidebar.md)
+- 后续：[`prd-2026-07-04-v1014-refactor-automation.md`](prd-2026-07-04-v1014-refactor-automation.md) · [笔记自动保存](prd-2026-08-20-note-autosave-overlay-stability.md)（落实轻量编辑）
+- 索引：[`docs/README.md`](../README.md)
+
 ## 1. 产品结论
 
 LumenPDF 的下一步是把阅读现场收敛成一个稳定、简洁的三栏体验：左侧目录，中间 PDF，右侧阅读 Inspector。AI 导读从悬浮窗口迁入右侧 Inspector，减少遮挡、拖拽、缩放和滚动状态带来的复杂度。
@@ -125,6 +132,6 @@ PDF 始终是主画布；Inspector 只承载当前阅读上下文、当前选区
 ## 8. 后续迭代
 
 1. PDF 标注点击后自动切换 Inspector 到对应条目。
-2. Inspector 内支持轻量编辑笔记。
+2. ~~Inspector 内支持轻量编辑笔记。~~ 已由 [笔记自动保存 PRD](prd-2026-08-20-note-autosave-overlay-stability.md) 落实。
 3. 对当前章节聚合单词和笔记。
 4. 支持保存导读会话摘要，而不是完整聊天记录。

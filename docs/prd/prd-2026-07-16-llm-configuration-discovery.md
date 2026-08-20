@@ -1,5 +1,12 @@
 # PRD - 2026-07-16：LLM 配置发现与快速选择
 
+## 文档关系
+
+- 对应 TDD：[`tdd-2026-07-16-llm-configuration-discovery.md`](../tdd/tdd-2026-07-16-llm-configuration-discovery.md)
+- 并行主题：[`prd-2026-07-16-reading-ai-input-selection.md`](prd-2026-07-16-reading-ai-input-selection.md)
+- 后续：[`prd-2026-08-14-ai-settings-notes.md`](prd-2026-08-14-ai-settings-notes.md)
+- 索引：[`docs/README.md`](../README.md)
+
 ## 背景
 
 当前设置页要求用户手动填写 Base URL 和模型名称。即使用户使用常见厂商，也需要自行查找并准确复制配置；模型升级或下线后，还需要重新访问厂商文档确认名称。

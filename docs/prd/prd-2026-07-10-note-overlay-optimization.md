@@ -2,6 +2,13 @@
 
 **版本**: v1.0.15 · **日期**: 2026-07-10
 
+## 文档关系
+
+- 对应 TDD：[`tdd-2026-07-10-note-overlay-optimization.md`](../tdd/tdd-2026-07-10-note-overlay-optimization.md)
+- 前序：[`prd-2026-07-04-v1014-refactor-automation.md`](prd-2026-07-04-v1014-refactor-automation.md)
+- 后续：[`prd-2026-07-13-v1016-reader-selection-overlays.md`](prd-2026-07-13-v1016-reader-selection-overlays.md) · [浮窗位置稳定](prd-2026-08-20-note-autosave-overlay-stability.md)
+- 索引：[`docs/README.md`](../README.md)
+
 ## 1. 产品结论
 
 v1.0.15 统一阅读页中的窗口型浮层体验。翻译、添加/追加笔记、笔记回顾虽然内容与操作不同，但外围窗口遵循同一套规则：默认避让当前选区、内容高度自适应、最高占阅读区域高度的 80%、超出后仅正文滚动，并共享拖动、缩放、边界限制和关闭行为。

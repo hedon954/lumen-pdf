@@ -1,5 +1,12 @@
 # LumenPDF — 阅读 AI 输入与选区操作优化 PRD
 
+## 文档关系
+
+- 对应 TDD：[`tdd-2026-07-16-reading-ai-input-selection.md`](../tdd/tdd-2026-07-16-reading-ai-input-selection.md)
+- 并行主题：[`prd-2026-07-16-llm-configuration-discovery.md`](prd-2026-07-16-llm-configuration-discovery.md)
+- 后续：[`prd-2026-08-14-ai-settings-notes.md`](prd-2026-08-14-ai-settings-notes.md)
+- 索引：[`docs/README.md`](../README.md)
+
 ## 背景
 
 本次迭代聚焦阅读场景中的三个摩擦点：单词解释缺少词源补充、跨页或页面交界处选区偶发不展示操作栏、AI 追问输入框只能单行输入且不便承载图片相关问题。

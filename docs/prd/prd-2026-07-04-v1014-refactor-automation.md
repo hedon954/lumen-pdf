@@ -2,6 +2,13 @@
 
 **版本**: v1.0.14 · **日期**: 2026-07-04
 
+## 文档关系
+
+- 对应 TDD：[`tdd-2026-07-04-v1014-refactor-automation.md`](../tdd/tdd-2026-07-04-v1014-refactor-automation.md)
+- 前序：[`prd-2026-07-03-reading-inspector.md`](prd-2026-07-03-reading-inspector.md)
+- 后续：[`prd-2026-07-10-note-overlay-optimization.md`](prd-2026-07-10-note-overlay-optimization.md)
+- 索引：[`docs/README.md`](../README.md)
+
 ## 1. 产品结论
 
 v1.0.14 的目标不是新增功能，而是在现有功能不变的前提下，把阅读页、翻译浮窗、阅读 Inspector、Swift/Rust 边界和验证流程收敛到更清晰、可迭代的形态。
