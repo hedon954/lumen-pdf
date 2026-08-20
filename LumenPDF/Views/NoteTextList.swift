@@ -51,6 +51,15 @@ enum NoteTextList {
         return encode(notes)
     }
 
+    static func replacingItem(at index: Int, with text: String, from raw: String) -> String? {
+        var notes = decode(raw)
+        guard notes.indices.contains(index) else { return nil }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        notes[index] = trimmed
+        return encode(notes)
+    }
+
     static func markdown(_ raw: String) -> String {
         let notes = decode(raw)
         guard !notes.isEmpty else { return "" }

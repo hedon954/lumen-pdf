@@ -1,8 +1,14 @@
+---
+version: v1.0.21
+date: 2026-08-09
+prd: prd/prd-2026-08-09-selection-overlay-placement.md
+predecessor:
+  - tdd/tdd-2026-08-05-viewport-restore-overlay-drag.md
+successor:
+  - tdd/tdd-2026-08-20-note-autosave-overlay-stability.md
+---
+
 # LumenPDF — 选区浮层统一定位 TDD
-
-**版本**: v1.0.21 · **日期**: 2026-08-09
-
-对应 PRD：`docs/prd/prd-2026-08-09-selection-overlay-placement.md`
 
 ## 1. 技术结论
 
@@ -44,13 +50,11 @@ SelectionActionBarOverlay + ReadingOverlayPlacementPolicy
 
 ## 4. 动态尺寸与方向保持
 
-`ReadingOverlayWindow` 可以保留首次选择的方向，但每次窗口尺寸测量变化时都必须调用 `place(_:keeping:)` 重新验证：
+v1.0.21 要求窗口尺寸变化时调用 `place(_:keeping:)`：原方向仍无重叠则保持，否则重新搜索。
 
-- 原方向仍无重叠且方向有效：保持位置，避免流式内容造成无意义跳动。
-- 原方向开始覆盖选区：重新执行完整候选搜索，并更新锁定方向。
-- 四周都不可避让：不锁定伪方向，随真实尺寸继续计算最小遮挡位置。
+**后续修订（2026-08-20）**：翻译完成导致内容变高时，换边比挡住选区更突兀。`ReadingOverlayWindow` 改为锁定首次 origin；`place(_:keeping:)` 保持原方向，即使增高后与选区重叠。详见 [浮窗稳定 TDD](tdd-2026-08-20-note-autosave-overlay-stability.md)。
 
-因此“稳定”只适用于仍满足避让约束的方向，不能压过“不遮挡选区”这一更高优先级。
+首次打开时的方向选择（下、上、右、左、最小遮挡）仍然有效。
 
 ## 5. 最小遮挡兜底
 
@@ -70,7 +74,7 @@ SelectionActionBarOverlay + ReadingOverlayPlacementPolicy
 - 根坐标选区转换到 overlay 局部坐标时会扣除浮层原点。
 - 空间充足时默认位于下方。
 - 靠近底部时改用上方且不相交。
-- 内容增长使原下方位置失效时重新切换方向。
+- 内容增高后保持首次方向与原点，见 [浮窗稳定 TDD](tdd-2026-08-20-note-autosave-overlay-stability.md)
 - 大选区无法避让时进入最小遮挡兜底，并保持完整可见。
 
 ```bash

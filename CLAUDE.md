@@ -282,10 +282,59 @@ DROP TABLE notes;
 ALTER TABLE notes_new RENAME TO notes;
 ```
 
+## PRD 与 TDD
+
+产品行为与实现边界写在 `docs/prd/` 和 `docs/tdd/`。配对表与主题演进只写在 [`docs/README.md`](docs/README.md)，不要在每份 PRD/TDD 正文里再链回索引。
+
+### 何时必须更新
+
+用户可感知的行为变化、交互规则变化、或模块边界/持久化/桥接变化，必须在**同一份 PR** 里更新或新增成对的 PRD 与 TDD。不能只改代码、不改文档。
+
+包括但不限于：阅读浮层定位、笔记/单词编辑与保存、Inspector、LLM 设置、翻译失败与重试、窗口/视口恢复、跨页标注。
+
+纯内部重构且用户行为不变时，可只更新 TDD；若发现现有 PRD 描述已过时，仍要改 PRD，并在旧条款旁标注「后续修订」，同时更新双方 frontmatter 的 `successor` / `predecessor`。
+
+### 成对与 frontmatter
+
+- 新主题使用相同日期与主题后缀：`docs/prd/prd-YYYY-MM-DD-<topic>.md` 与 `docs/tdd/tdd-YYYY-MM-DD-<topic>.md`。
+- 版本、日期、对应文档、前序、后续一律放在 YAML frontmatter，不要写进正文：
+
+```yaml
+---
+version: v1.0.21          # 未发版写 unreleased
+date: 2026-08-09
+tdd: tdd/tdd-YYYY-MM-DD-<topic>.md   # PRD 用 tdd:；TDD 用 prd:
+predecessor:
+  - prd/prd-YYYY-MM-DD-<prev>.md
+successor:
+  - prd/prd-YYYY-MM-DD-<next>.md
+related:                  # 可选：并行主题或补丁文档
+  - tdd/tdd-YYYY-MM-DD-<related>.md
+---
+```
+
+- 路径相对 `docs/`。无前序或后续时省略对应字段。
+- 后一份文档改写了前一份的需求时，不要只在新文档里写新规则。必须在旧文档对应条款旁标注「后续修订」并链到新文档，避免两份 PRD 互相矛盾。
+- 更新 [`docs/README.md`](docs/README.md) 配对表和相关主题演进，不要留下未登记的新文件。
+
+### 文档写什么
+
+- PRD：问题、用户可感知行为、非目标、验收标准。不写实现细节。
+- TDD：模块边界、关键算法/状态、测试与运行时验收。不重复粘贴整份 PRD。
+- `version`：已发布的迭代写 `CFBundleShortVersionString`（如 `v1.0.21`）；尚未发版的写 `unreleased`。
+
+### 禁止
+
+- 不把 CHANGELOG 当作 PRD/TDD 的替代。
+- 不新增只在一边存在的 PRD 或 TDD。
+- 不删除旧文档来「整理」；用 frontmatter 的 `predecessor` / `successor` 表达演进。
+- 不在 PRD/TDD 正文重复版本、日期、对应文档或指向 `docs/README.md` 的索引。
+
 ## Key Files
 
-- PRD: `docs/prd/prd-2026-03-22.md`
-- TDD: `docs/tdd/tdd-2026-03-22.md`
+- 文档索引：`docs/README.md`
+- 基线 PRD：`docs/prd/prd-2026-03-22.md`
+- 基线 TDD：`docs/tdd/tdd-2026-03-22.md`
 - Build script: `scripts/build-rust.sh`
 - Swift bridge: `LumenPDF/Services/BridgeService.swift`
 - Rust API entry: `lumen-pdf-core/src/interfaces/api.rs`

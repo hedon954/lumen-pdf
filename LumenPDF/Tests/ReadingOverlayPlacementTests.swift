@@ -42,7 +42,7 @@ final class ReadingOverlayPlacementTests: XCTestCase {
         XCTAssertFalse(frame.intersects(anchor))
     }
 
-    func testKeepingPlacementReevaluatesWhenContentGrowthWouldCoverSelection() {
+    func testKeepingPlacementStaysPutWhenContentGrowsOverSelection() {
         let anchor = CGRect(x: 450, y: 450, width: 100, height: 24)
         let initial = ReadingOverlayPlacementPolicy.place(
             input(anchorRect: anchor, overlaySize: CGSize(width: 380, height: 200))
@@ -52,11 +52,31 @@ final class ReadingOverlayPlacementTests: XCTestCase {
             input(anchorRect: anchor, overlaySize: CGSize(width: 380, height: 330)),
             keeping: initial.placement
         )
-        let grownFrame = CGRect(origin: grown.origin, size: CGSize(width: 380, height: 330))
 
         XCTAssertEqual(initial.placement, .below)
-        XCTAssertEqual(grown.placement, .above)
-        XCTAssertFalse(grownFrame.intersects(anchor))
+        XCTAssertEqual(grown.placement, .below)
+        XCTAssertEqual(grown.origin, initial.origin)
+    }
+
+    func testLockedOriginKeepsTopLeftUntilItMustClamp() {
+        let origin = CGPoint(x: 310, y: 216)
+        let stillFits = ReadingOverlayPlacementPolicy.clamp(
+            origin: origin,
+            overlaySize: CGSize(width: 380, height: 400),
+            containerSize: containerSize,
+            horizontalSafeInset: 12,
+            verticalSafeInset: 80
+        )
+        let tooTall = ReadingOverlayPlacementPolicy.clamp(
+            origin: origin,
+            overlaySize: CGSize(width: 380, height: 700),
+            containerSize: containerSize,
+            horizontalSafeInset: 12,
+            verticalSafeInset: 80
+        )
+
+        XCTAssertEqual(stillFits, origin)
+        XCTAssertEqual(tooTall, CGPoint(x: 310, y: 80))
     }
 
     func testFallsBackToLeastOverlapForSelectionThatFillsViewport() {

@@ -116,6 +116,9 @@ struct PDFReaderView: View {
                         onOpenNotes()
                         activeNoteReview = nil
                     },
+                    onSaveItem: { noteId, itemIndex, text in
+                        appState.saveNoteItem(noteId: noteId, itemIndex: itemIndex, text: text)
+                    },
                     onDeleteItem: { noteId, itemIndex in
                         deleteNoteReviewItem(noteId: noteId, itemIndex: itemIndex)
                     },
@@ -697,6 +700,7 @@ private struct NoteReviewPopoverView: View {
     let review: ActiveNoteReview
     let availableSize: CGSize
     let onOpenNotes: () -> Void
+    let onSaveItem: (String, Int, String) -> Bool
     let onDeleteItem: (String, Int) -> Void
     let onDeleteAll: () -> Void
     let onClose: () -> Void
@@ -812,10 +816,15 @@ private struct NoteReviewPopoverView: View {
                         .buttonStyle(.plain)
                         .help("删除这条笔记")
                     }
-                    MarkdownText(markdown: item.markdown)
-                        .font(.callout)
-                        .foregroundStyle(.primary)
-                        .textSelection(.enabled)
+                    AutoSavingNoteEditor(
+                        initialText: item.markdown,
+                        minLineLimit: 3,
+                        maxLineLimit: 16,
+                        onSave: { text in
+                            onSaveItem(item.noteId, item.itemIndex, text)
+                        }
+                    )
+                    .id(item.id)
                 }
                 .padding(10)
                 .frame(maxWidth: .infinity, alignment: .leading)

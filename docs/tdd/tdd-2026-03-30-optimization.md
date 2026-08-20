@@ -1,8 +1,14 @@
-# LumenPDF — 优化需求技术实现文档 (TDD)
-
-**版本**: v1.0.2 · **日期**: 2026-03-30
-
 ---
+version: v1.0.2
+date: 2026-03-30
+prd: prd/prd-2026-03-31.md
+predecessor:
+  - tdd/tdd-2026-03-27.md
+successor:
+  - tdd/tdd-2026-03-31-v103.md
+---
+
+# LumenPDF — 优化需求技术实现文档 (TDD)
 
 ## 1. 需求概述
 

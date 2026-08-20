@@ -1,6 +1,14 @@
-# LumenPDF — v1.0.14 重构与验证收口 PRD
+---
+version: v1.0.14
+date: 2026-07-04
+tdd: tdd/tdd-2026-07-04-v1014-refactor-automation.md
+predecessor:
+  - prd/prd-2026-07-03-reading-inspector.md
+successor:
+  - prd/prd-2026-07-10-note-overlay-optimization.md
+---
 
-**版本**: v1.0.14 · **日期**: 2026-07-04
+# LumenPDF — v1.0.14 重构与验证收口 PRD
 
 ## 1. 产品结论
 

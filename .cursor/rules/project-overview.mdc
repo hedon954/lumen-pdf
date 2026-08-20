@@ -29,10 +29,15 @@ Swift UI  →  UniFFI 桥接  →  Rust interfaces  →  application  →  domai
 
 ## 关键文件
 
-- PRD: `docs/prd/prd-2026-03-22.md`
-- TDD: `docs/tdd/tdd-2026-03-22.md`
+- 文档索引: `docs/README.md`（PRD/TDD 配对与演进）
+- 基线 PRD: `docs/prd/prd-2026-03-22.md`
+- 基线 TDD: `docs/tdd/tdd-2026-03-22.md`
 - UniFFI 接口: `lumen-pdf-core/src/interfaces/lumen_pdf_lib.udl`
 - 构建脚本: `scripts/build-rust.sh`
+
+## PRD 与 TDD
+
+用户可感知行为或模块边界变化时，同一 PR 必须更新或新增成对的 PRD 与 TDD，并在 YAML frontmatter 中互链（`tdd`/`prd`、`predecessor`、`successor`）。后一份文档改写前一份需求时，要在旧条款旁标注修订链接。详见 `CLAUDE.md` 的「PRD 与 TDD」和 `docs/README.md`。
 
 ## 翻译降级策略
 

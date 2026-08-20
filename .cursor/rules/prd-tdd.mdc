@@ -1,0 +1,15 @@
+---
+description: PRD 与 TDD 必须成对更新，元数据放在 YAML frontmatter
+alwaysApply: true
+---
+
+# PRD / TDD 维护
+
+用户可感知行为、交互规则或模块边界发生变化时，同一 PR 必须更新或新增成对的：
+
+- `docs/prd/prd-YYYY-MM-DD-<topic>.md`
+- `docs/tdd/tdd-YYYY-MM-DD-<topic>.md`
+
+版本、日期、对应文档、前序、后续放在 YAML frontmatter（`version` / `date` / `tdd` 或 `prd` / `predecessor` / `successor`，可选 `related`）。路径相对 `docs/`。不要在正文重复这些字段，也不要链到 `docs/README.md`。若新规则改写旧需求，在旧文档原条款旁标注「后续修订」并链接新文档，同时更新 `docs/README.md` 配对表与主题演进。
+
+不要只改代码或只写 CHANGELOG。完整规则见 `CLAUDE.md` 的「PRD 与 TDD」。

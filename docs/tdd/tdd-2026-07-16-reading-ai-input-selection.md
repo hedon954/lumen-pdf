@@ -1,6 +1,14 @@
-# LumenPDF — 阅读 AI 输入与选区操作优化 TDD
+---
+version: v1.0.19
+date: 2026-07-16
+prd: prd/prd-2026-07-16-reading-ai-input-selection.md
+successor:
+  - tdd/tdd-2026-08-14-ai-settings-notes.md
+related:
+  - tdd/tdd-2026-07-16-llm-configuration-discovery.md
+---
 
-对应 PRD：`docs/prd/prd-2026-07-16-reading-ai-input-selection.md`
+# LumenPDF — 阅读 AI 输入与选区操作优化 TDD
 
 ## 设计概览
 

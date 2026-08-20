@@ -1,6 +1,15 @@
-# LumenPDF — 阅读浮层与划线回顾优化 PRD
+---
+version: v1.0.15
+date: 2026-07-10
+tdd: tdd/tdd-2026-07-10-note-overlay-optimization.md
+predecessor:
+  - prd/prd-2026-07-04-v1014-refactor-automation.md
+successor:
+  - prd/prd-2026-07-13-v1016-reader-selection-overlays.md
+  - prd/prd-2026-08-20-note-autosave-overlay-stability.md
+---
 
-**版本**: v1.0.15 · **日期**: 2026-07-10
+# LumenPDF — 阅读浮层与划线回顾优化 PRD
 
 ## 1. 产品结论
 

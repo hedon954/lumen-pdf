@@ -2,6 +2,8 @@ import Foundation
 
 struct ReadingInspectorNoteItem: Identifiable, Equatable {
     let id: String
+    let noteId: String
+    let itemIndex: Int
     let markdown: String
     let createdAt: Int64
 }
@@ -34,6 +36,8 @@ struct ReadingInspectorNoteGroup: Identifiable, Equatable {
                 return decoded.enumerated().map { index, item in
                     ReadingInspectorNoteItem(
                         id: decoded.count == 1 ? note.id : "\(note.id)#\(index)",
+                        noteId: note.id,
+                        itemIndex: index,
                         markdown: item,
                         createdAt: note.createdAt
                     )
