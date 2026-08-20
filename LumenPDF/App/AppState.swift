@@ -93,6 +93,18 @@ final class AppState: ObservableObject {
         notes = (try? bridge.listNotes()) ?? []
     }
 
+    @discardableResult
+    func saveNoteItem(noteId: String, itemIndex: Int, text: String) -> Bool {
+        guard let note = notes.first(where: { $0.id == noteId }),
+              let updated = NoteTextList.replacingItem(at: itemIndex, with: text, from: note.note),
+              (try? ReaderPersistence.shared.updateNote(id: noteId, note: updated)) != nil
+        else {
+            return false
+        }
+        refreshNotes()
+        return true
+    }
+
     func openFilePicker() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.pdf]

@@ -134,10 +134,9 @@ enum ReadingOverlayPlacementPolicy {
               placement != .leastOverlap else {
             return place(input)
         }
+        // Keep the first chosen side even if later content growth overlaps the
+        // selection. Recalculating a new side is what made translation windows jump.
         let candidate = evaluate(placement, input: input)
-        guard candidate.isClearAndOnExpectedSide else {
-            return place(input)
-        }
         return ReadingOverlayPlacementResult(origin: candidate.origin, placement: placement)
     }
 

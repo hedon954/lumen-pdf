@@ -5,7 +5,6 @@ extension NoteEntry: Identifiable {}
 struct NoteListView: View {
     @EnvironmentObject private var appState: AppState
     @State private var searchText = ""
-    @State private var editingNote: NoteEntry?
     @State private var showExportSheet = false
     @State private var exportContent = ""
 
@@ -61,7 +60,9 @@ struct NoteListView: View {
                         ForEach(filtered) { note in
                             NoteCardView(
                                 note: note,
-                                onEdit: { editingNote = $0 },
+                                onSaveItem: { itemIndex, text in
+                                    appState.saveNoteItem(noteId: note.id, itemIndex: itemIndex, text: text)
+                                },
                                 onDelete: { delete($0) },
                                 onJump: { jumpToPDF(note: $0) }
                             )
@@ -73,9 +74,6 @@ struct NoteListView: View {
             }
         }
         .onAppear { appState.refreshNotes() }
-        .sheet(item: $editingNote) { note in
-            NoteEditSheet(note: note) { appState.refreshNotes() }
-        }
         .sheet(isPresented: $showExportSheet) {
             NoteExportView(content: $exportContent)
         }
@@ -121,7 +119,7 @@ struct NoteListView: View {
 
 struct NoteCardView: View {
     let note: NoteEntry
-    let onEdit: (NoteEntry) -> Void
+    let onSaveItem: (Int, String) -> Bool
     let onDelete: (NoteEntry) -> Void
     let onJump: (NoteEntry) -> Void
 
@@ -141,14 +139,18 @@ struct NoteCardView: View {
             let noteItems = NoteTextList.decode(note.note)
             if !noteItems.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    ForEach(Array(noteItems.enumerated()), id: \.offset) { _, item in
-                        MarkdownText(markdown: item)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                    ForEach(Array(noteItems.enumerated()), id: \.offset) { index, item in
+                        AutoSavingNoteEditor(
+                            initialText: item,
+                            minLineLimit: 2,
+                            maxLineLimit: 12,
+                            onSave: { text in
+                                onSaveItem(index, text)
+                            }
+                        )
+                        .id("\(note.id)#\(index)")
                     }
                 }
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
             }
 
             // Footer
@@ -163,11 +165,6 @@ struct NoteCardView: View {
                 .buttonStyle(.plain)
 
                 Spacer()
-
-                Button { onEdit(note) } label: {
-                    Image(systemName: "pencil").font(.caption).foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
 
                 Button(role: .destructive) { onDelete(note) } label: {
                     Image(systemName: "trash").font(.caption).foregroundStyle(.red.opacity(0.7))
@@ -185,72 +182,6 @@ struct NoteCardView: View {
             RoundedRectangle(cornerRadius: 12)
                 .strokeBorder(Color.primary.opacity(0.1), lineWidth: 0.5)
         )
-    }
-}
-
-// MARK: - Note Edit Sheet
-
-struct NoteEditSheet: View {
-    let note: NoteEntry
-    let onSave: () -> Void
-
-    @Environment(\.dismiss) private var dismiss
-    @State private var noteText: String
-
-    private var displayContent: String {
-        ContextSentenceFormatting.displayParagraph(note.content)
-    }
-
-    init(note: NoteEntry, onSave: @escaping () -> Void) {
-        self.note = note
-        self.onSave = onSave
-        _noteText = State(initialValue: NoteTextList.editText(note.note))
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("编辑笔记").font(.title2.bold())
-
-            Divider()
-
-            Text("划线内容：")
-                .font(.caption.bold())
-                .foregroundStyle(.secondary)
-            Text(displayContent)
-                .font(.callout)
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.quinary, in: RoundedRectangle(cornerRadius: 8))
-
-            Text("笔记：")
-                .font(.caption.bold())
-                .foregroundStyle(.secondary)
-            TextEditor(text: $noteText)
-                .font(.body)
-                .frame(height: 120)
-                .overlay(RoundedRectangle(cornerRadius: 6).stroke(.separator))
-
-            HStack {
-                Image(systemName: "doc.text").font(.caption2).foregroundStyle(.tertiary)
-                Text("\(note.pdfName)  P\(note.pageIndex + 1)")
-                    .font(.caption2).foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            HStack {
-                Button("取消") { dismiss() }
-                Spacer()
-                Button("保存") {
-                    try? ReaderPersistence.shared.updateNote(id: note.id, note: noteText)
-                    onSave()
-                    dismiss()
-                }
-                .buttonStyle(.borderedProminent)
-            }
-        }
-        .padding(20)
-        .frame(width: 420, height: 400)
     }
 }
 

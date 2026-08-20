@@ -58,6 +58,7 @@
 		A92D3D70F398A821E827184F /* ReadingGuidePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73952626C8655E4B82D4990F /* ReadingGuidePanel.swift */; };
 		AF82E5794BAC9B20BC7C6746 /* TranslationErrorFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64617D1512820E56274C1747 /* TranslationErrorFormatter.swift */; };
 		AF88A75629B32ADB7429FA33 /* ReadingOverlayWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6FB1A1B40FC7F240DF1E0F7 /* ReadingOverlayWindow.swift */; };
+		B4C91E07A2D84F1B9C5E7A11 /* AutoSavingNoteEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E8A4C72B9F04D6A8C3B15E0 /* AutoSavingNoteEditor.swift */; };
 		B308BE40E9C7A5E667FB725E /* TranslationBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = C67FF397B0476E532E9D1AFE /* TranslationBubble.swift */; };
 		B38C30BED51AB79AD1D81851 /* PDFReaderModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D30F8A859F8099B314A72B1 /* PDFReaderModels.swift */; };
 		B7DB75236FB47403EADB6E42 /* TranslationOverlayModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40B248CF440FEC77A61691E8 /* TranslationOverlayModelTests.swift */; };
@@ -118,6 +119,7 @@
 		0CAE0AF4D6907DA0DFD2F1BE /* LumenPDF.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LumenPDF.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		0D66F2D5BF54DF0277E8B8F5 /* VocabularyListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabularyListView.swift; sourceTree = "<group>"; };
 		1A241C349E69B97B92EBD132 /* ReaderViewportGeometryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderViewportGeometryTests.swift; sourceTree = "<group>"; };
+		1E8A4C72B9F04D6A8C3B15E0 /* AutoSavingNoteEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoSavingNoteEditor.swift; sourceTree = "<group>"; };
 		1B3D5836CA4A44C0C7D2A8AC /* GuideConversationPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuideConversationPolicyTests.swift; sourceTree = "<group>"; };
 		1D42C9FDDF84D251D9C2EAC5 /* PDFCoverThumbnailCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFCoverThumbnailCache.swift; sourceTree = "<group>"; };
 		22C5D0AB8D952215A819CA33 /* LLMCallLogStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMCallLogStore.swift; sourceTree = "<group>"; };
@@ -225,6 +227,7 @@
 		1D124D5B2F60B802388BDF11 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				1E8A4C72B9F04D6A8C3B15E0 /* AutoSavingNoteEditor.swift */,
 				92D0F2DE24CFD041786B3ED5 /* ContentView.swift */,
 				4C7DB11713DA8AACF51DC35F /* ContextSentenceFormatting.swift */,
 				CBADA67AFE4CCA308FE5ECE3 /* LibrarySidebarView.swift */,
@@ -490,6 +493,7 @@
 				C30E64BC2A1D11DB6F4E8D3F /* AnnotationPersistenceService.swift in Sources */,
 				F2CDC7FD8BBAD40DD2870EBF /* AppState.swift in Sources */,
 				482C829E5FEBA2F21ABA0AE9 /* AudioService.swift in Sources */,
+				B4C91E07A2D84F1B9C5E7A11 /* AutoSavingNoteEditor.swift in Sources */,
 				782238EECEFDCFCC4C6F4807 /* BridgeService.swift in Sources */,
 				E23D236734A52E85A8BA40C8 /* ContentView.swift in Sources */,
 				52E9C65C082F9A4B1BBCAA38 /* ContextSentenceFormatting.swift in Sources */,

@@ -49,7 +49,7 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
     @State private var measuredFooterHeight: CGFloat = 0
     @State private var customSize: CGSize?
     @State private var customCenter: CGPoint?
-    @State private var automaticPlacement: ReadingOverlayPlacement?
+    @State private var lockedOrigin: CGPoint?
 
     private let preferredGap: CGFloat = 12
     private let horizontalSafeInset: CGFloat = 12
@@ -90,6 +90,7 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
             window
                 .offset(x: displayedOrigin.x, y: displayedOrigin.y)
                 .animation(nil, value: customCenter)
+                .animation(nil, value: displayedOrigin)
         }
         // Keep the placement origin at the reader's top-left even when this overlay does not
         // install a full-size dismissal backdrop. Without an explicit frame alignment, a
@@ -207,40 +208,35 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
 
     private var displayedCenter: CGPoint {
         let size = renderedSize
-        if let customCenter {
-            return clampedCenter(
-                customCenter,
-                windowSize: size,
-                verticalSafeInset: horizontalSafeInset
-            )
-        }
-        return clampedCenter(
-            automaticCenter(for: size),
-            windowSize: size,
-            verticalSafeInset: verticalSafeInset
-        )
+        let origin = displayedOrigin
+        return CGPoint(x: origin.x + size.width / 2, y: origin.y + size.height / 2)
     }
 
     private var displayedOrigin: CGPoint {
         let size = renderedSize
-        let center = displayedCenter
-        return CGPoint(
-            x: center.x - size.width / 2,
-            y: center.y - size.height / 2
+        if let customCenter {
+            let center = clampedCenter(
+                customCenter,
+                windowSize: size,
+                verticalSafeInset: horizontalSafeInset
+            )
+            return CGPoint(
+                x: center.x - size.width / 2,
+                y: center.y - size.height / 2
+            )
+        }
+        let origin = lockedOrigin ?? automaticOrigin(for: size)
+        return ReadingOverlayPlacementPolicy.clamp(
+            origin: origin,
+            overlaySize: size,
+            containerSize: availableSize,
+            horizontalSafeInset: horizontalSafeInset,
+            verticalSafeInset: verticalSafeInset
         )
     }
 
-    private func automaticCenter(for size: CGSize) -> CGPoint {
-        let input = placementInput(for: size)
-        let result = if let automaticPlacement {
-            ReadingOverlayPlacementPolicy.place(input, keeping: automaticPlacement)
-        } else {
-            ReadingOverlayPlacementPolicy.place(input)
-        }
-        return CGPoint(
-            x: result.origin.x + size.width / 2,
-            y: result.origin.y + size.height / 2
-        )
+    private func automaticOrigin(for size: CGSize) -> CGPoint {
+        ReadingOverlayPlacementPolicy.place(placementInput(for: size)).origin
     }
 
     private func placementInput(for size: CGSize) -> ReadingOverlayPlacementInput {
@@ -259,20 +255,16 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
     }
 
     private func recordMeasuredWindowSize(_ size: CGSize) {
-        updateAutomaticPlacement(for: size)
+        lockOriginIfNeeded(for: size)
         measuredWindowSize = size
     }
 
-    private func updateAutomaticPlacement(for size: CGSize) {
-        guard size.width > 0,
-              size.height > 0 else { return }
-        let input = placementInput(for: size)
-        let result = if let automaticPlacement {
-            ReadingOverlayPlacementPolicy.place(input, keeping: automaticPlacement)
-        } else {
-            ReadingOverlayPlacementPolicy.place(input)
-        }
-        automaticPlacement = result.placement == .leastOverlap ? nil : result.placement
+    private func lockOriginIfNeeded(for size: CGSize) {
+        guard lockedOrigin == nil,
+              customCenter == nil,
+              size.width > 1,
+              size.height > 1 else { return }
+        lockedOrigin = automaticOrigin(for: size)
     }
 
     private func clampedCenter(
@@ -425,7 +417,7 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
         measuredFooterHeight = 0
         customSize = nil
         customCenter = nil
-        automaticPlacement = nil
+        lockedOrigin = nil
     }
 }
 

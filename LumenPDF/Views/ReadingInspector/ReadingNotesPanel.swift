@@ -50,7 +50,10 @@ struct ReadingNotesPanel: View {
                 ReadingInspectorNoteCard(
                     group: noteGroup,
                     onJump: { jump(to: noteGroup) },
-                    onDelete: { delete(noteGroup) }
+                    onDelete: { delete(noteGroup) },
+                    onSaveItem: { noteId, itemIndex, text in
+                        appState.saveNoteItem(noteId: noteId, itemIndex: itemIndex, text: text)
+                    }
                 )
             }
         }
@@ -97,6 +100,7 @@ private struct ReadingInspectorNoteCard: View {
     let group: ReadingInspectorNoteGroup
     let onJump: () -> Void
     let onDelete: () -> Void
+    let onSaveItem: (String, Int, String) -> Bool
 
     @State private var isExpanded = false
 
@@ -125,11 +129,12 @@ private struct ReadingInspectorNoteCard: View {
                         .lineLimit(isExpanded ? nil : 4)
                         .fixedSize(horizontal: false, vertical: isExpanded)
                         .frame(maxWidth: .infinity, alignment: .leading)
-
-                    noteList
                 }
             }
             .buttonStyle(.plain)
+            .help("定位到原文")
+
+            noteList
 
             HStack {
                 Button(role: .destructive, action: onDelete) {
@@ -170,25 +175,24 @@ private struct ReadingInspectorNoteCard: View {
     @ViewBuilder
     private var noteList: some View {
         VStack(alignment: .leading, spacing: 6) {
-            ForEach(Array(group.notes.enumerated()), id: \.element.id) { index, note in
-                if index > 0 {
-                    Divider().opacity(0.55)
-                }
+            ForEach(group.notes) { note in
                 VStack(alignment: .leading, spacing: 4) {
                     if let createdAt = ReadingInspectorDateFormat.timestampText(for: note.createdAt) {
                         Text(createdAt)
                             .font(.caption2.monospacedDigit())
                             .foregroundStyle(.tertiary)
                     }
-                    MarkdownText(markdown: note.markdown)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(isExpanded ? nil : 6)
-                        .fixedSize(horizontal: false, vertical: isExpanded)
+                    AutoSavingNoteEditor(
+                        initialText: note.markdown,
+                        minLineLimit: isExpanded ? 4 : 2,
+                        maxLineLimit: isExpanded ? 16 : 8,
+                        onSave: { text in
+                            onSaveItem(note.noteId, note.itemIndex, text)
+                        }
+                    )
+                    .id(note.id)
                 }
             }
         }
-        .frame(maxHeight: isExpanded ? nil : 180, alignment: .top)
-        .clipped()
     }
 }
