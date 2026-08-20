@@ -21,7 +21,7 @@ struct TranslationBubble: View {
             resetID: AnyHashable(request.id),
             configuration: ReadingOverlayWindowConfiguration(
                 width: cardWidth,
-                initialContentHeight: request.isSentenceMode ? 160 : 120,
+                initialContentHeight: initialContentHeight,
                 minimumContentHeight: 80,
                 isResizable: true,
                 minimumSize: CGSize(width: 340, height: 240),
@@ -49,6 +49,13 @@ struct TranslationBubble: View {
         let base: CGFloat = request.isSentenceMode ? 560 : 380
         let text = request.isSentenceMode ? request.word : request.sentence
         return min(max(base, CGFloat(text.count) * 4.2), cap)
+    }
+
+    private var initialContentHeight: CGFloat {
+        if request.translationError != nil || request.result?.isCompleteFailure == true {
+            return 248
+        }
+        return request.isSentenceMode ? 160 : 120
     }
 
     private var showsFooter: Bool {
@@ -180,15 +187,14 @@ struct TranslationBubble: View {
     }
 
     private var incompleteView: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("翻译未完成")
-                .font(.headline)
-            Text(request.translationError?.isEmpty == false ? request.translationError! : "请检查网络与 LLM 设置后重试。")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
-        }
+        TranslationFailureCard(
+            message: request.translationError?.isEmpty == false
+                ? request.translationError!
+                : "请检查网络与 LLM 设置后重试。",
+            fallbackHeadline: "翻译未完成",
+            style: .page,
+            onRetry: onRetry
+        )
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -397,34 +403,44 @@ struct TranslationBubble: View {
     }
 
     private func warningCard(title: String, text: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Label(title, systemImage: "exclamationmark.triangle.fill")
-                .font(.caption.bold())
-                .foregroundStyle(.orange)
-            Text(text)
-                .font(.caption)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(12)
-        .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+        TranslationFailureCard(
+            message: text,
+            fallbackHeadline: title,
+            style: .nested,
+            tintOverride: .orange
+        )
     }
 
     private func completeFailureView(result: TranslationResult) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("翻译失败", systemImage: "xmark.octagon.fill")
-                .font(.headline)
-                .foregroundStyle(.red)
-
-            Text("所有翻译途径均失败，请检查网络连接和 LLM 设置。")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-
-            if !result.llmErrorMessage.isEmpty {
-                warningCard(title: "LLM 调用失败", text: result.llmErrorMessage)
-            }
-            if !result.fallbackErrorMessage.isEmpty {
-                warningCard(title: "兜底翻译失败", text: result.fallbackErrorMessage)
+            if result.llmErrorMessage.isEmpty && result.fallbackErrorMessage.isEmpty {
+                TranslationFailureCard(
+                    message: "所有翻译途径均失败，请检查网络连接和 LLM 设置。",
+                    fallbackHeadline: "翻译失败",
+                    style: .page,
+                    onRetry: onRetry
+                )
+            } else {
+                if !result.llmErrorMessage.isEmpty {
+                    TranslationFailureCard(
+                        message: result.llmErrorMessage,
+                        fallbackHeadline: "LLM 调用失败",
+                        style: .nested
+                    )
+                }
+                if !result.fallbackErrorMessage.isEmpty {
+                    TranslationFailureCard(
+                        message: result.fallbackErrorMessage,
+                        fallbackHeadline: "兜底翻译失败",
+                        style: .nested
+                    )
+                }
+                Button(action: onRetry) {
+                    Label("重试", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+                .accessibilityIdentifier("translation.failure.retry")
             }
         }
         .padding(14)
