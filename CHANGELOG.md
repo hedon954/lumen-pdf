@@ -3,6 +3,19 @@
 LumenPDF 的版本记录由人工/AI 维护。每个版本只记录对用户或后续开发有意义的变化，并为具体变更附上对应的 GitHub commit URL。
 
 ---
+## [1.0.27](https://github.com/hedon954/lumen-pdf/compare/v1.0.26..v1.0.27) - 2026-08-20
+
+这一版让翻译失败原因更容易看懂，并修复设置里 API Key 和模型重启后丢失的问题。
+
+### 主要变化
+
+- 翻译失败时改用结构化卡片：用户可读的原因作为标题，模型和业务码做成摘要，技术详情默认折叠（[ede502e](https://github.com/hedon954/lumen-pdf/commit/ede502e3ab526b64548f6f94e46c2e7ac977f6fb)）。
+
+### 修复
+
+- 保存 LLM 设置会先写入钥匙串再写入偏好设置；读写 API Key 使用与请求相同的 Base URL 规范化规则，写入失败不再显示已保存，重启后 Key 和模型会正确恢复（[a03a145](https://github.com/hedon954/lumen-pdf/commit/a03a145db4089242da8510b9341f54b1463965fc)）。
+
+---
 ## [1.0.26](https://github.com/hedon954/lumen-pdf/compare/v1.0.25..v1.0.26) - 2026-08-20
 
 这一版让已有笔记可以直接改、停顿后自动保存，并让翻译浮窗在内容变高时留在第一次出现的位置。
