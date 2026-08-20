@@ -60,4 +60,32 @@ final class LLMAPIKeyVaultTests: XCTestCase {
         )
         XCTAssertNil(decoded.vault.key(for: "https://opencode.ai/zen/v1"))
     }
+
+    func testKeysSavedWithoutV1AreFoundAfterNormalization() {
+        var vault = LLMAPIKeyVault()
+        vault.setKey("openai-key", for: "https://api.openai.com")
+
+        XCTAssertEqual(vault.key(for: "https://api.openai.com/v1"), "openai-key")
+        XCTAssertEqual(vault.key(for: "https://api.openai.com/"), "openai-key")
+        XCTAssertEqual(
+            vault.keysByBaseURL["https://api.openai.com/v1"],
+            "openai-key"
+        )
+        XCTAssertNil(vault.keysByBaseURL["https://api.openai.com"])
+    }
+
+    func testLegacyVaultAliasWithoutV1StillLoads() {
+        let decoded = LLMAPIKeyVault.decode(
+            """
+            {"keysByBaseURL":{"https://api.openai.com":"legacy-key"},"version":2}
+            """,
+            legacyBaseURL: "https://api.openai.com/v1"
+        )
+
+        XCTAssertFalse(decoded.didMigrate)
+        XCTAssertEqual(
+            decoded.vault.key(for: "https://api.openai.com/v1"),
+            "legacy-key"
+        )
+    }
 }

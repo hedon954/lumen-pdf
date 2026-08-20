@@ -216,8 +216,14 @@ struct ContentView: View {
             }
             guard !args.contains("--uitesting") else { return }
             // Show LLM setup sheet if not configured (and user didn't opt "never remind")
-            let storedKey = KeychainService.loadLLMAPIKey(for: baseURL) ?? ""
-            if baseURL.isEmpty || storedKey.isEmpty || model.isEmpty {
+            if baseURL.isEmpty || model.isEmpty {
+                showSetupSheet = true
+                return
+            }
+            let storedKey = KeychainService.loadLLMAPIKey(
+                for: SettingsRuntimeService.shared.normalizedLLMBaseURL(baseURL)
+            ) ?? ""
+            if storedKey.isEmpty {
                 showSetupSheet = true
             }
         }

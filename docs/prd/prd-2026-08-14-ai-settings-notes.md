@@ -9,6 +9,7 @@ predecessor:
   - prd/prd-2026-07-10-note-overlay-optimization.md
 successor:
   - prd/prd-2026-08-15-settings-usage-overlay.md
+  - prd/prd-2026-08-20-llm-settings-persistence.md
 ---
 
 # LumenPDF — AI 阅读、设置与笔记删除 PRD
@@ -39,7 +40,7 @@ v1.0.22 把 AI 解释、LLM 设置和笔记回顾收成可完成的闭环：解�
 ### F4 — 供应商与 Keychain
 
 - 新增 OpenCode Zen 等供应商，并从公开模型目录选择模型。
-- 不同 Base URL 的 API Key 存在同一条 data-protection Keychain 凭据中；切换供应商恢复对应 Key。
+- 不同 Base URL 的 API Key 存在同一条 data-protection Keychain 凭据中；切换供应商恢复对应 Key。后续修订：保存必须真正写入该凭据，重启后按规范化 Base URL 读回，见 [prd-2026-08-20-llm-settings-persistence.md](prd-2026-08-20-llm-settings-persistence.md)。
 - 本次设置会话中尚未保存的输入在切换时保留。
 
 ### F5 — 笔记回顾删除
@@ -56,6 +57,6 @@ v1.0.22 把 AI 解释、LLM 设置和笔记回顾收成可完成的闭环：解�
 
 1. 长原文解释可展开，展开后后续消息不被挡住。
 2. 失败消息可重试，成功后不再显示失败态。
-3. 切换供应商后 API Key 回到该地址上次保存的值。
+3. 切换供应商后 API Key 回到该地址上次保存的值。后续修订：完全退出再启动后，当前供应商的 API Key 与模型也必须仍在，见 [prd-2026-08-20-llm-settings-persistence.md](prd-2026-08-20-llm-settings-persistence.md)。
 4. 调用日志能看到一次真实阅读请求的模型、耗时和失败原因。
 5. 在原文笔记图标打开的回顾窗中删除一条或全部后，列表与 PDF 划线同步更新。
