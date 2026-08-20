@@ -36,6 +36,7 @@ PRD 记录**用户可感知的行为与验收标准**。TDD 记录**如何实现
 | v1.0.24 | 2026-08-19 | 跨页划线与失败诊断 | [prd-2026-08-19-markup-diagnostics.md](prd/prd-2026-08-19-markup-diagnostics.md) | [tdd-2026-08-19-markup-diagnostics.md](tdd/tdd-2026-08-19-markup-diagnostics.md) |
 | v1.0.25 | 2026-08-20 | 文库封面与翻译重新生成 | [prd-2026-08-20-library-cover-translation-retry.md](prd/prd-2026-08-20-library-cover-translation-retry.md) | [tdd-2026-08-20-library-cover-translation-retry.md](tdd/tdd-2026-08-20-library-cover-translation-retry.md) |
 | v1.0.26 | 2026-08-20 | 笔记自动保存与翻译浮窗位置稳定 | [prd-2026-08-20-note-autosave-overlay-stability.md](prd/prd-2026-08-20-note-autosave-overlay-stability.md) | [tdd-2026-08-20-note-autosave-overlay-stability.md](tdd/tdd-2026-08-20-note-autosave-overlay-stability.md) |
+| unreleased | 2026-08-20 | LLM 设置跨重启持久化 | [prd-2026-08-20-llm-settings-persistence.md](prd/prd-2026-08-20-llm-settings-persistence.md) | [tdd-2026-08-20-llm-settings-persistence.md](tdd/tdd-2026-08-20-llm-settings-persistence.md) |
 
 未单独成对的发布：
 
@@ -76,6 +77,7 @@ v1.0.12 / v1.0.13 导读进入 Inspector
   → v1.0.23 Token 热点图与设置反馈
   → v1.0.24 空响应诊断、追问串行、跨页划线
   → v1.0.25 翻译刷新/重新生成
+  → unreleased 保存设置后 API Key 与模型跨重启仍在
 ```
 
 ## 其他文档

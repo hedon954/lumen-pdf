@@ -124,7 +124,17 @@ struct SettingsView: View {
     }
 
     private func load() {
-        apiKey = KeychainService.loadLLMAPIKey(for: baseURL) ?? ""
+        let trimmedBaseURL = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedBaseURL: String
+        if trimmedBaseURL.isEmpty {
+            resolvedBaseURL = ""
+        } else {
+            resolvedBaseURL = SettingsRuntimeService.shared.normalizedLLMBaseURL(trimmedBaseURL)
+            if resolvedBaseURL != baseURL {
+                baseURL = resolvedBaseURL
+            }
+        }
+        apiKey = KeychainService.loadLLMAPIKey(for: resolvedBaseURL) ?? ""
         llmConfiguration.remember(baseURL: baseURL, model: model)
         if llmConfiguration.shouldAutomaticallyRefresh(baseURL: baseURL, apiKey: apiKey) {
             Task {
@@ -271,43 +281,62 @@ struct SettingsView: View {
         }
     }
 
-    private func syncRuntimeConfig() throws {
+    private func syncRuntimeConfig(persistCredentials: Bool) throws {
         let errors = validationErrors()
         guard errors.isEmpty else {
             throw SettingsPromptValidationError(messages: errors)
         }
 
         persistPromptTemplates(for: targetLanguage)
-        let normalizedBaseURL = SettingsRuntimeService.shared.normalizedLLMBaseURL(baseURL)
-        if normalizedBaseURL != baseURL {
-            baseURL = normalizedBaseURL
+        let persisted: (baseURL: String, model: String)
+        if persistCredentials {
+            persisted = try SettingsRuntimeService.shared.persistAndUpdateConfig(
+                baseURL: baseURL,
+                apiKey: apiKey,
+                model: model,
+                targetLanguage: targetLanguage,
+                wordPromptTemplate: wordPromptTemplate,
+                sentencePromptTemplate: sentencePromptTemplate,
+                explanationPromptTemplate: explanationPromptTemplate,
+                wordSystemPrompt: wordSystemPrompt,
+                sentenceSystemPrompt: sentenceSystemPrompt,
+                explanationSystemPrompt: explanationSystemPrompt
+            )
+        } else {
+            let normalizedBaseURL = SettingsRuntimeService.shared.normalizedLLMBaseURL(baseURL)
+            persisted = (normalizedBaseURL, model)
+            try SettingsRuntimeService.shared.updateConfig(
+                baseURL: persisted.baseURL,
+                apiKey: apiKey,
+                model: persisted.model,
+                targetLanguage: targetLanguage,
+                wordPromptTemplate: wordPromptTemplate,
+                sentencePromptTemplate: sentencePromptTemplate,
+                explanationPromptTemplate: explanationPromptTemplate,
+                wordSystemPrompt: wordSystemPrompt,
+                sentenceSystemPrompt: sentenceSystemPrompt,
+                explanationSystemPrompt: explanationSystemPrompt
+            )
         }
-        try SettingsRuntimeService.shared.updateConfig(
-            baseURL: normalizedBaseURL,
-            apiKey: apiKey,
-            model: model,
-            targetLanguage: targetLanguage,
-            wordPromptTemplate: wordPromptTemplate,
-            sentencePromptTemplate: sentencePromptTemplate,
-            explanationPromptTemplate: explanationPromptTemplate,
-            wordSystemPrompt: wordSystemPrompt,
-            sentenceSystemPrompt: sentenceSystemPrompt,
-            explanationSystemPrompt: explanationSystemPrompt
-        )
+        if persisted.baseURL != baseURL, !baseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            baseURL = persisted.baseURL
+        }
+        if persisted.model != model {
+            model = persisted.model
+        }
     }
 
     @discardableResult
     private func saveSettings() -> Bool {
-        guard applyRuntimeConfig() else { return false }
+        guard applyRuntimeConfig(persistCredentials: true) else { return false }
         llmConfiguration.remember(baseURL: baseURL, model: model)
-        KeychainService.saveLLMAPIKey(apiKey, for: baseURL)
         return true
     }
 
     @discardableResult
-    private func applyRuntimeConfig() -> Bool {
+    private func applyRuntimeConfig(persistCredentials: Bool = false) -> Bool {
         do {
-            try syncRuntimeConfig()
+            try syncRuntimeConfig(persistCredentials: persistCredentials)
             saveErrorMessage = nil
             appState.showToast("LLM 配置已生效")
             withAnimation { showSavedBadge = true }
@@ -321,6 +350,8 @@ struct SettingsView: View {
             if let validationError = error as? SettingsPromptValidationError {
                 appState.showToast(validationError.localizedDescription)
                 selectedDestination = .prompts
+            } else if let keychainError = error as? KeychainServiceError {
+                appState.showToast(keychainError.localizedDescription)
             } else {
                 appState.showToast(TranslationErrorFormatter.userMessage(from: error))
             }

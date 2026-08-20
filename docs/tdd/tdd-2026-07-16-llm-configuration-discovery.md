@@ -4,6 +4,7 @@ date: 2026-07-16
 prd: prd/prd-2026-07-16-llm-configuration-discovery.md
 successor:
   - tdd/tdd-2026-08-14-ai-settings-notes.md
+  - tdd/tdd-2026-08-20-llm-settings-persistence.md
 related:
   - tdd/tdd-2026-07-16-reading-ai-input-selection.md
 ---
@@ -186,6 +187,8 @@ Base URL key 的规范化规则：
 1. 记录 Base URL 和模型历史。
 2. API Key 写入现有 Keychain 条目。
 3. 调用 `SettingsRuntimeService.updateConfig` 热更新 Rust 配置。
+
+后续修订：保存顺序改为先写入 Keychain，成功后再写 `UserDefaults` 并热更新运行时；Keychain 失败必须抛错且不得显示已保存。见 [tdd-2026-08-20-llm-settings-persistence.md](tdd-2026-08-20-llm-settings-persistence.md)。
 
 ## 6. 测试计划
 

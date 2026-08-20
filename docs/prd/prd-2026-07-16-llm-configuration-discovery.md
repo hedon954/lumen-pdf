@@ -4,6 +4,7 @@ date: 2026-07-16
 tdd: tdd/tdd-2026-07-16-llm-configuration-discovery.md
 successor:
   - prd/prd-2026-08-14-ai-settings-notes.md
+  - prd/prd-2026-08-20-llm-settings-persistence.md
 related:
   - prd/prd-2026-07-16-reading-ai-input-selection.md
 ---
@@ -95,8 +96,8 @@ related:
 
 - 继续使用现有 `llm_base_url`、`llm_model` 和 Keychain `llm_api_key`。
 - 不迁移、不重置已有用户配置。
-- 保存后继续通过现有运行时配置热更新链路立即生效。
-- Base URL 规范化规则与实际 LLM 请求保持一致。
+- 保存后继续通过现有运行时配置热更新链路立即生效。后续修订：保存还必须把 Base URL、模型和 API Key 写入持久存储，重启后读回同一份配置，见 [prd-2026-08-20-llm-settings-persistence.md](prd-2026-08-20-llm-settings-persistence.md)。
+- Base URL 规范化规则与实际 LLM 请求保持一致。后续修订：读写 Keychain 时必须使用同一套规范化结果，见 [prd-2026-08-20-llm-settings-persistence.md](prd-2026-08-20-llm-settings-persistence.md)。
 
 ## 安全与隐私
 
@@ -115,7 +116,7 @@ related:
 5. 保存自定义 Base URL 和模型后，重新打开设置页仍能在最近历史中找到。
 6. 不同 Base URL 的模型历史互不混淆。
 7. API Key 仍只保存在 Keychain，不出现在 `UserDefaults` 和日志中。
-8. 保存设置后运行中的翻译与解释请求立即使用新配置。
+8. 保存设置后运行中的翻译与解释请求立即使用新配置。后续修订：完全退出再启动后也必须使用刚保存的配置，见 [prd-2026-08-20-llm-settings-persistence.md](prd-2026-08-20-llm-settings-persistence.md)。
 
 ## 参考接口
 

@@ -270,20 +270,22 @@ struct LLMConfigurationSection: View {
     private func selectBaseURL(_ newBaseURL: String) {
         let previousBaseURL = baseURL
         let previousModel = model
-        let previousBaseURLKey = LLMConfigurationHistory.canonicalBaseURLKey(previousBaseURL)
-        let newBaseURLKey = LLMConfigurationHistory.canonicalBaseURLKey(newBaseURL)
-        let isChangingProvider = previousBaseURLKey != newBaseURLKey
-        if isChangingProvider {
-            draftAPIKeysByBaseURL[previousBaseURLKey] = apiKey
+        if LLMEndpointIdentity.isSame(previousBaseURL, newBaseURL) {
+            if previousBaseURL != newBaseURL {
+                baseURL = newBaseURL
+            }
+            return
         }
-        let providerAPIKey = isChangingProvider
-            ? draftAPIKeysByBaseURL[newBaseURLKey]
-                ?? KeychainService.loadLLMAPIKey(for: newBaseURL)
-                ?? ""
-            : apiKey
+
+        let previousBaseURLKey = LLMEndpointIdentity.key(previousBaseURL)
+        let newBaseURLKey = LLMEndpointIdentity.key(newBaseURL)
+        draftAPIKeysByBaseURL[previousBaseURLKey] = apiKey
+        let providerAPIKey = draftAPIKeysByBaseURL[newBaseURLKey]
+            ?? KeychainService.loadLLMAPIKey(for: newBaseURL)
+            ?? ""
         apiKey = providerAPIKey
         baseURL = newBaseURL
-        model = configuration.recentModels(for: newBaseURL).first ?? ""
+        model = configuration.recentModels(for: newBaseURL).first ?? previousModel
         Task {
             await Task.yield()
             configuration.remember(

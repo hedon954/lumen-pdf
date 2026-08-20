@@ -8,6 +8,7 @@ predecessor:
   - tdd/tdd-2026-07-16-reading-ai-input-selection.md
 successor:
   - tdd/tdd-2026-08-15-settings-usage-overlay.md
+  - tdd/tdd-2026-08-20-llm-settings-persistence.md
 ---
 
 # LumenPDF — AI 阅读、设置与笔记删除 TDD
@@ -24,7 +25,7 @@ successor:
 | `PromptTemplateValidator` / `PromptTemplateUpdateCoordinator` | 动态变量校验；未改动的系统模板自动升版。 |
 | `SettingsView.swift` / `SettingsPages.swift` | 侧边栏设置、提示词子页。 |
 | `LLMCallLogStore.swift` | 持久化阅读相关调用审计。 |
-| `LLMAPIKeyVault` / `KeychainService.swift` | 按 Base URL 隔离的 data-protection Keychain 项。 |
+| `LLMAPIKeyVault` / `KeychainService.swift` | 按 Base URL 隔离的 data-protection Keychain 项。后续修订：Add 属性与搜索 query 分离，保存失败抛错；vault 主键使用规范化端点身份，见 [tdd-2026-08-20-llm-settings-persistence.md](tdd-2026-08-20-llm-settings-persistence.md)。 |
 | `PDFReaderView.swift` 笔记回顾 | 单条 `NoteTextList.removingItem` 或整组删除，并同步划线。 |
 
 ## 3. 关键行为
