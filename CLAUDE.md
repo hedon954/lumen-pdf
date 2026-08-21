@@ -183,7 +183,7 @@ Code should stay simple, understandable, maintainable, iterable, and free of avo
 
 ### Signing and Keychain Security (Strict)
 
-- Persistent credentials use one data-protection Keychain item. Do not create parallel file-based items or use `SecAccess` / trusted-application ACLs to compensate for unstable code signing.
+- Persistent credentials use one Keychain item (`com.LumenPDF.app` / `llm_api_key`). Prefer the data-protection keychain when the current signature can use it. If that write returns `errSecMissingEntitlement` (`-34018`), write the same service/account to the file-based keychain without `SecAccess` or trusted-application ACLs. Do not keep a second live store after a successful data-protection write, and do not re-enable App Sandbox just to obtain the entitlement.
 - Packaging may use ad-hoc signing by default. If a stable signing identity is configured, use it consistently for the app and all nested code; do not claim that ad-hoc signing preserves Keychain access across binary replacement.
 - After modifying embedded code, sign nested dylibs first and the app last with the same identity. Do not use `codesign --deep` as a signing shortcut.
 - Release packages intentionally omit `com.apple.security.app-sandbox` and must not reattach `LumenPDF.entitlements`: the app's existing SQLite database and `UserDefaults` live in the historical non-container locations. Do not re-enable Sandbox unless the same change includes a tested, non-destructive migration for database and preferences.

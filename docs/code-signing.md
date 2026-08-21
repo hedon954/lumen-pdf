@@ -40,7 +40,7 @@ Release workflow 默认使用 ad-hoc 签名。若后续配置稳定签名身份�
 
 ## 安全边界
 
-- 主应用只使用一个 data-protection Keychain 条目。
+- 主应用只使用一个 Keychain 条目（`com.LumenPDF.app` / `llm_api_key`）。优先写 data-protection 钥匙串；若返回缺少 entitlement（`-34018`），改写同一条 file-based 条目，不附加 trusted-application ACL。ad-hoc 包通常走后一条路径，重新安装不会补上 entitlement。
 - 旧 file-based 条目仅在无需认证 UI 即可读取时迁移；无法读取时由用户重新输入一次 API Key。
 - 不把旧条目的 ACL 扩大为任意应用可访问。
 - 嵌套 dylib 与主应用使用同一身份从内到外签名。

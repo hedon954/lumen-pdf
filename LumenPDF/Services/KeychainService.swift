@@ -19,7 +19,7 @@ enum KeychainSaveFailureMessage {
     static func userFacing(_ status: OSStatus) -> String {
         switch status {
         case errSecMissingEntitlement:
-            return "无法保存 API Key。当前应用无法访问钥匙串，请重新安装后再试。"
+            return "无法保存 API Key。当前安装无法写入钥匙串。"
         case errSecNotAvailable, errSecInteractionNotAllowed:
             return "无法保存 API Key。请先解锁 Mac 后再保存。"
         case errSecAuthFailed:
@@ -30,6 +30,15 @@ enum KeychainSaveFailureMessage {
     }
 }
 
+enum KeychainWriteFallback {
+    /// Data-protection Keychain needs a restricted entitlement. Ad-hoc and
+    /// non-sandboxed release builds do not have it, so -34018 is expected
+    /// until we retry the same item on the file-based keychain.
+    static func shouldUseFileBasedKeychain(after status: OSStatus) -> Bool {
+        status == errSecMissingEntitlement
+    }
+}
+
 enum KeychainService {
     private static let service = "com.LumenPDF.app"
     private static let legacyReinstallService = "com.LumenPDF.app.reinstall-stable"
@@ -37,11 +46,14 @@ enum KeychainService {
 
     static func save(key: String, value: String) throws {
         let data = Data(value.utf8)
-        let status = upsertProtectedItem(key: key, data: data)
-        guard status == errSecSuccess else {
-            throw KeychainServiceError.saveFailed(status)
+        let result = upsertProtectedItem(key: key, data: data)
+        guard result.status == errSecSuccess else {
+            throw KeychainServiceError.saveFailed(result.status)
         }
-        deleteLegacyItems(key: key)
+        deleteLegacyItems(
+            key: key,
+            preservingFileBasedServiceItem: result.usedFileBasedKeychain
+        )
     }
 
     static func load(key: String) -> String? {
@@ -113,11 +125,39 @@ enum KeychainService {
         return stored
     }
 
-    private static func upsertProtectedItem(key: String, data: Data) -> OSStatus {
+    private static func upsertProtectedItem(
+        key: String,
+        data: Data
+    ) -> (status: OSStatus, usedFileBasedKeychain: Bool) {
+        let dataProtectionStatus = upsertItem(
+            key: key,
+            data: data,
+            useDataProtectionKeychain: true
+        )
+        if dataProtectionStatus == errSecSuccess
+            || !KeychainWriteFallback.shouldUseFileBasedKeychain(after: dataProtectionStatus)
+        {
+            return (dataProtectionStatus, false)
+        }
+        return (
+            upsertItem(
+                key: key,
+                data: data,
+                useDataProtectionKeychain: false
+            ),
+            true
+        )
+    }
+
+    private static func upsertItem(
+        key: String,
+        data: Data,
+        useDataProtectionKeychain: Bool
+    ) -> OSStatus {
         let lookup = KeychainItemQuery.searchQuery(
             key: key,
             service: service,
-            useDataProtectionKeychain: true
+            useDataProtectionKeychain: useDataProtectionKeychain
         )
         let updateStatus = SecItemUpdate(
             lookup as CFDictionary,
@@ -134,7 +174,8 @@ enum KeychainService {
             KeychainItemQuery.addAttributes(
                 key: key,
                 service: service,
-                data: data
+                data: data,
+                useDataProtectionKeychain: useDataProtectionKeychain
             ) as CFDictionary,
             nil
         )
@@ -171,8 +212,14 @@ enum KeychainService {
         (service, false),
     ]
 
-    private static func deleteLegacyItems(key: String) {
-        for legacy in legacyItemLocations {
+    private static func deleteLegacyItems(
+        key: String,
+        preservingFileBasedServiceItem: Bool
+    ) {
+        let locations = legacyItemLocations.filter { location in
+            !(preservingFileBasedServiceItem && location.service == service)
+        }
+        for legacy in locations {
             let query = KeychainItemQuery.searchQuery(
                 key: key,
                 service: legacy.service,
@@ -201,16 +248,20 @@ enum KeychainItemQuery {
     static func addAttributes(
         key: String,
         service: String,
-        data: Data
+        data: Data,
+        useDataProtectionKeychain: Bool
     ) -> [CFString: Any] {
-        [
+        var attributes: [CFString: Any] = [
             kSecClass: kSecClassGenericPassword,
             kSecAttrService: service,
             kSecAttrAccount: key,
-            kSecUseDataProtectionKeychain: true,
-            kSecAttrAccessible: kSecAttrAccessibleWhenUnlocked,
             kSecValueData: data,
         ]
+        if useDataProtectionKeychain {
+            attributes[kSecUseDataProtectionKeychain] = true
+            attributes[kSecAttrAccessible] = kSecAttrAccessibleWhenUnlocked
+        }
+        return attributes
     }
 }
 

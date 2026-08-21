@@ -11,7 +11,7 @@ predecessor:
 
 ## 1. 技术结论
 
-PDFKit 的 `selection.string` 和按行子串匹配会把附近小节标题收进选区，尤其当标题词组又出现在正文里。用 UI 无关的 `PDFSelectionHeadingLeakFilter` 在 markup 与句子提取之后去掉这类回声标题。设置保存成败只更新设置页保存栏；Keychain 失败文案由 `KeychainSaveFailureMessage` 映射，不再 `showToast`。
+PDFKit 的 `selection.string` 和按行子串匹配会把附近小节标题收进选区，尤其当标题词组又出现在正文里。用 UI 无关的 `PDFSelectionHeadingLeakFilter` 在 markup 与句子提取之后去掉这类回声标题。设置保存成败只更新设置页保存栏。data-protection 钥匙串在缺少 entitlement 时返回 `-34018`；此时对同一 `service`/`account` 写入普通钥匙串，不附加 ACL。失败文案由 `KeychainSaveFailureMessage` 映射，不再 `showToast`，也不再建议重新安装。
 
 ## 2. 模块
 
@@ -21,7 +21,8 @@ PDFKit 的 `selection.string` 和按行子串匹配会把附近小节标题收�
 | `PDFSelectionTextMatcher.matchingLines` | 子串匹配之后再跑上述过滤，避免标题因正文复述而被标成选中。 |
 | `PDFSelectionMarkupGeometry.make` | chrome 过滤之后、拼接选区文本之前去掉回声标题。 |
 | `PDFKitView` 选区/`extractSentence` | 折叠叠字后再过滤，避免上下文句子吞进上一节标题。 |
-| `KeychainSaveFailureMessage` | 把常见 `OSStatus` 映射成可读中文，不输出状态码。 |
+| `KeychainWriteFallback` | `-34018` 时改走 file-based 钥匙串。 |
+| `KeychainSaveFailureMessage` | 把常见 `OSStatus` 映射成可读中文，不输出状态码，不建议重装。 |
 | `SettingsSaveFeedback` | 统一设置保存失败文案。 |
 | `SettingsView.saveBar` | 成功/失败都只显示在底部保存栏。 |
 
@@ -46,11 +47,11 @@ selectionsByLine / matchingLines
   → 不调用 AppState.showToast
 ```
 
-`errSecMissingEntitlement`（`-34018`）映射为无法访问钥匙串、建议重新安装；解锁相关状态映射为先解锁 Mac。成功路径同样不再 toast「LLM 配置已生效」。
+`errSecMissingEntitlement`（`-34018`）时：先尝试 data-protection 写入；失败则对同一 `com.LumenPDF.app` / `llm_api_key` 写入 file-based 条目，且不得随后删掉刚写入的条目。成功后仍只显示保存栏「设置已保存」。若两种写入都失败，文案说明无法写入，不要求重新安装。解锁相关状态仍映射为先解锁 Mac。
 
 ## 5. 验证
 
 - `PDFSelectionMarkupGeometryTests`：正文复述标题词组时不匹配标题行；粘连前缀被去掉；未复述的标题保留。
-- `KeychainItemQueryTests`：`-34018` 文案不含状态码；`SettingsSaveFeedback` 使用钥匙串/校验文案。
+- `KeychainItemQueryTests`：file-based Add 不含 data-protection 键；`-34018` 会回退到 file-based；失败文案不含状态码和「重新安装」。
 
 本环境无法运行 macOS App。选区高亮与设置窗口保存栏的观感、点击路径必须在运行中的 App 验收；编译不能代替这项验收。

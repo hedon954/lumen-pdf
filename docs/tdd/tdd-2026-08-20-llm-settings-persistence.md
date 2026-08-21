@@ -47,7 +47,7 @@ successor:
 
 ## 4. Keychain 写入
 
-`SecItemUpdate` 使用带 `kSecUseAuthenticationUIFail` 的搜索 query。`SecItemAdd` 只包含 class / service / account / data-protection / accessible / value。Add 返回 duplicate 时再 Update。`save` 失败抛出 `KeychainServiceError`，不再 `return` 后继续显示成功。后续修订：失败文案与展示位置见 [tdd-2026-08-21-selection-settings-feedback.md](tdd-2026-08-21-selection-settings-feedback.md)。
+`SecItemUpdate` 使用带 `kSecUseAuthenticationUIFail` 的搜索 query。`SecItemAdd` 只包含 class / service / account / data-protection / accessible / value。Add 返回 duplicate 时再 Update。`save` 失败抛出 `KeychainServiceError`，不再 `return` 后继续显示成功。后续修订：失败文案与展示位置见 [tdd-2026-08-21-selection-settings-feedback.md](tdd-2026-08-21-selection-settings-feedback.md)；`-34018` 时改写同一条 file-based 条目，见同文档。
 
 ## 5. 验证
 
