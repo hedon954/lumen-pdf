@@ -233,6 +233,80 @@ final class PDFSelectionMarkupGeometryTests: XCTestCase {
         XCTAssertEqual(kept.map(\.text), [continuation.text])
     }
 
+    func testSectionHeadingIsNotMatchedJustBecauseTheParagraphRepeatsThoseWords() {
+        let paragraph =
+            "Many systems that don't use an event-sourced model nevertheless rely on immutability for concurrency control."
+        let heading = PDFTextLine(
+            rect: CGRect(x: 48, y: 640, width: 180, height: 18),
+            text: "Concurrency control"
+        )
+        let body = PDFTextLine(
+            rect: CGRect(x: 48, y: 600, width: 310, height: 16),
+            text: paragraph
+        )
+        let nextHeading = PDFTextLine(
+            rect: CGRect(x: 48, y: 560, width: 220, height: 18),
+            text: "Limitations of immutability"
+        )
+
+        let matched = PDFSelectionTextMatcher.matchingLines(
+            selectedText: paragraph,
+            pageLines: [heading, body, nextHeading]
+        )
+
+        XCTAssertEqual(matched.map(\.text), [body.text])
+    }
+
+    func testEchoedLeadingHeadingLineIsDroppedFromSelectedLines() {
+        let heading = PDFTextLine(
+            rect: CGRect(x: 48, y: 640, width: 180, height: 18),
+            text: "Concurrency control"
+        )
+        let body = PDFTextLine(
+            rect: CGRect(x: 48, y: 600, width: 310, height: 16),
+            text: "Many systems that don't use an event-sourced model nevertheless rely on immutability for concurrency control."
+        )
+
+        let kept = PDFSelectionHeadingLeakFilter.stripEchoedHeadings([heading, body])
+
+        XCTAssertEqual(kept.map(\.text), [body.text])
+    }
+
+    func testGluedHeadingPrefixIsStrippedWhenTheParagraphRepeatsIt() {
+        let glued =
+            "Concurrency control Many systems that don't use an event-sourced model nevertheless rely on immutability for concurrency control."
+
+        XCTAssertEqual(
+            PDFSelectionHeadingLeakFilter.stripEchoedHeadings(from: glued),
+            "Many systems that don't use an event-sourced model nevertheless rely on immutability for concurrency control."
+        )
+    }
+
+    func testDistinctHeadingIsKeptWhenTheBodyDoesNotRepeatIt() {
+        let heading = PDFTextLine(
+            rect: CGRect(x: 48, y: 640, width: 160, height: 18),
+            text: "Introduction"
+        )
+        let body = PDFTextLine(
+            rect: CGRect(x: 48, y: 600, width: 310, height: 16),
+            text: "This chapter explains how logs work across replicas."
+        )
+
+        let kept = PDFSelectionHeadingLeakFilter.stripEchoedHeadings([heading, body])
+
+        XCTAssertEqual(kept.map(\.text), [heading.text, body.text])
+    }
+
+    func testOrdinaryParagraphIsUnchangedWhenThereIsNoHeadingEcho() {
+        let paragraph =
+            "Many systems that don't use an event-sourced model nevertheless rely on immutability for concurrency control."
+
+        XCTAssertEqual(
+            PDFSelectionHeadingLeakFilter.stripEchoedHeadings(from: paragraph),
+            paragraph
+        )
+    }
+
     private func uniqueBody(prefix: String, y0: CGFloat, count: Int) -> [PDFTextLine] {
         (0..<count).map { index in
             PDFTextLine(

@@ -4,7 +4,6 @@ struct SettingsView: View {
     /// When non-nil, this view is shown as a setup sheet; the closure is called to dismiss it.
     var onDismiss: (() -> Void)? = nil
 
-    @EnvironmentObject private var appState: AppState
     @AppStorage("llm_base_url") private var baseURL = ""
     @AppStorage("llm_model") private var model = ""
     @AppStorage("target_language") private var targetLanguage = "简体中文"
@@ -56,16 +55,25 @@ struct SettingsView: View {
     }
 
     private var saveBar: some View {
-        HStack(spacing: 12) {
-            if showSavedBadge {
-                Label("设置已保存", systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-            } else if let saveErrorMessage {
-                Label(saveErrorMessage, systemImage: "exclamationmark.triangle.fill")
+        HStack(alignment: .center, spacing: 12) {
+            Group {
+                if showSavedBadge {
+                    Label("设置已保存", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                } else if let saveErrorMessage {
+                    Label {
+                        Text(saveErrorMessage)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .lineLimit(3)
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                    }
                     .foregroundStyle(.orange)
+                    .help(saveErrorMessage)
+                    .accessibilityIdentifier("settings.saveError")
+                }
             }
-
-            Spacer()
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             if let dismiss = onDismiss {
                 Button("稍后设置", action: dismiss)
@@ -338,7 +346,6 @@ struct SettingsView: View {
         do {
             try syncRuntimeConfig(persistCredentials: persistCredentials)
             saveErrorMessage = nil
-            appState.showToast("LLM 配置已生效")
             withAnimation { showSavedBadge = true }
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                 withAnimation { showSavedBadge = false }
@@ -346,21 +353,29 @@ struct SettingsView: View {
             return true
         } catch {
             showSavedBadge = false
-            saveErrorMessage = "保存失败"
-            if let validationError = error as? SettingsPromptValidationError {
-                appState.showToast(validationError.localizedDescription)
+            saveErrorMessage = SettingsSaveFeedback.message(for: error)
+            if error is SettingsPromptValidationError {
                 selectedDestination = .prompts
-            } else if let keychainError = error as? KeychainServiceError {
-                appState.showToast(keychainError.localizedDescription)
-            } else {
-                appState.showToast(TranslationErrorFormatter.userMessage(from: error))
             }
             return false
         }
     }
 }
 
-private struct SettingsPromptValidationError: LocalizedError {
+enum SettingsSaveFeedback {
+    static func message(for error: Error) -> String {
+        if let validationError = error as? SettingsPromptValidationError {
+            return validationError.localizedDescription
+        }
+        if let keychainError = error as? KeychainServiceError {
+            return keychainError.localizedDescription
+        }
+        let fallback = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        return fallback.isEmpty ? "保存失败，请稍后重试。" : fallback
+    }
+}
+
+struct SettingsPromptValidationError: LocalizedError {
     let messages: [String]
 
     var errorDescription: String? {

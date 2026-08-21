@@ -6,6 +6,7 @@ predecessor:
   - tdd/tdd-2026-08-15-settings-usage-overlay.md
 successor:
   - tdd/tdd-2026-08-20-library-cover-translation-retry.md
+  - tdd/tdd-2026-08-21-selection-settings-feedback.md
 ---
 
 # LumenPDF — 跨页划线与失败诊断 TDD
@@ -29,7 +30,7 @@ successor:
 ## 3. 关键行为
 
 - 跨页 markup 以 PDF 页为落笔单位，不能把第一页的 bounds 画到第二页。
-- 页眉页脚过滤不得误伤页顶正文：必须满足「相邻页相近位置重复」而不是「y 很小」。
+- 页眉页脚过滤不得误伤页顶正文：必须满足「相邻页相近位置重复」而不是「y 很小」。后续修订：同页小节标题回声过滤见 [tdd-2026-08-21-selection-settings-feedback.md](tdd-2026-08-21-selection-settings-feedback.md)。
 - `GuideConversationPolicy` 以会话状态而不是按钮本地 flag 作为发送门闩，避免多入口绕过。
 
 ## 4. 验证
