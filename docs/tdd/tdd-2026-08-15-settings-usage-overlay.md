@@ -7,6 +7,7 @@ predecessor:
   - tdd/tdd-2026-08-09-selection-overlay-placement.md
 successor:
   - tdd/tdd-2026-08-19-markup-diagnostics.md
+  - tdd/tdd-2026-08-21-llm-call-log-http-request.md
 ---
 
 # LumenPDF — 用量统计、设置打磨与根层浮窗 TDD

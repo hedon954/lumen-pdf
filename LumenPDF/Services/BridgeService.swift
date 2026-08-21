@@ -53,7 +53,11 @@ final class BridgeService {
             explanationPromptTemplate: UserDefaults.standard.string(forKey: "explanation_prompt_template") ?? "",
             wordSystemPrompt: UserDefaults.standard.string(forKey: "word_system_prompt") ?? "",
             sentenceSystemPrompt: UserDefaults.standard.string(forKey: "sentence_system_prompt") ?? "",
-            explanationSystemPrompt: UserDefaults.standard.string(forKey: "explanation_system_prompt") ?? ""
+            explanationSystemPrompt: UserDefaults.standard.string(forKey: "explanation_system_prompt") ?? "",
+            llmExtraConfig: LLMSettingsStore().effectiveExtraConfig(
+                for: baseURL,
+                model: UserDefaults.standard.string(forKey: "llm_model") ?? "gpt-4o-mini"
+            )
         )
         guard (try? _initialize(dbURL.path, config)) != nil else {
             // Do not flip isInitialized — allow retry on next launch / next call path.
@@ -73,7 +77,8 @@ final class BridgeService {
         explanationPromptTemplate: String,
         wordSystemPrompt: String,
         sentenceSystemPrompt: String,
-        explanationSystemPrompt: String
+        explanationSystemPrompt: String,
+        extraConfig: String
     ) throws {
         try _updateLlmConfig(AppConfig(
             llmBaseUrl: Self.normalizedLLMBaseURL(baseURL),
@@ -85,7 +90,8 @@ final class BridgeService {
             explanationPromptTemplate: explanationPromptTemplate,
             wordSystemPrompt: wordSystemPrompt,
             sentenceSystemPrompt: sentenceSystemPrompt,
-            explanationSystemPrompt: explanationSystemPrompt
+            explanationSystemPrompt: explanationSystemPrompt,
+            llmExtraConfig: extraConfig
         ))
     }
 
@@ -269,15 +275,17 @@ final class BridgeService {
                 completionTokens: result.completionTokens,
                 totalTokens: result.totalTokens,
                 warning: warning,
-                failed: result.isCompleteFailure
+                failed: result.isCompleteFailure,
+                httpRequest: result.httpRequest
             )
         }
     }
 
     private func failAudit(_ id: UUID, error: Error) async {
         let message = TranslationErrorFormatter.userMessage(from: error)
+        let httpRequest = TranslationErrorFormatter.httpRequest(from: error)
         await MainActor.run {
-            LLMCallLogStore.shared.fail(id: id, error: message)
+            LLMCallLogStore.shared.fail(id: id, error: message, httpRequest: httpRequest)
         }
     }
 

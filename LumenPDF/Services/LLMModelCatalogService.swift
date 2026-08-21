@@ -63,7 +63,7 @@ struct LLMProviderPreset: Identifiable, Hashable {
             id: "opencode-zen",
             name: "OpenCode Zen",
             baseURL: "https://opencode.ai/zen/v1",
-            apiKeyURL: URL(string: "https://opencode.ai/zen")!,
+            apiKeyURL: URL(string: "https://opencode.ai/auth")!,
             supportedModelPrefixes: [
                 "big-pickle",
                 "deepseek-",

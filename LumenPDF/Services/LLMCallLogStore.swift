@@ -36,7 +36,7 @@ enum LLMCallStatus: String, Codable {
     case failed
 }
 
-struct LLMCallLogEntry: Identifiable, Codable, Equatable {
+struct LLMCallLogEntry: Identifiable, Equatable {
     let id: UUID
     let startedAt: Date
     var finishedAt: Date?
@@ -51,9 +51,56 @@ struct LLMCallLogEntry: Identifiable, Codable, Equatable {
     var promptTokens: UInt64
     var completionTokens: UInt64
     var totalTokens: UInt64
+    var httpRequest: String
 
     var duration: TimeInterval? {
         finishedAt.map { $0.timeIntervalSince(startedAt) }
+    }
+}
+
+extension LLMCallLogEntry: Codable {
+    enum CodingKeys: String, CodingKey {
+        case id, startedAt, finishedAt, kind, model, baseURL, input, output
+        case status, source, errorMessage, promptTokens, completionTokens, totalTokens
+        case httpRequest
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        startedAt = try container.decode(Date.self, forKey: .startedAt)
+        finishedAt = try container.decodeIfPresent(Date.self, forKey: .finishedAt)
+        kind = try container.decode(LLMCallKind.self, forKey: .kind)
+        model = try container.decode(String.self, forKey: .model)
+        baseURL = try container.decode(String.self, forKey: .baseURL)
+        input = try container.decode(String.self, forKey: .input)
+        output = try container.decode(String.self, forKey: .output)
+        status = try container.decode(LLMCallStatus.self, forKey: .status)
+        source = try container.decode(String.self, forKey: .source)
+        errorMessage = try container.decode(String.self, forKey: .errorMessage)
+        promptTokens = try container.decode(UInt64.self, forKey: .promptTokens)
+        completionTokens = try container.decode(UInt64.self, forKey: .completionTokens)
+        totalTokens = try container.decode(UInt64.self, forKey: .totalTokens)
+        httpRequest = try container.decodeIfPresent(String.self, forKey: .httpRequest) ?? ""
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(startedAt, forKey: .startedAt)
+        try container.encodeIfPresent(finishedAt, forKey: .finishedAt)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(model, forKey: .model)
+        try container.encode(baseURL, forKey: .baseURL)
+        try container.encode(input, forKey: .input)
+        try container.encode(output, forKey: .output)
+        try container.encode(status, forKey: .status)
+        try container.encode(source, forKey: .source)
+        try container.encode(errorMessage, forKey: .errorMessage)
+        try container.encode(promptTokens, forKey: .promptTokens)
+        try container.encode(completionTokens, forKey: .completionTokens)
+        try container.encode(totalTokens, forKey: .totalTokens)
+        try container.encode(httpRequest, forKey: .httpRequest)
     }
 }
 
@@ -106,7 +153,8 @@ final class LLMCallLogStore: ObservableObject {
                 errorMessage: "",
                 promptTokens: 0,
                 completionTokens: 0,
-                totalTokens: 0
+                totalTokens: 0,
+                httpRequest: ""
             ),
             at: 0
         )
@@ -122,7 +170,8 @@ final class LLMCallLogStore: ObservableObject {
         completionTokens: UInt64,
         totalTokens: UInt64,
         warning: String = "",
-        failed: Bool = false
+        failed: Bool = false,
+        httpRequest: String = ""
     ) {
         guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
         entries[index].finishedAt = Date()
@@ -132,15 +181,19 @@ final class LLMCallLogStore: ObservableObject {
         entries[index].completionTokens = completionTokens
         entries[index].totalTokens = totalTokens
         entries[index].errorMessage = Self.bounded(warning)
+        entries[index].httpRequest = Self.bounded(httpRequest, limit: 48_000)
         entries[index].status = failed ? .failed : .succeeded
         persist()
     }
 
-    func fail(id: UUID, error: String) {
+    func fail(id: UUID, error: String, httpRequest: String = "") {
         guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
         entries[index].finishedAt = Date()
         entries[index].status = .failed
         entries[index].errorMessage = Self.bounded(error)
+        if !httpRequest.isEmpty {
+            entries[index].httpRequest = Self.bounded(httpRequest, limit: 48_000)
+        }
         persist()
     }
 

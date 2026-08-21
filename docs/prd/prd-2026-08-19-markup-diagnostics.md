@@ -8,6 +8,8 @@ predecessor:
 successor:
   - prd/prd-2026-08-20-library-cover-translation-retry.md
   - prd/prd-2026-08-21-selection-settings-feedback.md
+  - prd/prd-2026-08-21-markup-interval-merge.md
+  - prd/prd-2026-08-21-llm-call-log-http-request.md
 ---
 
 # LumenPDF — 跨页划线与失败诊断 PRD
@@ -27,7 +29,7 @@ v1.0.24 让跨页选区的划线/高亮落在每一页真正的正文上，并�
 ### F2 — 失败诊断
 
 - LLM 空响应不能只显示 JSON `EOF`。
-- 需区分空 body、流式协议不匹配、模型未真正生成，并引导到「设置 → 调用日志」查看原始响应。
+- 需区分空 body、流式协议不匹配、模型未真正生成，并引导到「设置 → 调用日志」查看原始响应。后续修订：同一详情也可展开实际发出的完整 HTTP 请求，见 [prd-2026-08-21-llm-call-log-http-request.md](prd-2026-08-21-llm-call-log-http-request.md)。
 - PDF 文本层同一句话叠很多遍时，发给模型和写入日志前折叠成一句。
 
 ### F3 — 导追问串行

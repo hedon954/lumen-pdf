@@ -117,6 +117,17 @@ pub struct TranslationResult {
     /// Provider-reported total tokens for this request.
     #[serde(skip)]
     pub total_tokens: u64,
+    /// Redacted dump of the `/chat/completions` request actually sent.
+    /// Runtime-only: must not be written into the translation cache.
+    #[serde(skip)]
+    pub http_request: String,
+}
+
+impl TranslationResult {
+    pub fn with_http_request(mut self, http_request: String) -> Self {
+        self.http_request = http_request;
+        self
+    }
 }
 
 #[cfg(test)]
@@ -144,5 +155,20 @@ mod tests {
 
         assert!(result.etymology.is_empty());
         assert_eq!(result.context_explanation, "这里指劳动报酬。");
+        assert!(result.http_request.is_empty());
+    }
+
+    #[test]
+    fn http_request_dump_is_not_serialized_into_cache() {
+        let result = TranslationResult {
+            word: "salary".into(),
+            http_request:
+                "POST https://example/v1/chat/completions\nAuthorization: Bearer secret\n\n{}"
+                    .into(),
+            ..Default::default()
+        };
+        let json = serde_json::to_value(&result).unwrap();
+        assert!(json.get("http_request").is_none());
+        assert!(json.get("prompt_tokens").is_none());
     }
 }

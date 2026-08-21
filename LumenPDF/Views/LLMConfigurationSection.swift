@@ -4,6 +4,7 @@ struct LLMConfigurationSection: View {
     @Binding var baseURL: String
     @Binding var apiKey: String
     @Binding var model: String
+    @Binding var extraConfig: String
 
     @ObservedObject var configuration: LLMConfigurationModel
     let onSubmit: () -> Void
@@ -11,6 +12,7 @@ struct LLMConfigurationSection: View {
     @State private var isModelPickerPresented = false
     @State private var modelSearch = ""
     @State private var draftAPIKeysByBaseURL: [String: String] = [:]
+    @State private var draftExtraConfigByBaseURL: [String: String] = [:]
 
     var body: some View {
         Section {
@@ -134,17 +136,20 @@ struct LLMConfigurationSection: View {
                     .foregroundStyle(.secondary)
             }
 
-            if let provider = LLMProviderPreset.matching(baseURL: baseURL) {
-                Link(destination: provider.apiKeyURL) {
-                    Label(
-                        "前往 \(provider.name) 官网申请 API Key",
-                        systemImage: "arrow.up.right.square"
-                    )
+            LabeledContent("Extra Config") {
+                VStack(alignment: .leading, spacing: 6) {
+                    JSONEditorView(text: $extraConfig, minHeight: 140)
+                        .frame(minHeight: 140)
+                        .accessibilityLabel("Extra Config")
+                    Text("未修改时显示当前服务商关闭 thinking 的默认字段，改了就用你的。清空并保存后恢复默认；保存 {} 表示不附加任何字段。回车按层级缩进；需要整齐排版时点画笔格式化。不能改 messages 或 stream。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .font(.caption)
-                .frame(maxWidth: .infinity, alignment: .trailing)
-                .accessibilityHint("在浏览器中打开官方 API Key 申请页面")
             }
+        }
+        .onChange(of: model) { oldModel, newModel in
+            refreshDefaultExtraIfUnmodified(previousModel: oldModel, newModel: newModel)
         }
     }
 
@@ -280,12 +285,20 @@ struct LLMConfigurationSection: View {
         let previousBaseURLKey = LLMEndpointIdentity.key(previousBaseURL)
         let newBaseURLKey = LLMEndpointIdentity.key(newBaseURL)
         draftAPIKeysByBaseURL[previousBaseURLKey] = apiKey
+        draftExtraConfigByBaseURL[previousBaseURLKey] = extraConfig
         let providerAPIKey = draftAPIKeysByBaseURL[newBaseURLKey]
             ?? KeychainService.loadLLMAPIKey(for: newBaseURL)
             ?? ""
+        extraConfig = LLMExtraConfig.prettyPrinted(
+            draftExtraConfigByBaseURL[newBaseURLKey]
+                ?? LLMSettingsStore().loadExtraConfig(for: newBaseURL)
+        )
         apiKey = providerAPIKey
         baseURL = newBaseURL
         model = configuration.recentModels(for: newBaseURL).first ?? previousModel
+        if extraConfig.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            extraConfig = LLMThinkingExtraConfig.defaultJSON(baseURL: newBaseURL, model: model)
+        }
         Task {
             await Task.yield()
             configuration.remember(
@@ -299,6 +312,16 @@ struct LLMConfigurationSection: View {
         }
     }
 
+    private func refreshDefaultExtraIfUnmodified(previousModel: String, newModel: String) {
+        guard previousModel != newModel else { return }
+        let previousDefault = LLMThinkingExtraConfig.defaultJSON(baseURL: baseURL, model: previousModel)
+        if extraConfig.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || LLMExtraConfig.jsonEquals(extraConfig, previousDefault)
+        {
+            extraConfig = LLMThinkingExtraConfig.defaultJSON(baseURL: baseURL, model: newModel)
+        }
+    }
+
     private func refreshModels() {
         let baseURLForRequest = baseURL
         let apiKeyForRequest = apiKey
@@ -308,6 +331,23 @@ struct LLMConfigurationSection: View {
                 baseURL: baseURLForRequest,
                 apiKey: apiKeyForRequest
             )
+        }
+    }
+}
+
+struct LLMProviderAPIKeyLink: View {
+    let baseURL: String
+
+    var body: some View {
+        if let provider = LLMProviderPreset.matching(baseURL: baseURL) {
+            Link(destination: provider.apiKeyURL) {
+                Label(
+                    "获取 \(provider.name) API Key",
+                    systemImage: "key.fill"
+                )
+            }
+            .font(.caption)
+            .accessibilityHint("在浏览器中打开官方 API Key 申请页面")
         }
     }
 }

@@ -15,6 +15,7 @@ struct SettingsView: View {
     @AppStorage("explanation_system_prompt") private var explanationSystemPrompt = PromptTemplateDefaults.explanationSystem
 
     @State private var apiKey = ""
+    @State private var extraConfig = ""
     @State private var selectedDestination: SettingsDestination = .llm
     @State private var selectedPromptKind: PromptTemplateKind = .word
     @State private var showSavedBadge = false
@@ -101,6 +102,7 @@ struct SettingsView: View {
                 baseURL: $baseURL,
                 apiKey: $apiKey,
                 model: $model,
+                extraConfig: $extraConfig,
                 configuration: llmConfiguration,
                 onSubmit: { _ = saveSettings() }
             )
@@ -143,6 +145,7 @@ struct SettingsView: View {
             }
         }
         apiKey = KeychainService.loadLLMAPIKey(for: resolvedBaseURL) ?? ""
+        extraConfig = LLMSettingsStore().effectiveExtraConfig(for: resolvedBaseURL, model: model)
         llmConfiguration.remember(baseURL: baseURL, model: model)
         if llmConfiguration.shouldAutomaticallyRefresh(baseURL: baseURL, apiKey: apiKey) {
             Task {
@@ -308,11 +311,16 @@ struct SettingsView: View {
                 explanationPromptTemplate: explanationPromptTemplate,
                 wordSystemPrompt: wordSystemPrompt,
                 sentenceSystemPrompt: sentenceSystemPrompt,
-                explanationSystemPrompt: explanationSystemPrompt
+                explanationSystemPrompt: explanationSystemPrompt,
+                extraConfig: extraConfig
             )
         } else {
             let normalizedBaseURL = SettingsRuntimeService.shared.normalizedLLMBaseURL(baseURL)
             persisted = (normalizedBaseURL, model)
+            let validated = try LLMExtraConfig.validatedJSON(extraConfig)
+            let liveExtra = validated.isEmpty
+                ? LLMThinkingExtraConfig.defaultJSON(baseURL: persisted.baseURL, model: persisted.model)
+                : validated
             try SettingsRuntimeService.shared.updateConfig(
                 baseURL: persisted.baseURL,
                 apiKey: apiKey,
@@ -323,7 +331,8 @@ struct SettingsView: View {
                 explanationPromptTemplate: explanationPromptTemplate,
                 wordSystemPrompt: wordSystemPrompt,
                 sentenceSystemPrompt: sentenceSystemPrompt,
-                explanationSystemPrompt: explanationSystemPrompt
+                explanationSystemPrompt: explanationSystemPrompt,
+                extraConfig: liveExtra
             )
         }
         if persisted.baseURL != baseURL, !baseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -331,6 +340,14 @@ struct SettingsView: View {
         }
         if persisted.model != model {
             model = persisted.model
+        }
+        if persistCredentials,
+           extraConfig.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        {
+            extraConfig = LLMThinkingExtraConfig.defaultJSON(
+                baseURL: persisted.baseURL,
+                model: persisted.model
+            )
         }
     }
 
@@ -356,6 +373,8 @@ struct SettingsView: View {
             saveErrorMessage = SettingsSaveFeedback.message(for: error)
             if error is SettingsPromptValidationError {
                 selectedDestination = .prompts
+            } else if error is LLMExtraConfigError {
+                selectedDestination = .llm
             }
             return false
         }

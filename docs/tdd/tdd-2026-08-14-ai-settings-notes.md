@@ -9,6 +9,7 @@ predecessor:
 successor:
   - tdd/tdd-2026-08-15-settings-usage-overlay.md
   - tdd/tdd-2026-08-20-llm-settings-persistence.md
+  - tdd/tdd-2026-08-21-llm-call-log-http-request.md
 ---
 
 # LumenPDF — AI 阅读、设置与笔记删除 TDD

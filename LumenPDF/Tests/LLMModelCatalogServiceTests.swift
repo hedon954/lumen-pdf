@@ -76,7 +76,7 @@ final class LLMModelCatalogServiceTests: XCTestCase {
             "aliyun-intl": "https://modelstudio.console.alibabacloud.com/?tab=model#/api-key",
             "deepseek": "https://platform.deepseek.com/api_keys",
             "openrouter": "https://openrouter.ai/settings/keys",
-            "opencode-zen": "https://opencode.ai/zen",
+            "opencode-zen": "https://opencode.ai/auth",
             "gemini": "https://aistudio.google.com/app/apikey",
             "siliconflow": "https://cloud.siliconflow.cn/account/ak",
             "zhipu": "https://bigmodel.cn/usercenter/proj-mgmt/apikeys",

@@ -7,6 +7,8 @@ predecessor:
   - prd/prd-2026-08-14-ai-settings-notes.md
 successor:
   - prd/prd-2026-08-21-selection-settings-feedback.md
+  - prd/prd-2026-08-21-llm-disable-thinking.md
+  - prd/prd-2026-08-21-llm-extra-config.md
 ---
 
 # LumenPDF — LLM 设置跨重启持久化 PRD
@@ -23,7 +25,7 @@ successor:
 
 ### F1 — 保存即落盘
 
-- 「保存设置」必须把当前 Base URL、模型写入偏好设置，并把 API Key 写入现有 Keychain 条目。
+- 「保存设置」必须把当前 Base URL、模型写入偏好设置，并把 API Key 写入现有 Keychain 条目。后续修订：同一保存动作还要按 Base URL 写入 Extra Config，见 [prd-2026-08-21-llm-extra-config.md](prd-2026-08-21-llm-extra-config.md)。
 - 不能只更新当前进程内存里的 LLM 配置。
 - 保存成功后，完全退出并重新打开应用，设置页应显示刚保存的 Base URL、模型和对应供应商的 API Key。
 

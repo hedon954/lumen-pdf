@@ -117,9 +117,11 @@ impl TranslationDomainService {
         result.source = TranslationSource::Llm.to_string();
         result.llm_error_message = String::new();
         Self::apply_phonetic_override(&mut result, phonetic);
+        let mut cached = result.clone();
+        cached.http_request.clear();
         let _ = self
             .cache
-            .set(word_lower, hash, &self.cache_target_language, &result);
+            .set(word_lower, hash, &self.cache_target_language, &cached);
         result
     }
 
@@ -127,11 +129,13 @@ impl TranslationDomainService {
         mut result: TranslationResult,
         llm_failure_note: Option<String>,
         phonetic: &Option<String>,
+        http_request: String,
     ) -> TranslationResult {
         result.source = TranslationSource::Fallback.to_string();
         result.llm_error_message = llm_failure_note.unwrap_or_default();
         result.fallback_error_message = String::new();
         result.is_complete_failure = false;
+        result.http_request = http_request;
         Self::apply_phonetic_override(&mut result, phonetic);
         result
     }
@@ -140,6 +144,7 @@ impl TranslationDomainService {
         request: &TranslationRequest,
         llm_failure_note: Option<String>,
         fallback_err: LumenError,
+        http_request: String,
     ) -> TranslationResult {
         TranslationResult {
             word: request.word.clone(),
@@ -147,6 +152,7 @@ impl TranslationDomainService {
             llm_error_message: llm_failure_note.unwrap_or_default(),
             fallback_error_message: fallback_err.user_hint_zh(),
             is_complete_failure: true,
+            http_request,
             ..Default::default()
         }
     }
@@ -185,11 +191,11 @@ impl TranslationDomainService {
             self.llm.translate(&request.word, &request.sentence),
             self.fetch_phonetic_override(&request.word),
         );
-        let llm_failure_note: Option<String> = match llm_res {
+        let (llm_failure_note, http_request): (Option<String>, String) = match llm_res {
             Ok(result) => {
                 return Ok(self.complete_llm_result(result, &phonetic, &word_lower, &hash))
             }
-            Err(e) => Some(e.user_hint_zh()),
+            Err(e) => (Some(e.user_hint_zh()), e.http_request().to_string()),
         };
 
         // Level 3: fallback (MyMemory), not cached
@@ -202,11 +208,13 @@ impl TranslationDomainService {
                 result,
                 llm_failure_note,
                 &phonetic,
+                http_request,
             )),
             Err(fallback_err) => Ok(Self::complete_failure_result(
                 &request,
                 llm_failure_note,
                 fallback_err,
+                http_request,
             )),
         }
     }
@@ -280,13 +288,13 @@ impl TranslationDomainService {
                 .translate_streaming(&request.word, &request.sentence, forwarder),
             self.fetch_phonetic_override(&request.word),
         );
-        let llm_failure_note: Option<String> = match llm_res {
+        let (llm_failure_note, http_request): (Option<String>, String) = match llm_res {
             Ok(result) => {
                 let result = self.complete_llm_result(result, &phonetic, &word_lower, &hash);
                 emit(result.clone());
                 return Ok(result);
             }
-            Err(e) => Some(e.user_hint_zh()),
+            Err(e) => (Some(e.user_hint_zh()), e.http_request().to_string()),
         };
 
         // Level 3: fallback (non-streaming, single emit).
@@ -296,13 +304,22 @@ impl TranslationDomainService {
             .await
         {
             Ok(result) => {
-                let result = Self::complete_fallback_result(result, llm_failure_note, &phonetic);
+                let result = Self::complete_fallback_result(
+                    result,
+                    llm_failure_note,
+                    &phonetic,
+                    http_request,
+                );
                 emit(result.clone());
                 Ok(result)
             }
             Err(fallback_err) => {
-                let result =
-                    Self::complete_failure_result(&request, llm_failure_note, fallback_err);
+                let result = Self::complete_failure_result(
+                    &request,
+                    llm_failure_note,
+                    fallback_err,
+                    http_request,
+                );
                 emit(result.clone());
                 Ok(result)
             }
@@ -423,9 +440,7 @@ mod tests {
             _word: &str,
             _sentence: &str,
         ) -> Result<TranslationResult, LumenError> {
-            Err(LumenError::LlmApiError {
-                message: "timeout".to_string(),
-            })
+            Err(LumenError::llm_api("timeout"))
         }
     }
 
@@ -767,6 +782,45 @@ mod tests {
         assert!(!result.llm_error_message.is_empty());
         assert!(!result.fallback_error_message.is_empty());
         assert_eq!(result.source, "failed");
+        assert!(result.http_request.is_empty());
+    }
+
+    struct FailingLlmWithRequest;
+
+    #[async_trait::async_trait]
+    impl Translator for FailingLlmWithRequest {
+        async fn translate(
+            &self,
+            _word: &str,
+            _sentence: &str,
+        ) -> Result<TranslationResult, LumenError> {
+            Err(LumenError::llm_api("timeout").with_http_request(
+                "POST https://example.test/v1/chat/completions\nAuthorization: Bearer ***\nContent-Type: application/json\n\n{\"enable_thinking\":false}".into(),
+            ))
+        }
+    }
+
+    #[tokio::test]
+    async fn fallback_keeps_llm_http_request_dump() {
+        let cache = FakeCache::new();
+        let svc = TranslationDomainService::new(
+            cache,
+            Arc::new(FailingLlmWithRequest),
+            Arc::new(FakeFallback),
+        );
+
+        let result = svc
+            .translate(TranslationRequest {
+                word: "run".to_string(),
+                sentence: "the quick brown fox".to_string(),
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(result.source, "fallback");
+        assert!(result.http_request.contains("enable_thinking"));
+        assert!(result.http_request.contains("Bearer ***"));
+        assert!(!result.http_request.contains("timeout"));
     }
 
     struct PhoneticLlm {

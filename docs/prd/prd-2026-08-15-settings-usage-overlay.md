@@ -8,6 +8,7 @@ predecessor:
   - prd/prd-2026-08-05-viewport-restore-overlay-drag.md
 successor:
   - prd/prd-2026-08-19-markup-diagnostics.md
+  - prd/prd-2026-08-21-llm-call-log-http-request.md
 ---
 
 # LumenPDF — 用量统计、设置打磨与根层浮窗 PRD
@@ -21,7 +22,7 @@ v1.0.23 打磨设置可用性，并把翻译浮窗提升到阅读窗口根层，
 ### F1 — Token 热点图与调用日志
 
 - 最近 26 周按日汇总调用次数、Token 与估算费用，可按模型筛选。
-- 调用日志改为更易扫描的状态列表和请求/响应详情。
+- 调用日志改为更易扫描的状态列表和请求/响应详情。后续修订：详情增加可展开的完整 HTTP 请求，见 [prd-2026-08-21-llm-call-log-http-request.md](prd-2026-08-21-llm-call-log-http-request.md)。
 - 内部图片能力探测不得出现在用户可见日志里。
 
 ### F2 — 设置反馈

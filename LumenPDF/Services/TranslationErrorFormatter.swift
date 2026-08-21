@@ -9,17 +9,28 @@ enum TranslationErrorFormatter {
                 return "LLM 未就绪：请先在「设置」中填写 API Base URL、API Key 与模型，保存后再试。"
             case .DatabaseError(let message):
                 return "数据库错误：\(message)"
-            case .LlmApiError(let message):
+            case .LlmApiError(message: let message, httpRequest: _):
                 return "LLM 接口调用失败：\(cleanLLMMessage(message))"
             case .FallbackApiError(let message):
                 return "兜底翻译接口（MyMemory）失败：\(message)"
-            case .SerializationError(let message):
+            case .SerializationError(message: let message, httpRequest: _):
                 return serializationMessage(message)
             case .NotFound(let message):
                 return "未找到：\(message)"
             }
         }
         return "翻译失败：\(error.localizedDescription)"
+    }
+
+    static func httpRequest(from error: Error) -> String {
+        guard let re = error as? LumenError else { return "" }
+        switch re {
+        case .LlmApiError(message: _, httpRequest: let httpRequest),
+             .SerializationError(message: _, httpRequest: let httpRequest):
+            return httpRequest
+        default:
+            return ""
+        }
     }
 
     private static func serializationMessage(_ message: String) -> String {

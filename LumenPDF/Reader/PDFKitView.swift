@@ -60,6 +60,8 @@ struct PDFKitView: NSViewRepresentable {
                        name: .jumpToPage, object: nil)
         nc.addObserver(context.coordinator, selector: #selector(Coordinator.jumpToSelectionBounds(_:)),
                        name: .jumpToSelectionBounds, object: nil)
+        nc.addObserver(context.coordinator, selector: #selector(Coordinator.highlightSearchQuery(_:)),
+                       name: .highlightSearchQuery, object: nil)
         nc.addObserver(context.coordinator, selector: #selector(Coordinator.restoreReadingViewport(_:)),
                        name: .restoreReadingViewport, object: nil)
         nc.addObserver(context.coordinator, selector: #selector(Coordinator.addHighlight(_:)),
@@ -662,50 +664,51 @@ struct PDFKitView: NSViewRepresentable {
         }
 
         private func applyFreeAnnotation(type typeStr: String, page: PDFPage, lineRects: [CGRect]) {
-            if typeStr == "highlight" {
-                handleFreeHighlight(page: page, lineRects: lineRects)
-                return
+            let isHighlight = typeStr == "highlight"
+            applyResolvedFreeMarkup(
+                page: page,
+                lineRects: lineRects,
+                type: isHighlight ? .highlight : .underline,
+                color: isHighlight
+                    ? PDFHighlightAnnotationFactory.nativeHighlightColor
+                    : PDFMarkupAppearance.underlineColor,
+                tag: isHighlight ? "__fh" : "__fu",
+                contents: isHighlight ? "free:highlight" : "free:underline",
+                undoLabel: isHighlight ? "高亮" : "划线"
+            )
+        }
+
+        private func applyResolvedFreeMarkup(
+            page: PDFPage,
+            lineRects: [CGRect],
+            type: PDFAnnotationSubtype,
+            color: NSColor,
+            tag: String,
+            contents: String,
+            undoLabel: String
+        ) {
+            let existing = freeMarkupAnnotations(on: page, tag: tag, contents: contents, type: type)
+            let groups = existing.map { PDFHighlightAnnotationFactory.lineRects(from: $0) }
+            let plan = TextLineMarkupMerge.plan(existingGroups: groups, selection: lineRects)
+
+            var removedSnapshots: [FreeAnnotationSnapshot] = []
+            for index in plan.interactingGroupIndices {
+                let annotation = existing[index]
+                removedSnapshots.append(FreeAnnotationSnapshot(ann: annotation))
+                page.removeAnnotation(annotation)
             }
 
-            let annType: PDFAnnotationSubtype = .underline
-            let color = PDFMarkupAppearance.underlineColor
-            let tag = "__fu"
-            let undoLabel = "划线"
-            let contents = "free:underline"
-            let selectionUnion = lineRects.dropFirst().reduce(lineRects[0]) { $0.union($1) }
-
-            let existing = freeMarkupAnnotations(on: page, tag: tag, contents: contents, type: annType)
-                .filter { $0.bounds.intersects(selectionUnion) }
-
             var added: [PDFAnnotation] = []
-            var removedSnapshots: [FreeAnnotationSnapshot] = []
-
-            if existing.isEmpty {
+            if !plan.addRects.isEmpty {
                 added.append(contentsOf: Self.makeMarkupAnnotations(
-                    lineRects: lineRects,
+                    lineRects: plan.addRects,
                     selection: nil,
-                    type: annType,
+                    type: type,
                     color: color,
                     tag: tag,
                     page: page,
                     contents: contents
                 ))
-            } else {
-                let existingUnion = existing.dropFirst().reduce(existing[0].bounds) { $0.union($1.bounds) }
-                let isFullyCovered = lineRects.allSatisfy { existingUnion.insetBy(dx: -1, dy: -1).contains($0) }
-                removedSnapshots = existing.map { FreeAnnotationSnapshot(ann: $0) }
-                existing.forEach { page.removeAnnotation($0) }
-                if !isFullyCovered {
-                    added.append(contentsOf: Self.makeMarkupAnnotations(
-                        lineRects: lineRects,
-                        selection: nil,
-                        type: annType,
-                        color: color,
-                        tag: tag,
-                        page: page,
-                        contents: contents
-                    ))
-                }
             }
 
             if !added.isEmpty || !removedSnapshots.isEmpty {
@@ -717,68 +720,6 @@ struct PDFKitView: NSViewRepresentable {
                 )
                 triggerAnnotationSave(immediate: true)
             }
-        }
-
-        private func handleFreeHighlight(
-            page: PDFPage,
-            lineRects: [CGRect]
-        ) {
-            let tag = "__fh"
-            let contents = "free:highlight"
-            let color = PDFHighlightAnnotationFactory.nativeHighlightColor
-            let existing = freeMarkupAnnotations(on: page, tag: tag, contents: contents, type: .highlight)
-            let selectionUnion = lineRects.dropFirst().reduce(lineRects[0]) { $0.union($1) }
-
-            // Toggle off: if the selection lands on an existing highlight, remove it. Matching uses
-            // annotation `bounds` (always reliable) instead of re-derived quad points, which round-trip
-            // unreliably through PDFKit and previously broke "tap again to remove".
-            let hits = existing.filter { Self.highlight($0, matchesSelection: selectionUnion) }
-            if !hits.isEmpty {
-                let removedSnapshots = hits.map { FreeAnnotationSnapshot(ann: $0) }
-                hits.forEach { page.removeAnnotation($0) }
-                registerUndoAnnotationMutation(
-                    page: page,
-                    added: [],
-                    removedSnapshots: removedSnapshots,
-                    label: "高亮"
-                )
-                triggerAnnotationSave(immediate: true)
-                return
-            }
-
-            // Nothing highlighted under the selection → create one. Build from `lineRects` directly so
-            // the geometry stays consistent across save / restore.
-            guard let annotation = Self.makeHighlightAnnotation(
-                lineRects: lineRects,
-                selection: nil,
-                page: page,
-                color: color,
-                userName: tag,
-                contents: contents
-            ) else { return }
-
-            page.addAnnotation(annotation)
-            registerUndoAnnotationMutation(
-                page: page,
-                added: [annotation],
-                removedSnapshots: [],
-                label: "高亮"
-            )
-            triggerAnnotationSave(immediate: true)
-        }
-
-        /// Whether a highlight annotation is the one the user intends to toggle off, judged purely on
-        /// bounds geometry: the selection sits inside the highlight, the highlight sits inside the
-        /// selection, or the two overlap by at least half of the smaller rect.
-        private static func highlight(_ ann: PDFAnnotation, matchesSelection selectionUnion: CGRect) -> Bool {
-            let bounds = ann.bounds
-            guard bounds.intersects(selectionUnion) else { return false }
-            if bounds.insetBy(dx: -3, dy: -3).contains(selectionUnion) { return true }
-            if selectionUnion.insetBy(dx: -3, dy: -3).contains(bounds) { return true }
-            let intersection = bounds.intersection(selectionUnion)
-            let intersectionArea = intersection.width * intersection.height
-            let minArea = min(bounds.width * bounds.height, selectionUnion.width * selectionUnion.height)
-            return minArea > 0 && (intersectionArea / minArea) >= 0.5
         }
 
         private func freeMarkupAnnotations(
@@ -1167,6 +1108,71 @@ struct PDFKitView: NSViewRepresentable {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
                 self?.isJumping = false
             }
+        }
+
+        @objc func highlightSearchQuery(_ notification: Notification) {
+            guard let query = notification.userInfo?["query"] as? String,
+                  let pageIndex = notification.userInfo?["pageIndex"] as? Int,
+                  let filePath = notification.userInfo?["filePath"] as? String,
+                  filePath == currentFilePath,
+                  let pdfView,
+                  let document = pdfView.document,
+                  let page = document.page(at: pageIndex)
+            else { return }
+
+            cancelPendingViewportRestore()
+            isJumping = true
+            pdfView.go(to: page)
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self, weak pdfView, weak page, weak document] in
+                guard let self, let pdfView, let page, let document else { return }
+                guard let selection = Self.searchSelection(
+                    matching: query,
+                    on: page,
+                    in: document
+                ) else { return }
+                pdfView.setCurrentSelection(selection, animate: true)
+                let bounds = selection.bounds(for: page)
+                self.center(rect: bounds, on: page, in: pdfView)
+                self.flashFocus(rects: [bounds], on: page)
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                self?.isJumping = false
+            }
+        }
+
+        private static func searchSelection(
+            matching query: String,
+            on page: PDFPage,
+            in document: PDFDocument
+        ) -> PDFSelection? {
+            let needles = searchNeedles(from: query)
+            let options: NSString.CompareOptions = [.caseInsensitive, .diacriticInsensitive]
+            for needle in needles {
+                let matches = document.findString(needle, withOptions: options)
+                let pageIndex = document.index(for: page)
+                if let onPage = matches.first(where: { selection in
+                    selection.pages.contains(where: { document.index(for: $0) == pageIndex })
+                }) {
+                    return onPage
+                }
+            }
+            return nil
+        }
+
+        private static func searchNeedles(from query: String) -> [String] {
+            let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+            let tokens = WorkspaceSearchMatcher.tokens(in: trimmed)
+            var needles: [String] = []
+            if !trimmed.isEmpty { needles.append(trimmed) }
+            if tokens.count > 1 {
+                needles.append(tokens.joined(separator: " "))
+            }
+            if let first = tokens.first, first.count >= 2, !needles.contains(first) {
+                needles.append(first)
+            }
+            return needles
         }
 
         @objc func restoreReadingViewport(_ notification: Notification) {

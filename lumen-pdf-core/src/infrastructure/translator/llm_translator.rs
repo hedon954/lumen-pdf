@@ -3,11 +3,15 @@ use crate::domain::translation::{
     repository::{StreamProgress, Translator},
 };
 use crate::error::LumenError;
+use crate::infrastructure::translator::extra_config::merge_chat_request;
 use crate::infrastructure::translator::http_client::shared_client;
+use crate::infrastructure::translator::http_request_log::format_http_request;
+use crate::infrastructure::translator::model_json::{parse_model_json, streaming_json_view};
 use crate::infrastructure::translator::streaming::{
     describe_empty_model_output, extract_complete_string_fields, extract_message_content_from_json,
     extract_streaming_string_value, preview_text, SseAccumulator, SseChunkOutcome, TokenUsage,
 };
+use crate::infrastructure::translator::thinking_control::resolve_extra_config;
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -27,6 +31,7 @@ pub struct LlmConfig {
     pub word_system_prompt: String,
     pub sentence_system_prompt: String,
     pub explanation_system_prompt: String,
+    pub extra_config: String,
 }
 
 pub struct LlmTranslator {
@@ -275,6 +280,7 @@ impl LlmTranslator {
             prompt_tokens: completion.usage.prompt_tokens,
             completion_tokens: completion.usage.completion_tokens,
             total_tokens: completion.usage.total_tokens,
+            http_request: completion.http_request,
             ..Default::default()
         };
         on_progress(final_result.clone());
@@ -320,8 +326,11 @@ impl LlmTranslator {
         let body = self.build_sentence_request(sentence, false);
         let completion = self.send_chat_request(&body).await?;
 
-        let parsed: SentencePromptJson = parse_model_json(&completion.content)?;
-        Ok(parsed.into_result(sentence, completion.usage))
+        let parsed: SentencePromptJson = parse_model_json(&completion.content)
+            .map_err(|err| err.with_http_request(completion.http_request.clone()))?;
+        Ok(parsed
+            .into_result(sentence, completion.usage)
+            .with_http_request(completion.http_request))
     }
 
     /// Streaming sentence translation.
@@ -347,7 +356,9 @@ impl LlmTranslator {
                 // Stream the `translation` field character by character. Other
                 // fields (`breakdown`) only appear at the end and are handled
                 // after the stream closes.
-                let Some(current) = extract_streaming_string_value(raw, "translation") else {
+                let Some(current) =
+                    extract_streaming_string_value(&streaming_json_view(raw), "translation")
+                else {
                     return;
                 };
                 if current != *last_emitted {
@@ -365,8 +376,11 @@ impl LlmTranslator {
         // Final, authoritative parse: the streaming extractor is permissive
         // (string-only). At end of stream we run a strict JSON parse so we
         // can extract `breakdown` and guarantee a clean final result.
-        let parsed: SentencePromptJson = parse_model_json(&completion.content)?;
-        let final_result = parsed.into_result(sentence, completion.usage);
+        let parsed: SentencePromptJson = parse_model_json(&completion.content)
+            .map_err(|err| err.with_http_request(completion.http_request.clone()))?;
+        let final_result = parsed
+            .into_result(sentence, completion.usage)
+            .with_http_request(completion.http_request);
         // Emit a terminal progress event so the UI gets the breakdown without
         // having to wait for the outer caller to wire it.
         on_progress(final_result.clone());
@@ -399,10 +413,8 @@ impl LlmTranslator {
     }
 
     async fn probe_image_input_capability(&self) -> ImageInputCapability {
-        let body = ChatRequest {
-            model: self.config.model.clone(),
-            stream: false,
-            messages: vec![Message {
+        let body = self.chat_request(
+            vec![Message {
                 role: "user".into(),
                 content: RequestMessageContent::Parts(vec![
                     RequestContentPart::Text {
@@ -417,15 +429,19 @@ impl LlmTranslator {
                     },
                 ]),
             }],
-            response_format: None,
-            max_tokens: Some(1),
-            stream_options: None,
-        };
+            false,
+            None,
+            Some(1),
+        );
 
+        let payload = match self.chat_json(&body) {
+            Ok(value) => value,
+            Err(_) => return ImageInputCapability::Unknown,
+        };
         let response = match shared_client()
             .post(self.completions_url())
             .bearer_auth(&self.config.api_key)
-            .json(&body)
+            .json(&payload)
             .send()
             .await
         {
@@ -438,9 +454,37 @@ impl LlmTranslator {
         }
 
         let status = response.status();
-        let body = response.text().await.unwrap_or_default();
+        let error_body = response.text().await.unwrap_or_default();
+        if is_unknown_optional_field_error(status, &error_body) && body.has_vendor_extensions() {
+            let retry_payload = match self.chat_json(&body.clone().without_vendor_extensions()) {
+                Ok(value) => value,
+                Err(_) => return ImageInputCapability::Unknown,
+            };
+            let retry = match shared_client()
+                .post(self.completions_url())
+                .bearer_auth(&self.config.api_key)
+                .json(&retry_payload)
+                .send()
+                .await
+            {
+                Ok(response) => response,
+                Err(_) => return ImageInputCapability::Unknown,
+            };
+            if retry.status().is_success() {
+                return ImageInputCapability::Supported;
+            }
+            let retry_status = retry.status();
+            let retry_body = retry.text().await.unwrap_or_default();
+            if (retry_status.as_u16() == 400 || retry_status.as_u16() == 422)
+                && is_explicit_image_unsupported_error(&retry_body)
+            {
+                return ImageInputCapability::Unsupported;
+            }
+            return ImageInputCapability::Unknown;
+        }
+
         if (status.as_u16() == 400 || status.as_u16() == 422)
-            && is_explicit_image_unsupported_error(&body)
+            && is_explicit_image_unsupported_error(&error_body)
         {
             ImageInputCapability::Unsupported
         } else {
@@ -477,10 +521,8 @@ impl LlmTranslator {
             RequestMessageContent::Parts(parts)
         };
 
-        ChatRequest {
-            model: self.config.model.clone(),
-            stream,
-            messages: vec![
+        self.chat_request(
+            vec![
                 Message {
                     role: "system".into(),
                     content: RequestMessageContent::Text(self.explanation_system_prompt()),
@@ -490,19 +532,15 @@ impl LlmTranslator {
                     content: user_content,
                 },
             ],
-            response_format: None,
-            max_tokens: Some(DEFAULT_MAX_TOKENS),
-            stream_options: stream.then_some(StreamOptions {
-                include_usage: true,
-            }),
-        }
+            stream,
+            None,
+            Some(DEFAULT_MAX_TOKENS),
+        )
     }
 
     fn build_sentence_request(&self, sentence: &str, stream: bool) -> ChatRequest {
-        ChatRequest {
-            model: self.config.model.clone(),
-            stream,
-            messages: vec![
+        self.chat_request(
+            vec![
                 Message {
                     role: "system".into(),
                     content: RequestMessageContent::Text(self.sentence_system_prompt()),
@@ -512,21 +550,17 @@ impl LlmTranslator {
                     content: RequestMessageContent::Text(self.build_sentence_prompt(sentence)),
                 },
             ],
-            response_format: Some(ResponseFormat {
+            stream,
+            Some(ResponseFormat {
                 kind: "json_object".into(),
             }),
-            max_tokens: Some(DEFAULT_MAX_TOKENS),
-            stream_options: stream.then_some(StreamOptions {
-                include_usage: true,
-            }),
-        }
+            Some(DEFAULT_MAX_TOKENS),
+        )
     }
 
     fn build_word_request(&self, word: &str, sentence: &str, stream: bool) -> ChatRequest {
-        ChatRequest {
-            model: self.config.model.clone(),
-            stream,
-            messages: vec![
+        self.chat_request(
+            vec![
                 Message {
                     role: "system".into(),
                     content: RequestMessageContent::Text(self.word_system_prompt()),
@@ -536,46 +570,99 @@ impl LlmTranslator {
                     content: RequestMessageContent::Text(self.build_prompt(word, sentence)),
                 },
             ],
-            response_format: Some(ResponseFormat {
+            stream,
+            Some(ResponseFormat {
                 kind: "json_object".into(),
             }),
-            max_tokens: Some(DEFAULT_MAX_TOKENS),
+            Some(DEFAULT_MAX_TOKENS),
+        )
+    }
+
+    fn chat_request(
+        &self,
+        messages: Vec<Message>,
+        stream: bool,
+        response_format: Option<ResponseFormat>,
+        max_tokens: Option<u32>,
+    ) -> ChatRequest {
+        ChatRequest {
+            model: self.config.model.clone(),
+            messages,
+            response_format,
+            max_tokens,
+            stream,
             stream_options: stream.then_some(StreamOptions {
                 include_usage: true,
             }),
         }
     }
 
+    fn chat_json(&self, body: &ChatRequest) -> Result<Value, LumenError> {
+        let extra = resolve_extra_config(
+            &self.config.extra_config,
+            &self.config.base_url,
+            &self.config.model,
+        );
+        merge_chat_request(body, &extra)
+    }
+
     async fn send_chat_request(&self, body: &ChatRequest) -> Result<CompletionOutput, LumenError> {
         let url = self.completions_url();
+        let mut payload = self.chat_json(body)?;
+        let mut dump = format_http_request(&url, &payload);
         let resp = shared_client()
             .post(&url)
             .bearer_auth(&self.config.api_key)
-            .json(body)
+            .json(&payload)
             .send()
             .await
-            .map_err(|e| LumenError::LlmApiError {
-                message: e.to_string(),
-            })?;
+            .map_err(|e| LumenError::llm_api(e.to_string()).with_http_request(dump.clone()))?;
 
-        if !resp.status().is_success() {
+        let resp = if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
-            return Err(LumenError::LlmApiError {
-                message: format!("HTTP {status}: {text}"),
-            });
-        }
+            if is_unknown_optional_field_error(status, &text) && body.has_vendor_extensions() {
+                let compatible_body = body.clone().without_vendor_extensions();
+                payload = self.chat_json(&compatible_body)?;
+                dump = format_http_request(&url, &payload);
+                let retry = shared_client()
+                    .post(&url)
+                    .bearer_auth(&self.config.api_key)
+                    .json(&payload)
+                    .send()
+                    .await
+                    .map_err(|e| {
+                        LumenError::llm_api(e.to_string()).with_http_request(dump.clone())
+                    })?;
+                if !retry.status().is_success() {
+                    let retry_status = retry.status();
+                    let retry_text = retry.text().await.unwrap_or_default();
+                    return Err(
+                        LumenError::llm_api(format!("HTTP {retry_status}: {retry_text}"))
+                            .with_http_request(dump),
+                    );
+                }
+                retry
+            } else {
+                return Err(
+                    LumenError::llm_api(format!("HTTP {status}: {text}")).with_http_request(dump)
+                );
+            }
+        } else {
+            resp
+        };
 
-        let raw = resp.text().await.map_err(|e| LumenError::LlmApiError {
-            message: e.to_string(),
+        let raw = resp
+            .text()
+            .await
+            .map_err(|e| LumenError::llm_api(e.to_string()).with_http_request(dump.clone()))?;
+        let chat: ChatResponse = serde_json::from_str(&raw).map_err(|e| {
+            LumenError::llm_api(format!(
+                "无法解析模型响应 JSON：{e}。原始响应预览：{}",
+                preview_text(&raw, 420)
+            ))
+            .with_http_request(dump.clone())
         })?;
-        let chat: ChatResponse =
-            serde_json::from_str(&raw).map_err(|e| LumenError::LlmApiError {
-                message: format!(
-                    "无法解析模型响应 JSON：{e}。原始响应预览：{}",
-                    preview_text(&raw, 420)
-                ),
-            })?;
 
         let message = chat.choices.into_iter().next().map(|choice| choice.message);
         let content = message
@@ -590,18 +677,21 @@ impl LlmTranslator {
         if content.trim().is_empty() {
             let mut accumulator = SseAccumulator::default();
             accumulator.reasoning = reasoning;
-            return Err(LumenError::LlmApiError {
-                message: describe_empty_model_output(
-                    raw.len(),
-                    &accumulator,
-                    &raw,
-                    usage,
-                    &self.config.model,
-                    &url,
-                ),
-            });
+            return Err(LumenError::llm_api(describe_empty_model_output(
+                raw.len(),
+                &accumulator,
+                &raw,
+                usage,
+                &self.config.model,
+                &url,
+            ))
+            .with_http_request(dump));
         }
-        Ok(CompletionOutput { content, usage })
+        Ok(CompletionOutput {
+            content,
+            usage,
+            http_request: dump,
+        })
     }
 
     /// Drive an OpenAI-compatible streaming completion: fire the request,
@@ -617,48 +707,46 @@ impl LlmTranslator {
     where
         F: FnMut(&str, &mut String),
     {
+        let mut payload = self.chat_json(body)?;
+        let mut dump = format_http_request(url, &payload);
         let mut resp = shared_client()
             .post(url)
             .bearer_auth(&self.config.api_key)
-            .json(body)
+            .json(&payload)
             .send()
             .await
-            .map_err(|e| LumenError::LlmApiError {
-                message: e.to_string(),
-            })?;
+            .map_err(|e| LumenError::llm_api(e.to_string()).with_http_request(dump.clone()))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
-            let lower = text.to_lowercase();
-            let can_retry_without_usage = body.stream_options.is_some()
-                && status.as_u16() == 400
-                && (lower.contains("stream_options")
-                    || lower.contains("include_usage")
-                    || lower.contains("unknown field"));
+            let can_retry_without_usage =
+                is_unknown_optional_field_error(status, &text) && body.has_vendor_extensions();
             if can_retry_without_usage {
-                let mut compatible_body = body.clone();
-                compatible_body.stream_options = None;
+                let compatible_body = body.clone().without_vendor_extensions();
+                payload = self.chat_json(&compatible_body)?;
+                dump = format_http_request(url, &payload);
                 resp = shared_client()
                     .post(url)
                     .bearer_auth(&self.config.api_key)
-                    .json(&compatible_body)
+                    .json(&payload)
                     .send()
                     .await
-                    .map_err(|e| LumenError::LlmApiError {
-                        message: e.to_string(),
+                    .map_err(|e| {
+                        LumenError::llm_api(e.to_string()).with_http_request(dump.clone())
                     })?;
                 if !resp.status().is_success() {
                     let retry_status = resp.status();
                     let retry_text = resp.text().await.unwrap_or_default();
-                    return Err(LumenError::LlmApiError {
-                        message: format!("HTTP {retry_status}: {retry_text}"),
-                    });
+                    return Err(
+                        LumenError::llm_api(format!("HTTP {retry_status}: {retry_text}"))
+                            .with_http_request(dump),
+                    );
                 }
             } else {
-                return Err(LumenError::LlmApiError {
-                    message: format!("HTTP {status}: {text}"),
-                });
+                return Err(
+                    LumenError::llm_api(format!("HTTP {status}: {text}")).with_http_request(dump)
+                );
             }
         }
 
@@ -675,9 +763,8 @@ impl LlmTranslator {
         let mut bytes_received = 0usize;
 
         while let Some(item) = stream.next().await {
-            let bytes = item.map_err(|e| LumenError::LlmApiError {
-                message: e.to_string(),
-            })?;
+            let bytes = item
+                .map_err(|e| LumenError::llm_api(e.to_string()).with_http_request(dump.clone()))?;
             bytes_received += bytes.len();
             append_raw_preview(&mut raw_preview, &bytes, 8_000);
             byte_buf.extend_from_slice(&bytes);
@@ -721,19 +808,18 @@ impl LlmTranslator {
         );
 
         if let Some(error) = sse.gateway_error.clone() {
-            return Err(LumenError::LlmApiError {
-                message: format!(
-                    "{error} {}",
-                    describe_empty_model_output(
-                        bytes_received,
-                        &sse,
-                        &raw_preview,
-                        usage,
-                        &self.config.model,
-                        url
-                    )
-                ),
-            });
+            return Err(LumenError::llm_api(format!(
+                "{error} {}",
+                describe_empty_model_output(
+                    bytes_received,
+                    &sse,
+                    &raw_preview,
+                    usage,
+                    &self.config.model,
+                    url
+                )
+            ))
+            .with_http_request(dump));
         }
 
         if content_buf.trim().is_empty() {
@@ -749,21 +835,21 @@ impl LlmTranslator {
         }
 
         if content_buf.trim().is_empty() {
-            return Err(LumenError::LlmApiError {
-                message: describe_empty_model_output(
-                    bytes_received,
-                    &sse,
-                    &raw_preview,
-                    usage,
-                    &self.config.model,
-                    url,
-                ),
-            });
+            return Err(LumenError::llm_api(describe_empty_model_output(
+                bytes_received,
+                &sse,
+                &raw_preview,
+                usage,
+                &self.config.model,
+                url,
+            ))
+            .with_http_request(dump));
         }
 
         Ok(CompletionOutput {
             content: content_buf,
             usage,
+            http_request: dump,
         })
     }
 }
@@ -795,60 +881,6 @@ fn append_raw_preview(preview: &mut String, bytes: &[u8], limit: usize) {
     preview.push_str(&String::from_utf8_lossy(&bytes[..take]));
 }
 
-fn parse_model_json<T: serde::de::DeserializeOwned>(raw: &str) -> Result<T, LumenError> {
-    let normalized = normalize_json_payload(raw);
-    serde_json::from_str(&normalized)
-        .or_else(|_| serde_json::from_str(raw.trim()))
-        .map_err(|err| json_parse_error(raw, err))
-}
-
-fn normalize_json_payload(raw: &str) -> String {
-    let unfenced = strip_code_fence(raw.trim());
-    extract_json_span(&unfenced)
-        .map(ToOwned::to_owned)
-        .unwrap_or(unfenced)
-}
-
-fn strip_code_fence(raw: &str) -> String {
-    let trimmed = raw.trim();
-    if !trimmed.starts_with("```") {
-        return trimmed.to_string();
-    }
-    let mut lines = trimmed.lines();
-    let _ = lines.next();
-    let mut body: Vec<&str> = lines.collect();
-    if body.last().is_some_and(|line| line.trim() == "```") {
-        body.pop();
-    }
-    body.join("\n").trim().to_string()
-}
-
-fn extract_json_span(raw: &str) -> Option<&str> {
-    let start = raw.find('{')?;
-    let end = raw.rfind('}')?;
-    if end >= start {
-        Some(&raw[start..=end])
-    } else {
-        None
-    }
-}
-
-fn json_parse_error(raw: &str, err: serde_json::Error) -> LumenError {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        return LumenError::LlmApiError {
-            message: "模型没有返回任何内容（空响应），因此无法解析 JSON。常见原因：网关返回空 body、流式协议不匹配，或模型拒绝输出。".into(),
-        };
-    }
-    LumenError::SerializationError {
-        message: format!(
-            "{err}。响应长度 {} 字符。内容预览：{}",
-            trimmed.chars().count(),
-            preview_text(trimmed, 400)
-        ),
-    }
-}
-
 fn map_to_translation_result(
     map: &HashMap<String, String>,
     fallback_word: &str,
@@ -877,6 +909,7 @@ fn map_to_translation_result(
         prompt_tokens: 0,
         completion_tokens: 0,
         total_tokens: 0,
+        http_request: String::new(),
     }
 }
 
@@ -948,6 +981,32 @@ struct ChatRequest {
     stream_options: Option<StreamOptions>,
 }
 
+impl ChatRequest {
+    fn has_vendor_extensions(&self) -> bool {
+        self.stream_options.is_some()
+    }
+
+    fn without_vendor_extensions(mut self) -> Self {
+        self.stream_options = None;
+        self
+    }
+}
+
+fn is_unknown_optional_field_error(status: reqwest::StatusCode, body: &str) -> bool {
+    if status.as_u16() != 400 {
+        return false;
+    }
+    let lower = body.to_lowercase();
+    lower.contains("unknown field")
+        || lower.contains("unrecognized request")
+        || lower.contains("unexpected argument")
+        || lower.contains("enable_thinking")
+        || lower.contains("chat_template_kwargs")
+        || lower.contains("stream_options")
+        || lower.contains("include_usage")
+        || lower.contains("reasoning")
+}
+
 #[derive(Clone, Serialize)]
 struct StreamOptions {
     include_usage: bool,
@@ -1001,6 +1060,7 @@ struct ChatResponse {
 struct CompletionOutput {
     content: String,
     usage: TokenUsage,
+    http_request: String,
 }
 
 #[derive(Deserialize)]
@@ -1047,6 +1107,7 @@ impl LlmTranslationJson {
             prompt_tokens: usage.prompt_tokens,
             completion_tokens: usage.completion_tokens,
             total_tokens: usage.total_tokens,
+            http_request: String::new(),
         }
     }
 }
@@ -1107,9 +1168,12 @@ impl Translator for LlmTranslator {
         let body = self.build_word_request(word, sentence, false);
         let completion = self.send_chat_request(&body).await?;
 
-        let parsed: LlmTranslationJson = parse_model_json(&completion.content)?;
+        let parsed: LlmTranslationJson = parse_model_json(&completion.content)
+            .map_err(|err| err.with_http_request(completion.http_request.clone()))?;
 
-        Ok(parsed.into_result(word, completion.usage))
+        Ok(parsed
+            .into_result(word, completion.usage)
+            .with_http_request(completion.http_request))
     }
 
     async fn translate_streaming(
@@ -1124,7 +1188,7 @@ impl Translator for LlmTranslator {
         let mut last_keys: Vec<String> = Vec::new();
         let completion = self
             .stream_completion(&url, &body, |raw, _: &mut String| {
-                let fields = extract_complete_string_fields(raw);
+                let fields = extract_complete_string_fields(&streaming_json_view(raw));
                 if fields.is_empty() {
                     return;
                 }
@@ -1151,8 +1215,11 @@ impl Translator for LlmTranslator {
 
         // End-of-stream: strict parse so missing optional fields default to
         // empty strings via serde and we always return a complete result.
-        let parsed: LlmTranslationJson = parse_model_json(&completion.content)?;
-        Ok(parsed.into_result(word, completion.usage))
+        let parsed: LlmTranslationJson = parse_model_json(&completion.content)
+            .map_err(|err| err.with_http_request(completion.http_request.clone()))?;
+        Ok(parsed
+            .into_result(word, completion.usage)
+            .with_http_request(completion.http_request))
     }
 }
 
@@ -1160,11 +1227,11 @@ impl Translator for LlmTranslator {
 mod tests {
     use super::*;
 
-    fn translator() -> LlmTranslator {
+    fn translator_with(base_url: &str, model: &str) -> LlmTranslator {
         LlmTranslator::new(LlmConfig {
-            base_url: "https://example.com/v1".into(),
+            base_url: base_url.into(),
             api_key: "key".into(),
-            model: "vision-model".into(),
+            model: model.into(),
             target_language: "简体中文".into(),
             word_prompt_template: String::new(),
             sentence_prompt_template: String::new(),
@@ -1172,7 +1239,19 @@ mod tests {
             word_system_prompt: String::new(),
             sentence_system_prompt: String::new(),
             explanation_system_prompt: String::new(),
+            extra_config: String::new(),
         })
+    }
+
+    fn translator() -> LlmTranslator {
+        translator_with("https://example.com/v1", "vision-model")
+    }
+
+    fn dashscope_qwen() -> LlmTranslator {
+        translator_with(
+            "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            "qwen-plus",
+        )
     }
 
     #[test]
@@ -1207,6 +1286,173 @@ mod tests {
         let json = serde_json::to_value(request).unwrap();
 
         assert!(json["messages"][1]["content"].is_string());
+    }
+
+    #[test]
+    fn dashscope_qwen_empty_extra_sends_enable_thinking_false() {
+        let translator = dashscope_qwen();
+        let requests = [
+            translator.build_word_request("word", "a sentence", false),
+            translator.build_sentence_request("a sentence", true),
+            translator.build_explanation_request("selected", "context", "", &[], true),
+        ];
+        for request in requests {
+            let json = translator.chat_json(&request).unwrap();
+            assert_eq!(json["enable_thinking"], false);
+            assert!(json.get("chat_template_kwargs").is_none());
+            assert!(json.get("thinking").is_none());
+            assert!(json.get("reasoning").is_none());
+            assert_last_user_has_no_think_suffix(&json);
+        }
+    }
+
+    #[test]
+    fn extra_config_overrides_builtin_thinking_fields() {
+        let mut translator = dashscope_qwen();
+        translator.config.extra_config =
+            r#"{"enable_thinking": true, "thinking_budget": 0}"#.into();
+        let json = translator
+            .chat_json(&translator.build_word_request("word", "a sentence", false))
+            .unwrap();
+        assert_eq!(json["enable_thinking"], true);
+        assert_eq!(json["thinking_budget"], 0);
+        assert!(json["messages"].is_array());
+    }
+
+    #[test]
+    fn empty_object_extra_config_sends_no_thinking_fields() {
+        let mut translator = dashscope_qwen();
+        translator.config.extra_config = "{}".into();
+        let json = translator
+            .chat_json(&translator.build_word_request("word", "a sentence", false))
+            .unwrap();
+        assert!(json.get("enable_thinking").is_none());
+        assert!(json.get("chat_template_kwargs").is_none());
+        assert!(json.get("thinking").is_none());
+    }
+
+    #[test]
+    fn alibaba_idealab_qwen_sends_enable_thinking_false() {
+        let translator = translator_with(
+            "https://idealab.alibaba-inc.com/api/openai/v1",
+            "qwen3.7-flash",
+        );
+        let json = translator
+            .chat_json(&translator.build_word_request("word", "a sentence", true))
+            .unwrap();
+        assert_eq!(json["enable_thinking"], false);
+        assert!(json.get("chat_template_kwargs").is_none());
+        assert!(json.get("n").is_none());
+        assert_last_user_has_no_think_suffix(&json);
+    }
+
+    #[test]
+    fn extra_config_can_force_enable_thinking_false_on_idealab() {
+        let mut translator = translator_with(
+            "https://idealab.alibaba-inc.com/api/openai/v1",
+            "qwen3.7-flash",
+        );
+        translator.config.extra_config = r#"{"enable_thinking": false}"#.into();
+        let json = translator
+            .chat_json(&translator.build_word_request("word", "a sentence", true))
+            .unwrap();
+        assert_eq!(json["enable_thinking"], false);
+        assert!(json.get("n").is_none());
+    }
+
+    #[test]
+    fn openai_omits_vendor_thinking_fields() {
+        let translator = translator_with("https://api.openai.com/v1", "gpt-4o");
+        let json = translator
+            .chat_json(&translator.build_word_request("word", "a sentence", false))
+            .unwrap();
+        assert!(json.get("enable_thinking").is_none());
+        assert!(json.get("chat_template_kwargs").is_none());
+        assert!(json.get("thinking").is_none());
+        assert!(json.get("reasoning").is_none());
+        assert_last_user_has_no_think_suffix(&json);
+    }
+
+    #[test]
+    fn self_hosted_qwen_uses_chat_template_kwargs() {
+        let translator = translator_with("http://127.0.0.1:8000/v1", "Qwen/Qwen3-8B");
+        let json = translator
+            .chat_json(&translator.build_word_request("word", "a sentence", false))
+            .unwrap();
+        assert!(json.get("enable_thinking").is_none());
+        assert_eq!(json["chat_template_kwargs"]["enable_thinking"], false);
+        assert!(json.get("thinking").is_none());
+        assert_last_user_has_no_think_suffix(&json);
+    }
+
+    #[test]
+    fn deepseek_uses_thinking_type_disabled() {
+        let translator = translator_with("https://api.deepseek.com/v1", "deepseek-v4-flash");
+        let json = translator
+            .chat_json(&translator.build_word_request("word", "a sentence", false))
+            .unwrap();
+        assert_eq!(json["thinking"]["type"], "disabled");
+        assert!(json.get("enable_thinking").is_none());
+        assert!(json.get("chat_template_kwargs").is_none());
+    }
+
+    #[test]
+    fn openrouter_uses_reasoning_enabled_false() {
+        let translator = translator_with("https://openrouter.ai/api/v1", "qwen/qwen3-32b");
+        let json = translator
+            .chat_json(&translator.build_word_request("word", "a sentence", false))
+            .unwrap();
+        assert_eq!(json["reasoning"]["enabled"], false);
+        assert!(json.get("enable_thinking").is_none());
+        assert!(json.get("thinking").is_none());
+        assert_last_user_has_no_think_suffix(&json);
+    }
+
+    #[test]
+    fn stripping_vendor_extensions_omits_stream_options() {
+        let request = dashscope_qwen()
+            .build_word_request("word", "a sentence", true)
+            .without_vendor_extensions();
+        let json = serde_json::to_value(request).unwrap();
+        assert!(json.get("stream_options").is_none());
+        assert!(json.get("enable_thinking").is_none());
+    }
+
+    fn assert_last_user_has_no_think_suffix(json: &Value) {
+        let messages = json["messages"].as_array().unwrap();
+        let user = messages
+            .iter()
+            .rev()
+            .find(|message| message["role"] == "user")
+            .unwrap();
+        let content = if user["content"].is_string() {
+            user["content"].as_str().unwrap().to_string()
+        } else {
+            user["content"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .rev()
+                .find_map(|part| part["text"].as_str())
+                .unwrap()
+                .to_string()
+        };
+        assert!(
+            !content.contains("/no_think"),
+            "did not expect /no_think suffix, got {content}"
+        );
+    }
+
+    #[test]
+    fn unknown_thinking_fields_are_retryable_on_bad_request() {
+        assert!(is_unknown_optional_field_error(
+            reqwest::StatusCode::BAD_REQUEST,
+            r#"{"error":{"message":"Unrecognized request argument supplied: enable_thinking"}}"#
+        ));
+        assert!(!is_unknown_optional_field_error(
+            reqwest::StatusCode::UNAUTHORIZED,
+            "enable_thinking"
+        ));
     }
 
     #[test]
@@ -1273,25 +1519,5 @@ mod tests {
         customized.word_prompt_template = "custom {word} {sentence} {lang}".into();
 
         assert_ne!(config.word_cache_scope(), customized.word_cache_scope());
-    }
-
-    #[test]
-    fn parse_model_json_strips_code_fences_and_surrounding_text() {
-        let parsed: SentencePromptJson = parse_model_json(
-            "here you go\n```json\n{\"translation\":\"你好\",\"breakdown\":[]}\n```\n",
-        )
-        .expect("fenced JSON should parse");
-        assert_eq!(parsed.translation.as_deref(), Some("你好"));
-    }
-
-    #[test]
-    fn empty_json_payload_becomes_llm_api_error() {
-        match parse_model_json::<SentencePromptJson>("") {
-            Err(LumenError::LlmApiError { message }) => {
-                assert!(message.contains("空响应"));
-            }
-            Err(other) => panic!("unexpected error: {other}"),
-            Ok(_) => panic!("empty payload should not parse"),
-        }
     }
 }

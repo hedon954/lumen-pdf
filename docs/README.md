@@ -38,6 +38,12 @@ PRD 记录**用户可感知的行为与验收标准**。TDD 记录**如何实现
 | v1.0.26 | 2026-08-20 | 笔记自动保存与翻译浮窗位置稳定 | [prd-2026-08-20-note-autosave-overlay-stability.md](prd/prd-2026-08-20-note-autosave-overlay-stability.md) | [tdd-2026-08-20-note-autosave-overlay-stability.md](tdd/tdd-2026-08-20-note-autosave-overlay-stability.md) |
 | unreleased | 2026-08-20 | LLM 设置跨重启持久化 | [prd-2026-08-20-llm-settings-persistence.md](prd/prd-2026-08-20-llm-settings-persistence.md) | [tdd-2026-08-20-llm-settings-persistence.md](tdd/tdd-2026-08-20-llm-settings-persistence.md) |
 | unreleased | 2026-08-21 | 选区标题误入与设置保存反馈 | [prd-2026-08-21-selection-settings-feedback.md](prd/prd-2026-08-21-selection-settings-feedback.md) | [tdd-2026-08-21-selection-settings-feedback.md](tdd/tdd-2026-08-21-selection-settings-feedback.md) |
+| unreleased | 2026-08-21 | 工作区 Cmd+F 搜索 | [prd-2026-08-21-workspace-search.md](prd/prd-2026-08-21-workspace-search.md) | [tdd-2026-08-21-workspace-search.md](tdd/tdd-2026-08-21-workspace-search.md) |
+| unreleased | 2026-08-21 | 划线按行区间合并 | [prd-2026-08-21-markup-interval-merge.md](prd/prd-2026-08-21-markup-interval-merge.md) | [tdd-2026-08-21-markup-interval-merge.md](tdd/tdd-2026-08-21-markup-interval-merge.md) |
+| unreleased | 2026-08-21 | LLM 关闭 thinking | [prd-2026-08-21-llm-disable-thinking.md](prd/prd-2026-08-21-llm-disable-thinking.md) | [tdd-2026-08-21-llm-disable-thinking.md](tdd/tdd-2026-08-21-llm-disable-thinking.md) |
+| unreleased | 2026-08-21 | LLM JSON 修复 | [prd-2026-08-21-llm-json-repair.md](prd/prd-2026-08-21-llm-json-repair.md) | [tdd-2026-08-21-llm-json-repair.md](tdd/tdd-2026-08-21-llm-json-repair.md) |
+| unreleased | 2026-08-21 | LLM Extra Config 与 API Key 入口 | [prd-2026-08-21-llm-extra-config.md](prd/prd-2026-08-21-llm-extra-config.md) | [tdd-2026-08-21-llm-extra-config.md](tdd/tdd-2026-08-21-llm-extra-config.md) |
+| unreleased | 2026-08-21 | 调用日志完整 HTTP 请求 | [prd-2026-08-21-llm-call-log-http-request.md](prd/prd-2026-08-21-llm-call-log-http-request.md) | [tdd-2026-08-21-llm-call-log-http-request.md](tdd/tdd-2026-08-21-llm-call-log-http-request.md) |
 
 未单独成对的发布：
 
@@ -68,6 +74,16 @@ v1.0.2 笔记 + 划线
   → v1.0.15 原文回顾浮窗、删除、空内容禁止提交
   → v1.0.22 回顾浮窗内删除单条/全部
   → v1.0.26 Inspector、回顾浮窗、笔记列表可编辑并自动保存
+  → unreleased ⌘F 工作区搜索覆盖笔记、单词、划线、原文与 AI 解释
+  → unreleased 邻近新划线不再抹掉未选中的旧行
+```
+
+### 划线与高亮
+
+```text
+v1.0.0 Toggle：包围盒重叠则合并或整段取消
+  → v1.0.24 跨页逐页落笔、页眉页脚
+  → unreleased 按文本行一维区间合并，禁止用多行包围盒误删上一行
 ```
 
 ### LLM 与 AI 导读
@@ -81,6 +97,11 @@ v1.0.12 / v1.0.13 导读进入 Inspector
   → v1.0.25 翻译刷新/重新生成
   → unreleased 保存设置后 API Key 与模型跨重启仍在
   → unreleased 设置保存失败只在设置页保存栏提示；ad-hoc 安装可写入钥匙串
+  → unreleased 当前导读会话可经 ⌘F 检索
+  → unreleased 按服务商关闭 thinking；字段改为 Extra Config 默认值，去掉 /no_think
+  → unreleased 期望 JSON 的模型输出先 json repair 再解析
+  → unreleased Extra Config 显示关 thinking 默认值；去掉 /no_think；JSON 着色，回车缩进，画笔才整段格式化
+  → unreleased 调用日志可展开实际发出的完整 HTTP 请求（密钥脱敏）
 ```
 
 ## 其他文档

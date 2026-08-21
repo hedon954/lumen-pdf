@@ -13,6 +13,8 @@ extension Notification.Name {
     static let jumpToSelectionBounds  = Notification.Name("jumpToSelectionBounds")
     static let restoreReadingViewport = Notification.Name("restoreReadingViewport")
     static let outlineNavigate        = Notification.Name("outlineNavigate")
+    static let presentWorkspaceSearch = Notification.Name("presentWorkspaceSearch")
+    static let highlightSearchQuery   = Notification.Name("highlightSearchQuery")
 }
 
 struct ReaderEventBus {
@@ -152,5 +154,17 @@ struct ReaderEventBus {
 
     func postWindowDidDeminiaturize() {
         center.post(name: .windowDidDeminiaturize, object: nil)
+    }
+
+    func postPresentWorkspaceSearch() {
+        center.post(name: .presentWorkspaceSearch, object: nil)
+    }
+
+    func postHighlightSearchQuery(query: String, page: Int, filePath: String) {
+        center.post(
+            name: .highlightSearchQuery,
+            object: nil,
+            userInfo: ["query": query, "pageIndex": page, "filePath": filePath]
+        )
     }
 }

@@ -28,13 +28,19 @@ final class SettingsRuntimeService {
         explanationPromptTemplate: String,
         wordSystemPrompt: String,
         sentenceSystemPrompt: String,
-        explanationSystemPrompt: String
+        explanationSystemPrompt: String,
+        extraConfig: String
     ) throws -> (baseURL: String, model: String) {
         let snapshot = LLMSettingsStore.snapshot(baseURL: baseURL, model: model)
+        let validatedExtra = try LLMExtraConfig.validatedJSON(extraConfig)
         if !snapshot.baseURL.isEmpty {
             try KeychainService.saveLLMAPIKey(apiKey, for: snapshot.baseURL)
+            settingsStore.persistExtraConfig(validatedExtra, for: snapshot.baseURL)
         }
         let persisted = settingsStore.persist(baseURL: snapshot.baseURL, model: snapshot.model)
+        let liveExtra = validatedExtra.isEmpty
+            ? LLMThinkingExtraConfig.defaultJSON(baseURL: persisted.baseURL, model: persisted.model)
+            : validatedExtra
         try updateConfig(
             baseURL: persisted.baseURL,
             apiKey: apiKey,
@@ -45,7 +51,8 @@ final class SettingsRuntimeService {
             explanationPromptTemplate: explanationPromptTemplate,
             wordSystemPrompt: wordSystemPrompt,
             sentenceSystemPrompt: sentenceSystemPrompt,
-            explanationSystemPrompt: explanationSystemPrompt
+            explanationSystemPrompt: explanationSystemPrompt,
+            extraConfig: liveExtra
         )
         return persisted
     }
@@ -60,7 +67,8 @@ final class SettingsRuntimeService {
         explanationPromptTemplate: String,
         wordSystemPrompt: String,
         sentenceSystemPrompt: String,
-        explanationSystemPrompt: String
+        explanationSystemPrompt: String,
+        extraConfig: String
     ) throws {
         try bridge.updateConfig(
             baseURL: baseURL,
@@ -72,7 +80,8 @@ final class SettingsRuntimeService {
             explanationPromptTemplate: explanationPromptTemplate,
             wordSystemPrompt: wordSystemPrompt,
             sentenceSystemPrompt: sentenceSystemPrompt,
-            explanationSystemPrompt: explanationSystemPrompt
+            explanationSystemPrompt: explanationSystemPrompt,
+            extraConfig: extraConfig
         )
     }
 }

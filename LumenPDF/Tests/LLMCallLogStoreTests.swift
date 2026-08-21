@@ -44,6 +44,63 @@ final class LLMCallLogStoreTests: XCTestCase {
         XCTAssertEqual(entry.promptTokens, 12)
         XCTAssertEqual(entry.completionTokens, 8)
         XCTAssertEqual(entry.totalTokens, 20)
+        XCTAssertEqual(entry.httpRequest, "")
+    }
+
+    func testFinishedCallPersistsHttpRequest() throws {
+        let fileURL = temporaryLogURL()
+        defer { try? FileManager.default.removeItem(at: fileURL.deletingLastPathComponent()) }
+
+        let store = LLMCallLogStore(fileURL: fileURL)
+        let id = store.begin(
+            kind: .wordTranslation,
+            model: "qwen-plus",
+            baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            input: "run"
+        )
+        store.finish(
+            id: id,
+            output: "跑",
+            source: "llm",
+            promptTokens: 10,
+            completionTokens: 4,
+            totalTokens: 14,
+            httpRequest: """
+            POST https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
+            Authorization: Bearer ***
+            Content-Type: application/json
+
+            {
+              "enable_thinking": false,
+              "model": "qwen-plus"
+            }
+            """
+        )
+
+        let reloaded = LLMCallLogStore(fileURL: fileURL)
+        let entry = try XCTUnwrap(reloaded.entries.first)
+        XCTAssertTrue(entry.httpRequest.contains("enable_thinking"))
+        XCTAssertTrue(entry.httpRequest.contains("Bearer ***"))
+        XCTAssertFalse(entry.httpRequest.lowercased().contains("sk-"))
+    }
+
+    func testLegacyLogWithoutHttpRequestStillDecodes() throws {
+        let fileURL = temporaryLogURL()
+        defer { try? FileManager.default.removeItem(at: fileURL.deletingLastPathComponent()) }
+        try FileManager.default.createDirectory(
+            at: fileURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+
+        let legacy = """
+        [{"id":"00000000-0000-0000-0000-000000000001","startedAt":0,"kind":"wordTranslation","model":"qwen-plus","baseURL":"https://example.test/v1","input":"run","output":"跑","status":"succeeded","source":"llm","errorMessage":"","promptTokens":10,"completionTokens":4,"totalTokens":14}]
+        """
+        try Data(legacy.utf8).write(to: fileURL)
+
+        let migrated = LLMCallLogStore(fileURL: fileURL)
+        XCTAssertEqual(migrated.entries.first?.httpRequest, "")
+        XCTAssertEqual(migrated.entries.first?.kind, .wordTranslation)
+        XCTAssertEqual(migrated.entries.first?.output, "跑")
     }
 
     func testRunningCallBecomesFailedAfterReload() throws {
@@ -119,7 +176,8 @@ final class LLMCallLogStoreTests: XCTestCase {
             errorMessage: "",
             promptTokens: 500_000,
             completionTokens: 250_000,
-            totalTokens: 750_000
+            totalTokens: 750_000,
+            httpRequest: ""
         )
 
         XCTAssertEqual(pricing.estimatedCost(for: entry), 2.5, accuracy: 0.000_001)
@@ -208,7 +266,8 @@ final class LLMCallLogStoreTests: XCTestCase {
             errorMessage: "",
             promptTokens: promptTokens,
             completionTokens: completionTokens,
-            totalTokens: promptTokens + completionTokens
+            totalTokens: promptTokens + completionTokens,
+            httpRequest: ""
         )
     }
 }
