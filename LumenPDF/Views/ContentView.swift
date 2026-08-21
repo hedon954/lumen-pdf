@@ -139,7 +139,7 @@ struct ContentView: View {
                             setInspectorVisible: setReadingInspectorVisible
                         )
                     }
-                    .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 }
             }
             .animation(.easeOut(duration: 0.16), value: workspaceSearch.isPresented)

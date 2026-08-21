@@ -22,7 +22,7 @@ predecessor:
 | `WorkspaceSearchCatalog` | 把笔记、单词、划线文本、分页原文、导读消息编成记录。 |
 | `WorkspaceSearchMatcher` | 空查询、类别过滤、大小写折叠、多词 AND、打分与摘要。 |
 | `WorkspaceSearchController` | 弹出/关闭、查询、启用类别、当前高亮项。 |
-| `WorkspaceSearchOverlay` | 扁平胶囊输入与带文字的类别开关。 |
+| `WorkspaceSearchOverlay` | 窗口居中的大胶囊输入，下方是带文字的类别开关。 |
 | `WorkspaceSearchOpener` | 切到阅读页、打开 PDF、跳页/选区、必要时打开 Inspector。 |
 | `PDFKitView` `highlightSearchQuery` | 在目标页用 `page.string` 定位后点亮匹配。 |
 
@@ -59,7 +59,7 @@ tokens = 空白拆分
 ## 5. 呈现与跳转
 
 - `LumenPDFApp` 在 `.commands` 注册「查找…」⌘F，经 `ReaderEventBus.presentWorkspaceSearch` 通知 `ContentView`。
-- 浮层使用扁平浅底、细描边和轻阴影的胶囊搜索条（高度 36pt），右侧是「笔记 / 划线 / 单词 / 原文 / AI」文字开关；结果列表叠在搜索条下方。
+- 浮层在窗口正中：独占一行的扁平胶囊搜索条（高度约 52pt、最大宽度约 720pt），下方居中是「笔记 / 划线 / 单词 / 原文 / AI」文字开关；结果列表再叠在开关下方。
 - 打开结果：`activeTab = .reader`，必要时 `selectedDocument` 切到 `pdfPath`，延迟后 `jumpToSelectionBounds` 或 `jumpToPage`。
 - 单词 / 笔记 / AI 打开对应 Inspector 模式；原文另外 `highlightSearchQuery`。
 - 搜索态是瞬时的，不写入 `ReadingRestorationStore`。
@@ -79,4 +79,4 @@ tokens = 空白拆分
 - 摘要截取匹配附近文本
 - 分页原文切块后仍能命中
 
-运行时须在 macOS App 中确认：⌘F 弹出扁平搜索条并可立即输入；默认结果不含单词/原文；类别按钮文字可读；打开原文后才变慢可接受；Return 跳转；Esc / 点外侧关闭。本环境无法运行 macOS UI，编译不能代替这项验收。
+运行时须在 macOS App 中确认：⌘F 在窗口中央弹出较大的扁平搜索条并可立即输入；类别开关在搜索条下方居中；默认结果不含单词/原文；打开原文后才变慢可接受；Return 跳转；Esc / 点外侧关闭。本环境无法运行 macOS UI，编译不能代替这项验收。

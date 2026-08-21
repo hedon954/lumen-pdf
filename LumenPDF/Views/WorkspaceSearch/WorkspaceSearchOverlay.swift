@@ -8,20 +8,21 @@ struct WorkspaceSearchOverlay: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        ZStack(alignment: .top) {
+        ZStack {
             scrim
                 .onTapGesture { controller.dismiss() }
 
-            VStack(alignment: .leading, spacing: 10) {
-                chrome
+            VStack(spacing: 14) {
+                searchPill
+                kindRow
                 if shouldShowResults {
                     resultsCard
                 }
             }
-            .padding(.top, 36)
-            .frame(width: 560)
+            .frame(maxWidth: 720)
+            .padding(.horizontal, 40)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onExitCommand { controller.dismiss() }
         .onKeyPress(.escape) {
             controller.dismiss()
@@ -57,9 +58,8 @@ struct WorkspaceSearchOverlay: View {
             .contentShape(Rectangle())
     }
 
-    private var chrome: some View {
+    private var kindRow: some View {
         HStack(spacing: 8) {
-            searchPill
             ForEach(WorkspaceSearchKind.allCases) { kind in
                 kindChip(kind)
             }
@@ -67,14 +67,14 @@ struct WorkspaceSearchOverlay: View {
     }
 
     private var searchPill: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 13, weight: .medium))
+                .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(.secondary)
 
             TextField("搜索笔记、划线…", text: $controller.query)
                 .textFieldStyle(.plain)
-                .font(.system(size: 13))
+                .font(.system(size: 17))
                 .focused($isSearchFocused)
                 .onSubmit { openSelected() }
                 .onKeyPress(.upArrow) {
@@ -92,15 +92,15 @@ struct WorkspaceSearchOverlay: View {
                     controller.query = ""
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 12))
+                        .font(.system(size: 14))
                         .foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("清除")
             }
         }
-        .padding(.horizontal, 12)
-        .frame(height: 36)
+        .padding(.horizontal, 18)
+        .frame(height: 52)
         .frame(maxWidth: .infinity)
         .background(capsuleSurface())
     }
@@ -111,10 +111,10 @@ struct WorkspaceSearchOverlay: View {
             controller.toggleKind(kind)
         } label: {
             Text(kind.title)
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(isOn ? Color.primary : Color.secondary)
-                .padding(.horizontal, 10)
-                .frame(height: 36)
+                .padding(.horizontal, 12)
+                .frame(height: 34)
                 .background(capsuleSurface(emphasized: isOn))
         }
         .buttonStyle(.plain)
@@ -155,7 +155,7 @@ struct WorkspaceSearchOverlay: View {
                         }
                         .padding(5)
                     }
-                    .frame(maxHeight: 320)
+                    .frame(maxHeight: 380)
                     .onChange(of: controller.selectedIndex) { _, index in
                         guard hits.indices.contains(index) else { return }
                         withAnimation(.easeOut(duration: 0.12)) {
