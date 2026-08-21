@@ -11,6 +11,7 @@ struct ContentView: View {
     @StateObject private var selectionActionBarModel = SelectionActionBarModel()
     @StateObject private var translationOverlayModel = TranslationOverlayModel()
     @StateObject private var viewportTransitionController = ReaderViewportTransitionController()
+    @StateObject private var workspaceSearch = WorkspaceSearchController()
     @ObservedObject private var restorationStore = ReadingRestorationStore.shared
     @AppStorage("llm_base_url") private var baseURL = ""
     @AppStorage("llm_model") private var model = ""
@@ -124,6 +125,25 @@ struct ContentView: View {
                 )
             }
         }
+        .overlay {
+            ZStack {
+                if workspaceSearch.isPresented {
+                    WorkspaceSearchOverlay(controller: workspaceSearch) { hit in
+                        let query = workspaceSearch.query
+                        workspaceSearch.dismiss()
+                        WorkspaceSearchOpener.open(
+                            hit,
+                            query: query,
+                            appState: appState,
+                            inspectorModel: inspectorModel,
+                            setInspectorVisible: setReadingInspectorVisible
+                        )
+                    }
+                    .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
+                }
+            }
+            .animation(.easeOut(duration: 0.16), value: workspaceSearch.isPresented)
+        }
         .toolbar {
             // Left: Library picker
             ToolbarItem(placement: .navigation) {
@@ -174,6 +194,14 @@ struct ContentView: View {
 
             // Right: Open file + Settings
             ToolbarItemGroup(placement: .automatic) {
+                Button {
+                    presentWorkspaceSearch()
+                } label: {
+                    Label("查找", systemImage: "magnifyingglass")
+                }
+                .help("查找…")
+                .accessibilityIdentifier("toolbar.workspaceSearch")
+
                 if appState.activeTab == .reader && appState.selectedDocument != nil {
                     Button {
                         setReadingInspectorVisible(!inspectorModel.isVisible)
@@ -239,6 +267,9 @@ struct ContentView: View {
             selectionActionBarModel.dismiss()
             translationOverlayModel.dismiss()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .presentWorkspaceSearch)) { _ in
+            presentWorkspaceSearch()
+        }
     }
 
     private static let minimumOutlineSidebarWidth = CGFloat(
@@ -266,6 +297,25 @@ struct ContentView: View {
         Binding(
             get: { isOutlineSidebarVisible ? .all : .detailOnly },
             set: { restorationStore.updateOutlineVisibility($0 != .detailOnly) }
+        )
+    }
+
+    private func presentWorkspaceSearch() {
+        selectionActionBarModel.dismiss()
+        translationOverlayModel.dismiss()
+        appState.refreshNotes()
+        appState.refreshVocabulary()
+        let path = appState.selectedDocument?.filePath
+        workspaceSearch.present(
+            records: WorkspaceSearchIndex.records(
+                notes: appState.notes,
+                words: appState.vocabulary,
+                document: appState.kitDocument,
+                pdfPath: path,
+                pdfName: appState.selectedDocument?.fileName,
+                markupItems: path.map { FreeMarkupStore.load($0) } ?? [],
+                session: inspectorModel.guideSession
+            )
         )
     }
 

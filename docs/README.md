@@ -37,6 +37,7 @@ PRD 记录**用户可感知的行为与验收标准**。TDD 记录**如何实现
 | v1.0.25 | 2026-08-20 | 文库封面与翻译重新生成 | [prd-2026-08-20-library-cover-translation-retry.md](prd/prd-2026-08-20-library-cover-translation-retry.md) | [tdd-2026-08-20-library-cover-translation-retry.md](tdd/tdd-2026-08-20-library-cover-translation-retry.md) |
 | v1.0.26 | 2026-08-20 | 笔记自动保存与翻译浮窗位置稳定 | [prd-2026-08-20-note-autosave-overlay-stability.md](prd/prd-2026-08-20-note-autosave-overlay-stability.md) | [tdd-2026-08-20-note-autosave-overlay-stability.md](tdd/tdd-2026-08-20-note-autosave-overlay-stability.md) |
 | unreleased | 2026-08-20 | LLM 设置跨重启持久化 | [prd-2026-08-20-llm-settings-persistence.md](prd/prd-2026-08-20-llm-settings-persistence.md) | [tdd-2026-08-20-llm-settings-persistence.md](tdd/tdd-2026-08-20-llm-settings-persistence.md) |
+| unreleased | 2026-08-21 | 工作区 Cmd+F 搜索 | [prd-2026-08-21-workspace-search.md](prd/prd-2026-08-21-workspace-search.md) | [tdd-2026-08-21-workspace-search.md](tdd/tdd-2026-08-21-workspace-search.md) |
 
 未单独成对的发布：
 
@@ -66,6 +67,7 @@ v1.0.2 笔记 + 划线
   → v1.0.15 原文回顾浮窗、删除、空内容禁止提交
   → v1.0.22 回顾浮窗内删除单条/全部
   → v1.0.26 Inspector、回顾浮窗、笔记列表可编辑并自动保存
+  → unreleased ⌘F 工作区搜索覆盖笔记、单词、划线、原文与 AI 解释
 ```
 
 ### LLM 与 AI 导读
@@ -78,6 +80,7 @@ v1.0.12 / v1.0.13 导读进入 Inspector
   → v1.0.24 空响应诊断、追问串行、跨页划线
   → v1.0.25 翻译刷新/重新生成
   → unreleased 保存设置后 API Key 与模型跨重启仍在
+  → unreleased 当前导读会话可经 ⌘F 检索
 ```
 
 ## 其他文档

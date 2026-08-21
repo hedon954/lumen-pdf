@@ -60,6 +60,8 @@ struct PDFKitView: NSViewRepresentable {
                        name: .jumpToPage, object: nil)
         nc.addObserver(context.coordinator, selector: #selector(Coordinator.jumpToSelectionBounds(_:)),
                        name: .jumpToSelectionBounds, object: nil)
+        nc.addObserver(context.coordinator, selector: #selector(Coordinator.highlightSearchQuery(_:)),
+                       name: .highlightSearchQuery, object: nil)
         nc.addObserver(context.coordinator, selector: #selector(Coordinator.restoreReadingViewport(_:)),
                        name: .restoreReadingViewport, object: nil)
         nc.addObserver(context.coordinator, selector: #selector(Coordinator.addHighlight(_:)),
@@ -1167,6 +1169,71 @@ struct PDFKitView: NSViewRepresentable {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
                 self?.isJumping = false
             }
+        }
+
+        @objc func highlightSearchQuery(_ notification: Notification) {
+            guard let query = notification.userInfo?["query"] as? String,
+                  let pageIndex = notification.userInfo?["pageIndex"] as? Int,
+                  let filePath = notification.userInfo?["filePath"] as? String,
+                  filePath == currentFilePath,
+                  let pdfView,
+                  let document = pdfView.document,
+                  let page = document.page(at: pageIndex)
+            else { return }
+
+            cancelPendingViewportRestore()
+            isJumping = true
+            pdfView.go(to: page)
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self, weak pdfView, weak page, weak document] in
+                guard let self, let pdfView, let page, let document else { return }
+                guard let selection = Self.searchSelection(
+                    matching: query,
+                    on: page,
+                    in: document
+                ) else { return }
+                pdfView.setCurrentSelection(selection, animate: true)
+                let bounds = selection.bounds(for: page)
+                self.center(rect: bounds, on: page, in: pdfView)
+                self.flashFocus(rects: [bounds], on: page)
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                self?.isJumping = false
+            }
+        }
+
+        private static func searchSelection(
+            matching query: String,
+            on page: PDFPage,
+            in document: PDFDocument
+        ) -> PDFSelection? {
+            let needles = searchNeedles(from: query)
+            let options: NSString.CompareOptions = [.caseInsensitive, .diacriticInsensitive]
+            for needle in needles {
+                let matches = document.findString(needle, withOptions: options)
+                let pageIndex = document.index(for: page)
+                if let onPage = matches.first(where: { selection in
+                    selection.pages.contains(where: { document.index(for: $0) == pageIndex })
+                }) {
+                    return onPage
+                }
+            }
+            return nil
+        }
+
+        private static func searchNeedles(from query: String) -> [String] {
+            let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+            let tokens = WorkspaceSearchMatcher.tokens(in: trimmed)
+            var needles: [String] = []
+            if !trimmed.isEmpty { needles.append(trimmed) }
+            if tokens.count > 1 {
+                needles.append(tokens.joined(separator: " "))
+            }
+            if let first = tokens.first, first.count >= 2, !needles.contains(first) {
+                needles.append(first)
+            }
+            return needles
         }
 
         @objc func restoreReadingViewport(_ notification: Notification) {

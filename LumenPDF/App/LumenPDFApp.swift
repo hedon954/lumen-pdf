@@ -21,6 +21,12 @@ struct LumenPDFApp: App {
                 }
                 .keyboardShortcut("o", modifiers: .command)
             }
+            CommandGroup(after: .textEditing) {
+                Button("查找…") {
+                    presentWorkspaceSearchIfMainWindow()
+                }
+                .keyboardShortcut("f", modifiers: .command)
+            }
         }
 
         Settings {
@@ -36,6 +42,12 @@ struct LumenPDFApp: App {
     }
 }
 
+private func presentWorkspaceSearchIfMainWindow() {
+    if let key = NSApp.keyWindow, key.frameAutosaveName == "LumenPDFSettings" {
+        return
+    }
+    ReaderEventBus.shared.postPresentWorkspaceSearch()
+}
 
 private struct WindowFramePersistence: NSViewRepresentable {
     let restorationStore: ReadingRestorationStore
