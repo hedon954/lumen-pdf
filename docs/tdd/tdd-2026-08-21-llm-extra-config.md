@@ -49,4 +49,4 @@ predecessor:
 - `JSONSyntaxHighlighter`：键、字符串、数字、关键字着色
 - `LLMExtraConfig`：自动格式化、非法 JSON / 数组 / `messages` 不能过校验
 
-本环境无法运行 macOS 设置页。运行时须确认 Extra Config 默认可见、语法着色、失焦后格式化，以及保存后的请求体与编辑器内容一致。
+本环境无法运行 macOS 设置页。运行时须确认 Extra Config 默认可见、语法着色、失焦后格式化，官方 API Key 链接在表单外右下角，以及保存后的请求体与编辑器内容一致。
