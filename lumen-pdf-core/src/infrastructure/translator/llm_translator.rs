@@ -399,10 +399,8 @@ impl LlmTranslator {
     }
 
     async fn probe_image_input_capability(&self) -> ImageInputCapability {
-        let body = ChatRequest {
-            model: self.config.model.clone(),
-            stream: false,
-            messages: vec![Message {
+        let body = self.chat_request(
+            vec![Message {
                 role: "user".into(),
                 content: RequestMessageContent::Parts(vec![
                     RequestContentPart::Text {
@@ -417,10 +415,10 @@ impl LlmTranslator {
                     },
                 ]),
             }],
-            response_format: None,
-            max_tokens: Some(1),
-            stream_options: None,
-        };
+            false,
+            None,
+            Some(1),
+        );
 
         let response = match shared_client()
             .post(self.completions_url())
@@ -438,9 +436,33 @@ impl LlmTranslator {
         }
 
         let status = response.status();
-        let body = response.text().await.unwrap_or_default();
+        let error_body = response.text().await.unwrap_or_default();
+        if is_unknown_optional_field_error(status, &error_body) && body.has_vendor_extensions() {
+            let retry = match shared_client()
+                .post(self.completions_url())
+                .bearer_auth(&self.config.api_key)
+                .json(&body.clone().without_vendor_extensions())
+                .send()
+                .await
+            {
+                Ok(response) => response,
+                Err(_) => return ImageInputCapability::Unknown,
+            };
+            if retry.status().is_success() {
+                return ImageInputCapability::Supported;
+            }
+            let retry_status = retry.status();
+            let retry_body = retry.text().await.unwrap_or_default();
+            if (retry_status.as_u16() == 400 || retry_status.as_u16() == 422)
+                && is_explicit_image_unsupported_error(&retry_body)
+            {
+                return ImageInputCapability::Unsupported;
+            }
+            return ImageInputCapability::Unknown;
+        }
+
         if (status.as_u16() == 400 || status.as_u16() == 422)
-            && is_explicit_image_unsupported_error(&body)
+            && is_explicit_image_unsupported_error(&error_body)
         {
             ImageInputCapability::Unsupported
         } else {
@@ -477,10 +499,8 @@ impl LlmTranslator {
             RequestMessageContent::Parts(parts)
         };
 
-        ChatRequest {
-            model: self.config.model.clone(),
-            stream,
-            messages: vec![
+        self.chat_request(
+            vec![
                 Message {
                     role: "system".into(),
                     content: RequestMessageContent::Text(self.explanation_system_prompt()),
@@ -490,19 +510,15 @@ impl LlmTranslator {
                     content: user_content,
                 },
             ],
-            response_format: None,
-            max_tokens: Some(DEFAULT_MAX_TOKENS),
-            stream_options: stream.then_some(StreamOptions {
-                include_usage: true,
-            }),
-        }
+            stream,
+            None,
+            Some(DEFAULT_MAX_TOKENS),
+        )
     }
 
     fn build_sentence_request(&self, sentence: &str, stream: bool) -> ChatRequest {
-        ChatRequest {
-            model: self.config.model.clone(),
-            stream,
-            messages: vec![
+        self.chat_request(
+            vec![
                 Message {
                     role: "system".into(),
                     content: RequestMessageContent::Text(self.sentence_system_prompt()),
@@ -512,21 +528,17 @@ impl LlmTranslator {
                     content: RequestMessageContent::Text(self.build_sentence_prompt(sentence)),
                 },
             ],
-            response_format: Some(ResponseFormat {
+            stream,
+            Some(ResponseFormat {
                 kind: "json_object".into(),
             }),
-            max_tokens: Some(DEFAULT_MAX_TOKENS),
-            stream_options: stream.then_some(StreamOptions {
-                include_usage: true,
-            }),
-        }
+            Some(DEFAULT_MAX_TOKENS),
+        )
     }
 
     fn build_word_request(&self, word: &str, sentence: &str, stream: bool) -> ChatRequest {
-        ChatRequest {
-            model: self.config.model.clone(),
-            stream,
-            messages: vec![
+        self.chat_request(
+            vec![
                 Message {
                     role: "system".into(),
                     content: RequestMessageContent::Text(self.word_system_prompt()),
@@ -536,12 +548,36 @@ impl LlmTranslator {
                     content: RequestMessageContent::Text(self.build_prompt(word, sentence)),
                 },
             ],
-            response_format: Some(ResponseFormat {
+            stream,
+            Some(ResponseFormat {
                 kind: "json_object".into(),
             }),
-            max_tokens: Some(DEFAULT_MAX_TOKENS),
+            Some(DEFAULT_MAX_TOKENS),
+        )
+    }
+
+    fn chat_request(
+        &self,
+        messages: Vec<Message>,
+        stream: bool,
+        response_format: Option<ResponseFormat>,
+        max_tokens: Option<u32>,
+    ) -> ChatRequest {
+        ChatRequest {
+            model: self.config.model.clone(),
+            messages,
+            response_format,
+            max_tokens,
+            stream,
             stream_options: stream.then_some(StreamOptions {
                 include_usage: true,
+            }),
+            enable_thinking: Some(false),
+            chat_template_kwargs: Some(ChatTemplateKwargs {
+                enable_thinking: false,
+            }),
+            thinking: Some(ThinkingControl {
+                kind: "disabled".into(),
             }),
         }
     }
@@ -558,13 +594,36 @@ impl LlmTranslator {
                 message: e.to_string(),
             })?;
 
-        if !resp.status().is_success() {
+        let resp = if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
-            return Err(LumenError::LlmApiError {
-                message: format!("HTTP {status}: {text}"),
-            });
-        }
+            if is_unknown_optional_field_error(status, &text) && body.has_vendor_extensions() {
+                let compatible_body = body.clone().without_vendor_extensions();
+                let retry = shared_client()
+                    .post(&url)
+                    .bearer_auth(&self.config.api_key)
+                    .json(&compatible_body)
+                    .send()
+                    .await
+                    .map_err(|e| LumenError::LlmApiError {
+                        message: e.to_string(),
+                    })?;
+                if !retry.status().is_success() {
+                    let retry_status = retry.status();
+                    let retry_text = retry.text().await.unwrap_or_default();
+                    return Err(LumenError::LlmApiError {
+                        message: format!("HTTP {retry_status}: {retry_text}"),
+                    });
+                }
+                retry
+            } else {
+                return Err(LumenError::LlmApiError {
+                    message: format!("HTTP {status}: {text}"),
+                });
+            }
+        } else {
+            resp
+        };
 
         let raw = resp.text().await.map_err(|e| LumenError::LlmApiError {
             message: e.to_string(),
@@ -630,15 +689,10 @@ impl LlmTranslator {
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
-            let lower = text.to_lowercase();
-            let can_retry_without_usage = body.stream_options.is_some()
-                && status.as_u16() == 400
-                && (lower.contains("stream_options")
-                    || lower.contains("include_usage")
-                    || lower.contains("unknown field"));
+            let can_retry_without_usage =
+                is_unknown_optional_field_error(status, &text) && body.has_vendor_extensions();
             if can_retry_without_usage {
-                let mut compatible_body = body.clone();
-                compatible_body.stream_options = None;
+                let compatible_body = body.clone().without_vendor_extensions();
                 resp = shared_client()
                     .post(url)
                     .bearer_auth(&self.config.api_key)
@@ -946,6 +1000,57 @@ struct ChatRequest {
     stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     stream_options: Option<StreamOptions>,
+    /// Qwen / DashScope / SiliconFlow and many OpenAI-compatible gateways.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    enable_thinking: Option<bool>,
+    /// vLLM / SGLang chat templates that read `enable_thinking` from kwargs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    chat_template_kwargs: Option<ChatTemplateKwargs>,
+    /// DeepSeek / GLM / Anthropic-compatible thinking control.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thinking: Option<ThinkingControl>,
+}
+
+impl ChatRequest {
+    fn has_vendor_extensions(&self) -> bool {
+        self.stream_options.is_some()
+            || self.enable_thinking.is_some()
+            || self.chat_template_kwargs.is_some()
+            || self.thinking.is_some()
+    }
+
+    fn without_vendor_extensions(mut self) -> Self {
+        self.stream_options = None;
+        self.enable_thinking = None;
+        self.chat_template_kwargs = None;
+        self.thinking = None;
+        self
+    }
+}
+
+#[derive(Clone, Serialize)]
+struct ChatTemplateKwargs {
+    enable_thinking: bool,
+}
+
+#[derive(Clone, Serialize)]
+struct ThinkingControl {
+    #[serde(rename = "type")]
+    kind: String,
+}
+
+fn is_unknown_optional_field_error(status: reqwest::StatusCode, body: &str) -> bool {
+    if status.as_u16() != 400 {
+        return false;
+    }
+    let lower = body.to_lowercase();
+    lower.contains("unknown field")
+        || lower.contains("unrecognized request")
+        || lower.contains("unexpected argument")
+        || lower.contains("enable_thinking")
+        || lower.contains("chat_template_kwargs")
+        || lower.contains("stream_options")
+        || lower.contains("include_usage")
 }
 
 #[derive(Clone, Serialize)]
@@ -1207,6 +1312,49 @@ mod tests {
         let json = serde_json::to_value(request).unwrap();
 
         assert!(json["messages"][1]["content"].is_string());
+    }
+
+    #[test]
+    fn all_chat_requests_explicitly_disable_thinking() {
+        let translator = translator();
+        let requests = [
+            translator.build_word_request("word", "a sentence", false),
+            translator.build_sentence_request("a sentence", true),
+            translator.build_explanation_request("selected", "context", "", &[], true),
+        ];
+        for request in requests {
+            assert_thinking_disabled(&serde_json::to_value(request).unwrap());
+        }
+    }
+
+    #[test]
+    fn stripping_vendor_extensions_omits_thinking_fields() {
+        let request = translator()
+            .build_word_request("word", "a sentence", true)
+            .without_vendor_extensions();
+        let json = serde_json::to_value(request).unwrap();
+        assert!(json.get("enable_thinking").is_none());
+        assert!(json.get("chat_template_kwargs").is_none());
+        assert!(json.get("thinking").is_none());
+        assert!(json.get("stream_options").is_none());
+    }
+
+    fn assert_thinking_disabled(json: &Value) {
+        assert_eq!(json["enable_thinking"], false);
+        assert_eq!(json["chat_template_kwargs"]["enable_thinking"], false);
+        assert_eq!(json["thinking"]["type"], "disabled");
+    }
+
+    #[test]
+    fn unknown_thinking_fields_are_retryable_on_bad_request() {
+        assert!(is_unknown_optional_field_error(
+            reqwest::StatusCode::BAD_REQUEST,
+            r#"{"error":{"message":"Unrecognized request argument supplied: enable_thinking"}}"#
+        ));
+        assert!(!is_unknown_optional_field_error(
+            reqwest::StatusCode::UNAUTHORIZED,
+            "enable_thinking"
+        ));
     }
 
     #[test]

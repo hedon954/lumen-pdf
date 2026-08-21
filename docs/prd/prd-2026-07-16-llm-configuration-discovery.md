@@ -5,6 +5,7 @@ tdd: tdd/tdd-2026-07-16-llm-configuration-discovery.md
 successor:
   - prd/prd-2026-08-14-ai-settings-notes.md
   - prd/prd-2026-08-20-llm-settings-persistence.md
+  - prd/prd-2026-08-21-llm-disable-thinking.md
 related:
   - prd/prd-2026-07-16-reading-ai-input-selection.md
 ---
