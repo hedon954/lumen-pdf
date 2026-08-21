@@ -92,6 +92,87 @@ enum PDFPageChromeFilter {
     }
 }
 
+/// PDFKit 常把附近的小节标题收进 `selection.string`，即使高亮并未盖住标题。
+/// 若标题词组又出现在正文里（例如段落以 “concurrency control” 收尾），按子串匹配会把标题行也当成选区。
+enum PDFSelectionHeadingLeakFilter {
+    static let minimumEchoLength = 8
+
+    static func stripEchoedHeadings(_ lines: [PDFTextLine]) -> [PDFTextLine] {
+        guard lines.count >= 2 else { return lines }
+        let normalized = lines.map { PDFSelectionTextMatcher.normalize($0.text) }
+        return lines.enumerated().compactMap { index, line in
+            let needle = normalized[index]
+            guard needle.count >= minimumEchoLength, isHeadingLike(line.text) else {
+                return line
+            }
+            let others = normalized.enumerated()
+                .compactMap { offset, text in offset == index ? nil : text }
+            let joinedOthers = others.joined(separator: " ")
+            let echoed = others.contains { other in
+                other.count > needle.count && other.contains(needle)
+            } || (joinedOthers.count > needle.count && joinedOthers.contains(needle))
+            return echoed ? nil : line
+        }
+    }
+
+    static func stripEchoedHeadings(from text: String) -> String {
+        let lines = text
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .components(separatedBy: "\n")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !lines.isEmpty else { return text }
+
+        if lines.count == 1 {
+            return stripEchoedPrefix(from: lines[0])
+        }
+
+        let dummy = lines.map { PDFTextLine(rect: .zero, text: $0) }
+        let stripped = stripEchoedHeadings(dummy).map(\.text)
+        if stripped.count == 1 {
+            return stripEchoedPrefix(from: stripped[0])
+        }
+        return stripped.joined(separator: "\n")
+    }
+
+    static func stripEchoedPrefix(from text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let words = trimmed.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).map(String.init)
+        guard words.count >= 10 else { return trimmed }
+
+        let maxPrefix = min(8, words.count / 3)
+        guard maxPrefix >= 1 else { return trimmed }
+        for count in 1...maxPrefix {
+            let prefix = words[0..<count].joined(separator: " ")
+            let remainder = words[count...].joined(separator: " ")
+            let normalizedPrefix = PDFSelectionTextMatcher.normalize(prefix)
+            guard normalizedPrefix.count >= minimumEchoLength, isHeadingLike(prefix) else {
+                continue
+            }
+            let normalizedRemainder = PDFSelectionTextMatcher.normalize(remainder)
+            if normalizedRemainder.contains(normalizedPrefix) {
+                return remainder
+            }
+        }
+        return trimmed
+    }
+
+    static func isHeadingLike(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count <= 80 else { return false }
+        let terminators = CharacterSet(charactersIn: ".!?。！？")
+        if trimmed.unicodeScalars.contains(where: { terminators.contains($0) }) {
+            return false
+        }
+        let words = trimmed.split(whereSeparator: { $0.isWhitespace || $0.isNewline })
+        guard (1...8).contains(words.count), let first = trimmed.first, first.isLetter else {
+            return false
+        }
+        return true
+    }
+}
+
 enum PDFSelectionTextMatcher {
     static func matchingLines(selectedText: String, pageLines: [PDFTextLine]) -> [PDFTextLine] {
         let haystack = normalize(selectedText)
@@ -116,9 +197,10 @@ enum PDFSelectionTextMatcher {
             }
         }
 
-        return zip(pageLines, flags).compactMap { line, matched in
+        let matched = zip(pageLines, flags).compactMap { line, matched in
             matched ? line : nil
         }
+        return PDFSelectionHeadingLeakFilter.stripEchoedHeadings(matched)
     }
 
     static func normalize(_ text: String) -> String {
@@ -161,9 +243,10 @@ enum PDFSelectionMarkupGeometry {
                 pageBounds: pageBounds,
                 neighbors: neighbors
             )
-            guard !bodyLines.isEmpty else { continue }
+            let contentLines = PDFSelectionHeadingLeakFilter.stripEchoedHeadings(bodyLines)
+            guard !contentLines.isEmpty else { continue }
 
-            let ordered = bodyLines.sorted { lhs, rhs in
+            let ordered = contentLines.sorted { lhs, rhs in
                 if abs(lhs.rect.midY - rhs.rect.midY) > 1 {
                     return lhs.rect.midY > rhs.rect.midY
                 }
@@ -173,10 +256,12 @@ enum PDFSelectionMarkupGeometry {
                 PDFPageMarkup(
                     pageIndex: pageIndex,
                     lineRects: ordered.map(\.rect),
-                    text: ordered
-                        .map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
-                        .filter { !$0.isEmpty }
-                        .joined(separator: "\n")
+                    text: PDFSelectionHeadingLeakFilter.stripEchoedHeadings(
+                        from: ordered
+                            .map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
+                            .filter { !$0.isEmpty }
+                            .joined(separator: "\n")
+                    )
                 )
             )
         }

@@ -5,6 +5,8 @@ tdd: tdd/tdd-2026-08-20-llm-settings-persistence.md
 predecessor:
   - prd/prd-2026-07-16-llm-configuration-discovery.md
   - prd/prd-2026-08-14-ai-settings-notes.md
+successor:
+  - prd/prd-2026-08-21-selection-settings-feedback.md
 ---
 
 # LumenPDF — LLM 设置跨重启持久化 PRD
@@ -33,7 +35,7 @@ predecessor:
 ### F3 — 保存失败必须可见
 
 - 若 API Key 未能写入钥匙串，不得显示「设置已保存」或「LLM 配置已生效」。
-- 向用户说明保存失败，当前未持久化的改动不能假装已经保存。
+- 向用户说明保存失败，当前未持久化的改动不能假装已经保存。后续修订：失败原因必须出现在设置页保存栏且可读，不得用主窗口浮窗或钥匙串状态码，见 [prd-2026-08-21-selection-settings-feedback.md](prd-2026-08-21-selection-settings-feedback.md)。
 
 ## 4. 非目标
 

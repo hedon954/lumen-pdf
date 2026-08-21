@@ -5,6 +5,8 @@ prd: prd/prd-2026-08-20-llm-settings-persistence.md
 predecessor:
   - tdd/tdd-2026-07-16-llm-configuration-discovery.md
   - tdd/tdd-2026-08-14-ai-settings-notes.md
+successor:
+  - tdd/tdd-2026-08-21-selection-settings-feedback.md
 ---
 
 # LumenPDF — LLM 设置跨重启持久化 TDD
@@ -45,7 +47,7 @@ predecessor:
 
 ## 4. Keychain 写入
 
-`SecItemUpdate` 使用带 `kSecUseAuthenticationUIFail` 的搜索 query。`SecItemAdd` 只包含 class / service / account / data-protection / accessible / value。Add 返回 duplicate 时再 Update。`save` 失败抛出 `KeychainServiceError`，不再 `return` 后继续显示成功。
+`SecItemUpdate` 使用带 `kSecUseAuthenticationUIFail` 的搜索 query。`SecItemAdd` 只包含 class / service / account / data-protection / accessible / value。Add 返回 duplicate 时再 Update。`save` 失败抛出 `KeychainServiceError`，不再 `return` 后继续显示成功。后续修订：失败文案与展示位置见 [tdd-2026-08-21-selection-settings-feedback.md](tdd-2026-08-21-selection-settings-feedback.md)。
 
 ## 5. 验证
 

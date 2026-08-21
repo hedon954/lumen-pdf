@@ -8,9 +8,24 @@ enum KeychainServiceError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .encodingFailed:
-            return "无法编码 API Key，设置未写入钥匙串。"
+            return "无法保存 API Key，请重新输入后再试。"
         case let .saveFailed(status):
-            return "无法将 API Key 写入钥匙串（代码 \(status)）。请重新保存设置。"
+            return KeychainSaveFailureMessage.userFacing(status)
+        }
+    }
+}
+
+enum KeychainSaveFailureMessage {
+    static func userFacing(_ status: OSStatus) -> String {
+        switch status {
+        case errSecMissingEntitlement:
+            return "无法保存 API Key。当前应用无法访问钥匙串，请重新安装后再试。"
+        case errSecNotAvailable, errSecInteractionNotAllowed:
+            return "无法保存 API Key。请先解锁 Mac 后再保存。"
+        case errSecAuthFailed:
+            return "无法保存 API Key。钥匙串验证失败，请解锁后再试。"
+        default:
+            return "无法保存 API Key，请稍后重试。"
         }
     }
 }
