@@ -304,18 +304,25 @@ struct ContentView: View {
         translationOverlayModel.dismiss()
         appState.refreshNotes()
         appState.refreshVocabulary()
+        let notes = appState.notes
+        let words = appState.vocabulary
+        let document = appState.kitDocument
         let path = appState.selectedDocument?.filePath
-        workspaceSearch.present(
-            records: WorkspaceSearchIndex.records(
-                notes: appState.notes,
-                words: appState.vocabulary,
-                document: appState.kitDocument,
+        let name = appState.selectedDocument?.fileName
+        let markupItems = path.map { FreeMarkupStore.load($0) } ?? []
+        let session = inspectorModel.guideSession
+        workspaceSearch.present { kind in
+            WorkspaceSearchIndex.records(
+                for: kind,
+                notes: notes,
+                words: words,
+                document: document,
                 pdfPath: path,
-                pdfName: appState.selectedDocument?.fileName,
-                markupItems: path.map { FreeMarkupStore.load($0) } ?? [],
-                session: inspectorModel.guideSession
+                pdfName: name,
+                markupItems: markupItems,
+                session: session
             )
-        )
+        }
     }
 
     private func setReadingInspectorVisible(_ visible: Bool) {

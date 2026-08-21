@@ -1,30 +1,34 @@
 import Foundation
 
 enum WorkspaceSearchKind: String, CaseIterable, Identifiable, Hashable {
-    case original
-    case word
     case note
     case underline
+    case word
+    case original
     case explanation
 
     var id: String { rawValue }
 
+    static let defaultEnabled: Set<WorkspaceSearchKind> = [.note, .underline]
+    static let minimumQueryLength = 2
+    static let extendedHaystackQueryLength = 4
+
     var title: String {
         switch self {
-        case .original: return "原文"
-        case .word: return "单词"
         case .note: return "笔记"
         case .underline: return "划线"
-        case .explanation: return "AI 解释"
+        case .word: return "单词"
+        case .original: return "原文"
+        case .explanation: return "AI"
         }
     }
 
     var systemImage: String {
         switch self {
-        case .original: return "doc.text"
-        case .word: return "character.book.closed"
         case .note: return "note.text"
         case .underline: return "underline"
+        case .word: return "character.book.closed"
+        case .original: return "doc.plaintext"
         case .explanation: return "sparkles"
         }
     }
@@ -45,11 +49,45 @@ struct WorkspaceSearchRecord: Identifiable, Equatable {
     let title: String
     let subtitle: String
     let haystack: String
+    let primaryHaystack: String
     let snippetSource: String
     let pdfPath: String
     let pdfName: String
     let pageIndex: Int
     let boundsStr: String
+    let normalizedTitle: String
+    let normalizedHaystack: String
+    let normalizedPrimary: String
+
+    init(
+        id: String,
+        kind: WorkspaceSearchKind,
+        title: String,
+        subtitle: String,
+        haystack: String,
+        primaryHaystack: String? = nil,
+        snippetSource: String,
+        pdfPath: String,
+        pdfName: String,
+        pageIndex: Int,
+        boundsStr: String
+    ) {
+        let primary = primaryHaystack ?? haystack
+        self.id = id
+        self.kind = kind
+        self.title = title
+        self.subtitle = subtitle
+        self.haystack = haystack
+        self.primaryHaystack = primary
+        self.snippetSource = snippetSource
+        self.pdfPath = pdfPath
+        self.pdfName = pdfName
+        self.pageIndex = pageIndex
+        self.boundsStr = boundsStr
+        self.normalizedTitle = WorkspaceSearchMatcher.normalize(title)
+        self.normalizedHaystack = WorkspaceSearchMatcher.normalize(haystack)
+        self.normalizedPrimary = WorkspaceSearchMatcher.normalize(primary)
+    }
 }
 
 struct WorkspaceSearchHit: Identifiable, Equatable {
@@ -183,24 +221,28 @@ enum WorkspaceSearchCatalog {
     }
 
     static func record(from word: WorkspaceSearchWordDraft) -> WorkspaceSearchRecord {
-        let parts = [
+        let sentence = ContextSentenceFormatting.displayParagraph(word.sentence)
+        let primary = [
             word.word,
             word.phonetic,
-            word.partOfSpeech,
             word.contextTranslation,
-            word.generalDefinition,
+            word.generalDefinition
+        ].joined(separator: "\n")
+        let haystack = [
+            primary,
+            word.partOfSpeech,
             word.contextExplanation,
             word.etymology,
-            word.sentence,
+            sentence,
             word.contextSentenceTranslation
-        ]
-        let sentence = ContextSentenceFormatting.displayParagraph(word.sentence)
+        ].joined(separator: "\n")
         return WorkspaceSearchRecord(
             id: "word:\(word.id)",
             kind: .word,
             title: word.word.isEmpty ? "单词" : word.word,
             subtitle: locationSubtitle(pdfName: word.pdfName, pageIndex: word.pageIndex, kind: .word),
-            haystack: parts.joined(separator: "\n"),
+            haystack: haystack,
+            primaryHaystack: primary,
             snippetSource: firstNonEmpty([
                 word.contextTranslation,
                 word.generalDefinition,
@@ -310,8 +352,8 @@ enum WorkspaceSearchMatcher {
     static func normalize(_ text: String) -> String {
         text.lowercased()
             .replacingOccurrences(of: "\u{00ad}", with: "")
-            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(whereSeparator: { $0.isWhitespace || $0.isNewline })
+            .joined(separator: " ")
     }
 
     static func tokens(in query: String) -> [String] {
@@ -328,34 +370,38 @@ enum WorkspaceSearchMatcher {
         limit: Int = resultLimit
     ) -> [WorkspaceSearchHit] {
         let tokens = tokens(in: query)
-        guard !tokens.isEmpty else { return [] }
-
-        let kinds = enabledKinds.isEmpty ? Set(WorkspaceSearchKind.allCases) : enabledKinds
         let needle = tokens.joined(separator: " ")
+        guard needle.count >= WorkspaceSearchKind.minimumQueryLength else { return [] }
+
+        let kinds = enabledKinds.isEmpty ? WorkspaceSearchKind.defaultEnabled : enabledKinds
+        let useExtendedHaystack = needle.count >= WorkspaceSearchKind.extendedHaystackQueryLength
 
         let ranked = records.compactMap { record -> WorkspaceSearchHit? in
             guard kinds.contains(record.kind) else { return nil }
-            let title = normalize(record.title)
-            let haystack = normalize(record.haystack)
-            let blob = title.isEmpty ? haystack : "\(title) \(haystack)"
+            let title = record.normalizedTitle
+            let body = useExtendedHaystack ? record.normalizedHaystack : record.normalizedPrimary
+            let blob = title.isEmpty ? body : "\(title) \(body)"
             guard tokens.allSatisfy({ blob.contains($0) }) else { return nil }
 
             var score = 0
             if title == needle {
-                score += 400
+                score += 500
             } else if title.hasPrefix(needle) {
-                score += 300
+                score += 360
             } else if title.contains(needle) {
-                score += 220
+                score += 240
             }
             for token in tokens where title.contains(token) {
-                score += 40
+                score += 50
             }
-            if haystack.contains(needle) {
-                score += 80
+            if body.contains(needle) {
+                score += 70
             }
-            for token in tokens where haystack.contains(token) {
-                score += 12
+            for token in tokens where body.contains(token) {
+                score += 8
+            }
+            if record.kind == .original {
+                score -= min(40, record.normalizedHaystack.count / 80)
             }
 
             return WorkspaceSearchHit(

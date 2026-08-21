@@ -22,40 +22,44 @@ predecessor:
 | `WorkspaceSearchCatalog` | 把笔记、单词、划线文本、分页原文、导读消息编成记录。 |
 | `WorkspaceSearchMatcher` | 空查询、类别过滤、大小写折叠、多词 AND、打分与摘要。 |
 | `WorkspaceSearchController` | 弹出/关闭、查询、启用类别、当前高亮项。 |
-| `WorkspaceSearchOverlay` | Spotlight 风格胶囊输入与圆形类别按钮。 |
+| `WorkspaceSearchOverlay` | 扁平胶囊输入与带文字的类别开关。 |
 | `WorkspaceSearchOpener` | 切到阅读页、打开 PDF、跳页/选区、必要时打开 Inspector。 |
 | `PDFKitView` `highlightSearchQuery` | 在目标页用 `page.string` 定位后点亮匹配。 |
 
 ## 3. 索引
 
-弹出浮层时重建一次目录，不在每次按键时重读 PDF。
+弹出浮层时只为默认类别建索引，不在每次按键时重读 PDF，也不在打开搜索时扫描全文。
 
-- **笔记**：`content` + `NoteTextList.decode(note)`；`kind = .note`。
-- **单词**：词条及翻译/解释/词源/例句字段；`kind = .word`。
-- **划线**：当前 `kitDocument` 上 `FreeMarkupStore` 各项，按 `boundsStr` 取出 `PDFPage.selection` 文本；没有文本则跳过。
-- **原文**：当前 PDF 每页 `page.string`，按段落合并成不超过约 480 字的块。
-- **AI 解释**：当前 `ExplanationSession` 中非空、非错误消息。
+- **笔记**（默认）：`content` + `NoteTextList.decode(note)`；`kind = .note`。
+- **划线**（默认）：当前 `kitDocument` 上 `FreeMarkupStore` 各项，按 `boundsStr` 取出 `PDFPage.selection` 文本；没有文本则跳过。
+- **单词**（按需）：词条、音标、翻译、释义为短查询字段；语境解释、词源、例句仅当查询不少于 4 个字符。
+- **原文**（按需）：当前 PDF 每页 `page.string`，按段落合并成不超过约 480 字的块。
+- **AI**（按需）：当前 `ExplanationSession` 中非空、非错误消息。
+
+`WorkspaceSearchController` 按类别缓存已加载记录；点开「原文」才调用 `page.string`。
 
 `WorkspaceSearchRecord` 只含 `String` / `Int` 字段，测试可直接构造。
 
 ## 4. 匹配
 
 ```text
-normalize(query) 为空 → []
+normalize(query) 长度 < 2 → []
 tokens = 空白拆分
-记录须属于 enabledKinds
-每个 token 都出现在 normalize(title + haystack) 中
-分数：标题前缀 > 标题包含 > 正文包含；同类再按页码、标题稳定排序
+记录须属于 enabledKinds；空集合视为默认（笔记+划线）
+短查询（< 4）只搜 title + primaryHaystack
+每个 token 都出现在选用字段中
+分数：标题精确/前缀 > 标题包含 > 正文包含；原文按块长度轻微降权
 最多 40 条
 摘要取匹配附近约 96 字
+查询输入防抖约 80ms
 ```
 
-未点选任何类别时视为全部开启；至少保留一类。
+默认启用 `.note` 与 `.underline`。点击开关加载对应类别；至少保留一类开启。
 
 ## 5. 呈现与跳转
 
 - `LumenPDFApp` 在 `.commands` 注册「查找…」⌘F，经 `ReaderEventBus.presentWorkspaceSearch` 通知 `ContentView`。
-- 浮层使用 `.ultraThinMaterial`、胶囊搜索条、直径 36 的圆形类别按钮；结果列表叠在搜索条下方。
+- 浮层使用扁平浅底、细描边和轻阴影的胶囊搜索条（高度 36pt），右侧是「笔记 / 划线 / 单词 / 原文 / AI」文字开关；结果列表叠在搜索条下方。
 - 打开结果：`activeTab = .reader`，必要时 `selectedDocument` 切到 `pdfPath`，延迟后 `jumpToSelectionBounds` 或 `jumpToPage`。
 - 单词 / 笔记 / AI 打开对应 Inspector 模式；原文另外 `highlightSearchQuery`。
 - 搜索态是瞬时的，不写入 `ReadingRestorationStore`。
@@ -64,13 +68,15 @@ tokens = 空白拆分
 
 `WorkspaceSearchMatcherTests`：
 
-- 空查询无结果
+- 空查询与单字符查询无结果
+- 默认类别为笔记与划线
+- 短查询不匹配单词例句
 - 笔记命中用户笔记与原文
-- 单词命中释义与词源
+- 单词命中释义；较长查询可命中词源
 - 类别过滤排除其他类
 - 多词 AND、大小写不敏感
 - 标题命中排在正文命中之前
 - 摘要截取匹配附近文本
 - 分页原文切块后仍能命中
 
-运行时须在 macOS App 中确认：⌘F 弹出与聚焦、五类都能命中、圆形过滤、Return 跳转、Esc / 点外侧关闭、深浅色外观。本环境无法运行 macOS UI，编译不能代替这项验收。
+运行时须在 macOS App 中确认：⌘F 弹出扁平搜索条并可立即输入；默认结果不含单词/原文；类别按钮文字可读；打开原文后才变慢可接受；Return 跳转；Esc / 点外侧关闭。本环境无法运行 macOS UI，编译不能代替这项验收。

@@ -122,6 +122,7 @@ enum WorkspaceSearchSourceMapper {
 enum WorkspaceSearchIndex {
     @MainActor
     static func records(
+        for kind: WorkspaceSearchKind,
         notes: [NoteEntry],
         words: [VocabularyEntry],
         document: PDFDocument?,
@@ -132,21 +133,36 @@ enum WorkspaceSearchIndex {
     ) -> [WorkspaceSearchRecord] {
         let path = pdfPath ?? ""
         let name = pdfName ?? ""
-        return WorkspaceSearchCatalog.records(
-            notes: WorkspaceSearchSourceMapper.notes(from: notes),
-            words: WorkspaceSearchSourceMapper.words(from: words),
-            underlines: WorkspaceSearchPDFExtractor.underlines(
-                items: markupItems,
-                document: document,
-                pdfPath: path,
-                pdfName: name
-            ),
-            originalChunks: WorkspaceSearchPDFExtractor.originalChunks(
-                from: document,
-                pdfPath: path,
-                pdfName: name
-            ),
-            explanations: WorkspaceSearchSourceMapper.explanations(from: session)
-        )
+        switch kind {
+        case .note:
+            return WorkspaceSearchCatalog.records(
+                notes: WorkspaceSearchSourceMapper.notes(from: notes)
+            )
+        case .word:
+            return WorkspaceSearchCatalog.records(
+                words: WorkspaceSearchSourceMapper.words(from: words)
+            )
+        case .underline:
+            return WorkspaceSearchCatalog.records(
+                underlines: WorkspaceSearchPDFExtractor.underlines(
+                    items: markupItems,
+                    document: document,
+                    pdfPath: path,
+                    pdfName: name
+                )
+            )
+        case .original:
+            return WorkspaceSearchCatalog.records(
+                originalChunks: WorkspaceSearchPDFExtractor.originalChunks(
+                    from: document,
+                    pdfPath: path,
+                    pdfName: name
+                )
+            )
+        case .explanation:
+            return WorkspaceSearchCatalog.records(
+                explanations: WorkspaceSearchSourceMapper.explanations(from: session)
+            )
+        }
     }
 }

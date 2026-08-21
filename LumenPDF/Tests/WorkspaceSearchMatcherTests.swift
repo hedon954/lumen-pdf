@@ -249,6 +249,61 @@ final class WorkspaceSearchMatcherTests: XCTestCase {
         )
     }
 
+    func testSingleCharacterQueryReturnsNoHits() {
+        let records = WorkspaceSearchCatalog.records(
+            notes: [Self.note(id: "n1", content: "Concurrency control")],
+            words: [Self.word(id: "w1", word: "latency", translation: "在某种程度上")]
+        )
+
+        XCTAssertTrue(
+            WorkspaceSearchMatcher.hits(
+                query: "我",
+                records: records,
+                enabledKinds: Set(WorkspaceSearchKind.allCases)
+            ).isEmpty
+        )
+    }
+
+    func testShortQueryDoesNotSearchWordSentences() {
+        let records = WorkspaceSearchCatalog.records(
+            words: [
+                Self.word(
+                    id: "w1",
+                    word: "scheduler",
+                    translation: "调度器",
+                    sentence: "The batch job records my choices."
+                )
+            ]
+        )
+
+        XCTAssertTrue(
+            WorkspaceSearchMatcher.hits(
+                query: "job",
+                records: records,
+                enabledKinds: [.word]
+            ).isEmpty
+        )
+        XCTAssertEqual(
+            WorkspaceSearchMatcher.hits(
+                query: "skedannymi",
+                records: WorkspaceSearchCatalog.records(words: [
+                    Self.word(
+                        id: "w1",
+                        word: "scheduler",
+                        translation: "调度器",
+                        etymology: "from Greek skedannymi"
+                    )
+                ]),
+                enabledKinds: [.word]
+            ).map(\.record.id),
+            ["word:w1"]
+        )
+    }
+
+    func testDefaultKindsAreNotesAndUnderlines() {
+        XCTAssertEqual(WorkspaceSearchKind.defaultEnabled, [.note, .underline])
+    }
+
     private static func note(
         id: String = "n1",
         content: String,
@@ -262,6 +317,31 @@ final class WorkspaceSearchMatcherTests: XCTestCase {
             boundsStr: "{{10, 20}, {100, 12}}",
             content: content,
             noteStorage: noteStorage
+        )
+    }
+
+    private static func word(
+        id: String,
+        word: String,
+        translation: String = "",
+        sentence: String = "",
+        etymology: String = ""
+    ) -> WorkspaceSearchWordDraft {
+        WorkspaceSearchWordDraft(
+            id: id,
+            word: word,
+            sentence: sentence,
+            pdfPath: "/tmp/a.pdf",
+            pdfName: "a.pdf",
+            pageIndex: 0,
+            boundsStr: "",
+            phonetic: "",
+            partOfSpeech: "",
+            contextTranslation: translation,
+            contextExplanation: "",
+            etymology: etymology,
+            generalDefinition: "",
+            contextSentenceTranslation: ""
         )
     }
 }

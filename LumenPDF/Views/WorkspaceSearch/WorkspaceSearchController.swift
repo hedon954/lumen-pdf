@@ -5,41 +5,52 @@ import SwiftUI
 final class WorkspaceSearchController: ObservableObject {
     @Published var isPresented = false
     @Published var query = "" {
-        didSet { clampSelection() }
+        didSet { scheduleHitRefresh() }
     }
-    @Published var enabledKinds: Set<WorkspaceSearchKind> = Set(WorkspaceSearchKind.allCases) {
-        didSet { clampSelection() }
-    }
+    @Published var enabledKinds: Set<WorkspaceSearchKind> = WorkspaceSearchKind.defaultEnabled
     @Published var selectedIndex = 0
-    @Published private(set) var records: [WorkspaceSearchRecord] = []
+    @Published private(set) var hits: [WorkspaceSearchHit] = []
     @Published private(set) var focusNonce = 0
 
-    var hits: [WorkspaceSearchHit] {
-        WorkspaceSearchMatcher.hits(
-            query: query,
-            records: records,
-            enabledKinds: enabledKinds
-        )
+    private var recordsByKind: [WorkspaceSearchKind: [WorkspaceSearchRecord]] = [:]
+    private var loadKind: ((WorkspaceSearchKind) -> [WorkspaceSearchRecord])?
+    private var hitRefreshTask: Task<Void, Never>?
+
+    var activeRecords: [WorkspaceSearchRecord] {
+        WorkspaceSearchKind.allCases.flatMap { kind in
+            guard enabledKinds.contains(kind) else { return [] }
+            return recordsByKind[kind] ?? []
+        }
     }
 
-    func present(records: [WorkspaceSearchRecord]) {
-        self.records = records
+    func present(loader: @escaping (WorkspaceSearchKind) -> [WorkspaceSearchRecord]) {
+        loadKind = loader
         if !isPresented {
             query = ""
-            enabledKinds = Set(WorkspaceSearchKind.allCases)
+            enabledKinds = WorkspaceSearchKind.defaultEnabled
             selectedIndex = 0
+            recordsByKind = [:]
             isPresented = true
         }
+        for kind in enabledKinds {
+            recordsByKind[kind] = loader(kind)
+        }
         focusNonce += 1
-        clampSelection()
+        refreshHitsImmediately()
     }
 
     func dismiss() {
+        hitRefreshTask?.cancel()
         isPresented = false
-        query = ""
         selectedIndex = 0
-        records = []
-        enabledKinds = Set(WorkspaceSearchKind.allCases)
+        hits = []
+        recordsByKind = [:]
+        loadKind = nil
+        enabledKinds = WorkspaceSearchKind.defaultEnabled
+        if !query.isEmpty {
+            query = ""
+        }
+        hitRefreshTask?.cancel()
     }
 
     func toggleKind(_ kind: WorkspaceSearchKind) {
@@ -48,7 +59,11 @@ final class WorkspaceSearchController: ObservableObject {
             enabledKinds.remove(kind)
         } else {
             enabledKinds.insert(kind)
+            if recordsByKind[kind] == nil {
+                recordsByKind[kind] = loadKind?(kind) ?? []
+            }
         }
+        refreshHitsImmediately()
     }
 
     func moveSelection(_ delta: Int) {
@@ -61,9 +76,27 @@ final class WorkspaceSearchController: ObservableObject {
     }
 
     func selectedHit() -> WorkspaceSearchHit? {
-        let currentHits = hits
-        guard currentHits.indices.contains(selectedIndex) else { return currentHits.first }
-        return currentHits[selectedIndex]
+        guard hits.indices.contains(selectedIndex) else { return hits.first }
+        return hits[selectedIndex]
+    }
+
+    private func scheduleHitRefresh() {
+        hitRefreshTask?.cancel()
+        hitRefreshTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 80_000_000)
+            guard !Task.isCancelled else { return }
+            refreshHitsImmediately()
+        }
+    }
+
+    private func refreshHitsImmediately() {
+        hitRefreshTask?.cancel()
+        hits = WorkspaceSearchMatcher.hits(
+            query: query,
+            records: activeRecords,
+            enabledKinds: enabledKinds
+        )
+        clampSelection()
     }
 
     private func clampSelection() {
