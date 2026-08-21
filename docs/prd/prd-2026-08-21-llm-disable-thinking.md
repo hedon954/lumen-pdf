@@ -29,7 +29,7 @@ Qwen3、GLM、DeepSeek 等兼容 OpenAI 的接口默认会开 thinking。把 `en
 
 - 单词翻译、句子翻译、AI 导读（含图片追问）、图片能力探测都关闭 thinking。
 - 只带当前 Base URL / 模型对应的那一套字段：
-  - 阿里云百炼、硅基流动：`enable_thinking: false`
+  - 阿里云百炼、硅基流动、以及阿里内部 OpenAI 兼容网关（如 IdeaLab / `alibaba-inc.com`）：`enable_thinking: false`
   - 自建 vLLM / SGLang 上的 Qwen：`chat_template_kwargs.enable_thinking: false`
   - DeepSeek、智谱、火山方舟：`thinking.type: disabled`
   - OpenRouter：`reasoning.enabled: false`
@@ -53,6 +53,6 @@ Qwen3、GLM、DeepSeek 等兼容 OpenAI 的接口默认会开 thinking。把 `en
 
 ## 5. 验收标准
 
-1. 百炼 + Qwen 的请求 JSON 只有 `enable_thinking: false`，没有另外两条 thinking 字段，用户消息以 `/no_think` 结尾。
+1. 百炼或 IdeaLab + Qwen 的请求 JSON 只有 `enable_thinking: false`，没有另外两条 thinking 字段，用户消息以 `/no_think` 结尾。
 2. 用默认会思考的 Qwen 时，回复不再先空等一段 thinking。
 3. 对不接受这些字段的 OpenAI 兼容接口，请求仍能成功，而不是一直 400。

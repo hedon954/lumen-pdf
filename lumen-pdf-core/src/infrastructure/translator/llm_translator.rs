@@ -1371,6 +1371,36 @@ mod tests {
     }
 
     #[test]
+    fn alibaba_idealab_qwen_sends_enable_thinking_false() {
+        let json = serde_json::to_value(
+            translator_with(
+                "https://idealab.alibaba-inc.com/api/openai/v1",
+                "qwen3.7-flash",
+            )
+            .build_word_request("word", "a sentence", true),
+        )
+        .unwrap();
+        assert_eq!(json["enable_thinking"], false);
+        assert!(json.get("chat_template_kwargs").is_none());
+        assert!(json.get("n").is_none());
+        assert_last_user_ends_with_no_think(&json);
+    }
+
+    #[test]
+    fn extra_config_can_force_enable_thinking_false_on_idealab() {
+        let mut translator = translator_with(
+            "https://idealab.alibaba-inc.com/api/openai/v1",
+            "qwen3.7-flash",
+        );
+        translator.config.extra_config = r#"{"enable_thinking": false}"#.into();
+        let json = translator
+            .chat_json(&translator.build_word_request("word", "a sentence", true))
+            .unwrap();
+        assert_eq!(json["enable_thinking"], false);
+        assert!(json.get("n").is_none());
+    }
+
+    #[test]
     fn openai_omits_vendor_thinking_fields() {
         let json = serde_json::to_value(
             translator_with("https://api.openai.com/v1", "gpt-4o").build_word_request(

@@ -97,7 +97,7 @@ v1.0.12 / v1.0.13 导读进入 Inspector
   → unreleased 保存设置后 API Key 与模型跨重启仍在
   → unreleased 设置保存失败只在设置页保存栏提示；ad-hoc 安装可写入钥匙串
   → unreleased 当前导读会话可经 ⌘F 检索
-  → unreleased 按服务商关闭 thinking；Qwen 带 enable_thinking 与 /no_think
+  → unreleased 按服务商关闭 thinking；百炼 / IdeaLab 的 Qwen 带 enable_thinking 与 /no_think
   → unreleased 期望 JSON 的模型输出先 json repair 再解析
   → unreleased 设置页 Extra Config 合并进请求；内置服务商附官方 API Key 链接
 ```

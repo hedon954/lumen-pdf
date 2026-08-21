@@ -23,7 +23,7 @@ predecessor:
 ### F1 — Extra Config
 
 - LLM 设置页提供 Extra Config 编辑框，内容为 JSON 对象，可为空。
-- 保存后按当前 Base URL 记住；切换服务商时加载该地址下已保存的 Extra Config，互不覆盖。
+- 保存后按当前 Base URL 记住；切换服务商时加载该地址下已保存的 Extra Config，互不覆盖。只改编辑框、不点「保存设置」不会进入下一次请求。
 - 每次单词翻译、整句翻译、AI 导读、图片能力探测的 `/chat/completions` 都把 Extra Config 合并进请求体。
 - 同名键以用户填写的为准，对象字段深度合并。
 - 不得用 Extra Config 改写 `messages`、`stream`、`stream_options`。

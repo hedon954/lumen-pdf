@@ -33,7 +33,7 @@ successor:
 
 | 判定 | 请求字段 | `/no_think` |
 | --- | --- | --- |
-| host 含 `dashscope` / `bailian` | `enable_thinking: false` | Qwen 系 |
+| host 含 `dashscope` / `bailian` / `alibaba-inc.com` / `aliyuncs.com` / `idealab` | `enable_thinking: false` | Qwen 系 |
 | host 含 `siliconflow` | `enable_thinking: false` | Qwen 系 |
 | host 含 `openrouter.ai` | `reasoning.enabled: false` | Qwen 系 |
 | DeepSeek / 智谱 / 火山 | `thinking.type: disabled` | 否 |
@@ -48,7 +48,7 @@ Qwen 系：模型名含 `qwen` / `qwq`，或等于 `coder-model`。`enable_think
 
 `thinking_control` / `llm_translator` 单测：
 
-- 百炼 Qwen：只有 `enable_thinking`，用户消息以 `/no_think` 结尾
+- 百炼 / IdeaLab Qwen：只有 `enable_thinking`，用户消息以 `/no_think` 结尾
 - OpenAI：无扩展字段
 - 自建 Qwen：只有 `chat_template_kwargs`
 - DeepSeek：`thinking.type: disabled`

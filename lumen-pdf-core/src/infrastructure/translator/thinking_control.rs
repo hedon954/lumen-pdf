@@ -119,7 +119,14 @@ fn host_of(base_url: &str) -> String {
 }
 
 fn is_dashscope_host(host: &str) -> bool {
-    host.contains("dashscope") || host.contains("bailian")
+    // Public DashScope, plus Alibaba internal OpenAI-compatible proxies
+    // such as IdeaLab. Those gateways honour top-level `enable_thinking`
+    // and default it to true when the field is missing.
+    host.contains("dashscope")
+        || host.contains("bailian")
+        || host.contains("alibaba-inc.com")
+        || host.contains("aliyuncs.com")
+        || host.contains("idealab")
 }
 
 fn is_siliconflow_host(host: &str) -> bool {
@@ -169,6 +176,16 @@ mod tests {
         let policy = ThinkingDisablePolicy::for_endpoint(
             "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
             "qwen3-max",
+        );
+        assert_eq!(policy.kind, ThinkingDisableKind::EnableThinking);
+        assert!(policy.append_no_think);
+    }
+
+    #[test]
+    fn alibaba_idealab_qwen_uses_enable_thinking() {
+        let policy = ThinkingDisablePolicy::for_endpoint(
+            "https://idealab.alibaba-inc.com/api/openai/v1",
+            "qwen3.7-flash",
         );
         assert_eq!(policy.kind, ThinkingDisableKind::EnableThinking);
         assert!(policy.append_no_think);

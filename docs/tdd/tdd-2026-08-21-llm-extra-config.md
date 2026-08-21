@@ -12,7 +12,9 @@ predecessor:
 
 ## 1. 技术结论
 
-Extra Config 是一段 JSON 对象字符串，经 UniFFI `AppConfig.llm_extra_config` 进入 `LlmConfig`。发送 chat 请求前用 `extra_config::merge_chat_request` 深度合并进已序列化的请求体。API Key 链接是 `LLMProviderPreset.apiKeyURL`，画在 API Key 输入旁。
+Extra Config 是一段 JSON 对象字符串，经 UniFFI `AppConfig.llm_extra_config` 进入 `LlmConfig`。发送 chat 请求前用 `extra_config::merge_chat_request` 深度合并进已序列化的请求体。只在「保存设置」时写入 `llm_extra_config_by_base_url` 并 `updateLlmConfig`；编辑框草稿不会进请求。API Key 链接是 `LLMProviderPreset.apiKeyURL`，画在 API Key 输入旁。
+
+阿里内部 OpenAI 兼容网关（IdeaLab）在请求缺少 `enable_thinking` 时会自行填 `true`，控制台里还常补 `n: 1`。这类 host 的内置字段是顶层 `enable_thinking: false`，不是 `chat_template_kwargs`。
 
 ## 2. 模块
 
@@ -39,6 +41,7 @@ Extra Config 是一段 JSON 对象字符串，经 UniFFI `AppConfig.llm_extra_co
 ## 4. 验证
 
 - `extra_config`：空、覆盖、深合并、保留键、非对象报错
+- IdeaLab Qwen：内置顶层 `enable_thinking: false`；Extra Config 同名字段覆盖后仍为用户值
 - `LLMSettingsStore`：按 Base URL 隔离；`openai.com` 与 `/v1` 读回同一份
 - `LLMExtraConfig`：非法 JSON / 数组 / `messages` 不能过校验
 - `LLMModelCatalogServiceTests`：每个内置服务商都有 https 官方 Key 链接
