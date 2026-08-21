@@ -18,7 +18,8 @@ predecessor:
 
 | 模块 | 职责 |
 | --- | --- |
-| `thinking_control.rs` | 按 Base URL / 模型生成默认 Extra Config JSON。 |
+| `LLMSettingsPage` | 官方申请链接放在表单外右下角（`safeAreaInset`），不插入表单行。 |
+| `LLMConfigurationSection` | Extra Config 编辑器放在模型字段下方，与服务商同一节。 |
 | `LLMThinkingExtraConfig` | Swift 侧同一套默认 JSON，供设置页展示。 |
 | `LLMSettingsStore` | `llm_extra_config_by_base_url` 存用户值；空则 `effectiveExtraConfig` 返回默认。 |
 | `LLMExtraConfig` | 校验、自动格式化、JSON 相等比较。 |

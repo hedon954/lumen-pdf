@@ -48,19 +48,15 @@ struct LLMSettingsPage: View {
                 configuration: configuration,
                 onSubmit: onSubmit
             )
-
-            Section("Extra Config") {
-                JSONEditorView(text: $extraConfig, minHeight: 160)
-                    .frame(minHeight: 160)
-                    .accessibilityLabel("Extra Config")
-                Text("未修改时显示当前服务商关闭 thinking 的默认字段，改了就用你的。清空并保存后恢复默认；保存 {} 表示不附加任何字段。编辑结束会自动格式化。不能改 messages 或 stream。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
         }
         .formStyle(.grouped)
         .contentMargins(.top, 0, for: .scrollContent)
         .navigationTitle("LLM 配置")
+        .safeAreaInset(edge: .bottom, alignment: .trailing) {
+            LLMProviderAPIKeyLink(baseURL: baseURL)
+                .padding(.trailing, 20)
+                .padding(.bottom, 8)
+        }
     }
 }
 
