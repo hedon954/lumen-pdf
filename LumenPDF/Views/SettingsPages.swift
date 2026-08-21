@@ -50,12 +50,10 @@ struct LLMSettingsPage: View {
             )
 
             Section("Extra Config") {
-                TextEditor(text: $extraConfig)
-                    .font(.system(.callout, design: .monospaced))
-                    .scrollContentBackground(.hidden)
-                    .frame(minHeight: 120)
+                JSONEditorView(text: $extraConfig, minHeight: 160)
+                    .frame(minHeight: 160)
                     .accessibilityLabel("Extra Config")
-                Text("合并进每次 chat/completions 请求，覆盖同名内置字段。用于厂商特有参数，例如 {\"thinking_budget\": 0}。不能改 messages 或 stream。")
+                Text("未修改时显示当前服务商关闭 thinking 的默认字段，改了就用你的。清空并保存后恢复默认；保存 {} 表示不附加任何字段。编辑结束会自动格式化。不能改 messages 或 stream。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

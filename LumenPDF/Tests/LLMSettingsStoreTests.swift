@@ -77,15 +77,59 @@ final class LLMSettingsStoreTests: XCTestCase {
         )
         XCTAssertEqual(store.loadExtraConfig(for: "https://api.deepseek.com/v1"), "")
     }
+
+    func testEffectiveExtraConfigUsesProviderDefaultWhenUnmodified() {
+        let store = LLMSettingsStore(defaults: defaults)
+        let extra = store.effectiveExtraConfig(
+            for: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            model: "qwen-plus"
+        )
+        XCTAssertTrue(LLMExtraConfig.jsonEquals(extra, #"{"enable_thinking":false}"#))
+        XCTAssertTrue(extra.contains("\n"))
+    }
+
+    func testEffectiveExtraConfigPrefersStoredUserValue() {
+        let store = LLMSettingsStore(defaults: defaults)
+        store.persistExtraConfig(#"{"enable_thinking":true}"#, for: "https://dashscope.aliyuncs.com/compatible-mode/v1")
+        let extra = store.effectiveExtraConfig(
+            for: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            model: "qwen-plus"
+        )
+        XCTAssertTrue(LLMExtraConfig.jsonEquals(extra, #"{"enable_thinking":true}"#))
+    }
+
+    func testEmptyObjectIsAUserOverrideNotTheDefault() {
+        let store = LLMSettingsStore(defaults: defaults)
+        store.persistExtraConfig("{}", for: "https://dashscope.aliyuncs.com/compatible-mode/v1")
+        XCTAssertTrue(
+            LLMExtraConfig.jsonEquals(
+                store.effectiveExtraConfig(
+                    for: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                    model: "qwen-plus"
+                ),
+                "{}"
+            )
+        )
+    }
 }
 
 final class LLMExtraConfigTests: XCTestCase {
     func testEmptyAndObjectAreAccepted() throws {
         XCTAssertEqual(try LLMExtraConfig.validatedJSON("  "), "")
-        XCTAssertEqual(
-            try LLMExtraConfig.validatedJSON(#"{"enable_thinking": false}"#),
-            #"{"enable_thinking": false}"#
+        let pretty = try LLMExtraConfig.validatedJSON(#"{"enable_thinking": false}"#)
+        XCTAssertTrue(LLMExtraConfig.jsonEquals(pretty, #"{"enable_thinking":false}"#))
+        XCTAssertTrue(pretty.contains("\n"))
+    }
+
+    func testPrettyPrintedAndJsonEquals() {
+        XCTAssertEqual(LLMExtraConfig.prettyPrinted("  "), "")
+        XCTAssertTrue(
+            LLMExtraConfig.jsonEquals(
+                #"{"b":1,"a":2}"#,
+                LLMExtraConfig.prettyPrinted(#"{"a":2,"b":1}"#)
+            )
         )
+        XCTAssertEqual(LLMExtraConfig.prettyPrinted("{"), "{")
     }
 
     func testRejectsInvalidJSONArrayAndReservedKeys() {

@@ -145,7 +145,7 @@ struct SettingsView: View {
             }
         }
         apiKey = KeychainService.loadLLMAPIKey(for: resolvedBaseURL) ?? ""
-        extraConfig = LLMSettingsStore().loadExtraConfig(for: resolvedBaseURL)
+        extraConfig = LLMSettingsStore().effectiveExtraConfig(for: resolvedBaseURL, model: model)
         llmConfiguration.remember(baseURL: baseURL, model: model)
         if llmConfiguration.shouldAutomaticallyRefresh(baseURL: baseURL, apiKey: apiKey) {
             Task {
@@ -317,6 +317,10 @@ struct SettingsView: View {
         } else {
             let normalizedBaseURL = SettingsRuntimeService.shared.normalizedLLMBaseURL(baseURL)
             persisted = (normalizedBaseURL, model)
+            let validated = try LLMExtraConfig.validatedJSON(extraConfig)
+            let liveExtra = validated.isEmpty
+                ? LLMThinkingExtraConfig.defaultJSON(baseURL: persisted.baseURL, model: persisted.model)
+                : validated
             try SettingsRuntimeService.shared.updateConfig(
                 baseURL: persisted.baseURL,
                 apiKey: apiKey,
@@ -328,7 +332,7 @@ struct SettingsView: View {
                 wordSystemPrompt: wordSystemPrompt,
                 sentenceSystemPrompt: sentenceSystemPrompt,
                 explanationSystemPrompt: explanationSystemPrompt,
-                extraConfig: try LLMExtraConfig.validatedJSON(extraConfig)
+                extraConfig: liveExtra
             )
         }
         if persisted.baseURL != baseURL, !baseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -336,6 +340,12 @@ struct SettingsView: View {
         }
         if persisted.model != model {
             model = persisted.model
+        }
+        if persistCredentials {
+            extraConfig = LLMSettingsStore().effectiveExtraConfig(
+                for: persisted.baseURL,
+                model: persisted.model
+            )
         }
     }
 

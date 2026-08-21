@@ -12,23 +12,32 @@ predecessor:
 
 ## 1. 产品结论
 
-设置里的 LLM 配置必须允许用户填写 **Extra Config**（JSON 对象），合并进每次 chat 请求，用来覆盖我们内置逻辑照顾不到的厂商参数。每个内置服务商都要在 API Key 旁给出**官方获取 API Key 的链接**。
+设置里的 Extra Config 是用户看得见、改得了的请求附加字段。关闭 thinking 的厂商字段由系统按服务商写入 Extra Config 默认值；用户没改就用默认，改了就用用户的。不再在请求里偷偷加字段，也不再追加 `/no_think`。编辑器做 JSON 语法着色，并在编辑结束和保存时自动格式化。每个内置服务商在 API Key 旁给出官方申请链接。
 
 ## 2. 问题
 
-各家网关的 thinking、预算、采样字段并不统一。只靠内置映射会漏。用户还得自己去搜申请 Key 的页面。
+各家网关的 thinking、预算、采样字段并不统一。把关 thinking 藏在请求拼装里，用户看不到也改不了；只靠 Extra Config 又不填时，thinking 会重新打开。JSON 挤在一行也不好改。
 
 ## 3. 功能需求
 
 ### F1 — Extra Config
 
-- LLM 设置页提供 Extra Config 编辑框，内容为 JSON 对象，可为空。
-- 保存后按当前 Base URL 记住；切换服务商时加载该地址下已保存的 Extra Config，互不覆盖。只改编辑框、不点「保存设置」不会进入下一次请求。
-- 每次单词翻译、整句翻译、AI 导读、图片能力探测的 `/chat/completions` 都把 Extra Config 合并进请求体。
-- 同名键以用户填写的为准，对象字段深度合并。
+- LLM 设置页提供 Extra Config 编辑器，内容为 JSON 对象，可为空。
+- 未保存过用户值时，编辑器显示当前 Base URL / 模型对应的系统默认（关闭 thinking 的那一套字段）。OpenAI / Gemini 默认是空。
+- 用户改过并保存后，用用户的 JSON；切换服务商时按 Base URL 隔离，互不覆盖。
+- 清空并保存表示恢复系统默认；保存 `{}` 表示不附加任何字段。
+- 只改编辑框、不点「保存设置」不会进入下一次请求。
+- 每次单词翻译、整句翻译、AI 导读、图片能力探测的 `/chat/completions` 都把 Extra Config 合并进请求体。未保存用户值时合并系统默认。
+- 同名键以 Extra Config 为准，对象字段深度合并。
 - 不得用 Extra Config 改写 `messages`、`stream`、`stream_options`。
 - 非法 JSON、非对象、或包含上述保留键时，保存失败并在设置页保存栏说明原因。
-- Extra Config 不是密钥，可写入偏好设置；不写入 Keychain，也不出现在调用日志的可复制密钥位置。
+- Extra Config 不是密钥，可写入偏好设置；不写入 Keychain。
+- 不在用户消息里追加 `/no_think`。
+
+### F1b — JSON 编辑器
+
+- Extra Config 使用内置轻量 JSON 编辑器：键、字符串、数字、`true`/`false`/`null` 与括号用不同颜色。
+- 合法 JSON 在编辑结束（失焦）和保存时自动格式化（缩进、键排序）。不合法时保持原文，方便继续改。
 
 ### F2 — 官方 API Key 链接
 
@@ -38,14 +47,17 @@ predecessor:
 
 ## 4. 非目标
 
-- 不在界面提供 thinking 开关；需要时由 Extra Config 自行填写。
+- 不在界面提供单独的 thinking 开关；默认字段就在 Extra Config 里。
 - 不校验 Extra Config 里的厂商字段是否被网关接受。
 - 不把 Extra Config 用于 `/models` 列表请求。
+- 不引入第三方代码编辑器依赖。
 
 ## 5. 验收标准
 
-1. 填写 `{"thinking_budget": 0}` 并保存后，下一次翻译请求体带有该字段。
-2. Extra Config 里的 `enable_thinking` 覆盖内置关闭 thinking 的同名字段。
-3. 填写数组或带 `messages` 的对象时无法保存，保存栏说明原因。
-4. 选择任一内置服务商，API Key 旁能打开对应官方申请页。
-5. 完全退出再打开，同一 Base URL 下的 Extra Config 仍在。
+1. 百炼或 IdeaLab、未改 Extra Config 时，请求带 `"enable_thinking": false`，消息不含 `/no_think`。
+2. Extra Config 改成 `{"enable_thinking": true}` 并保存后，请求用 `true`。
+3. 保存 `{}` 后，请求不再带系统默认的 thinking 字段。
+4. 打开设置页时 Extra Config 已是格式化后的 JSON，键有语法着色。
+5. 填写数组或带 `messages` 的对象时无法保存，保存栏说明原因。
+6. 选择任一内置服务商，API Key 旁能打开对应官方申请页。
+7. 完全退出再打开，同一 Base URL 下用户改过的 Extra Config 仍在；未改过的仍显示系统默认。

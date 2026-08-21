@@ -1,11 +1,13 @@
-//! Choose the thinking-disable fields that a given OpenAI-compatible provider
-//! actually honours. Sending every vendor extension at once is worse than
-//! sending none: a 400 on an unknown field strips the one field that works.
+//! Built-in Extra Config that disables thinking for a given OpenAI-compatible
+//! provider. The JSON is shown in Settings; an empty Extra Config means "use
+//! this default", while a user-supplied object (including `{}`) replaces it.
+
+use serde_json::{json, Value};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThinkingDisableKind {
     None,
-    /// DashScope / SiliconFlow top-level `enable_thinking: false`.
+    /// DashScope / SiliconFlow / Alibaba OpenAI-compatible: `enable_thinking`.
     EnableThinking,
     /// vLLM / SGLang chat templates: `chat_template_kwargs.enable_thinking`.
     ChatTemplateKwargs,
@@ -15,74 +17,60 @@ pub enum ThinkingDisableKind {
     OpenRouterReasoning,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ThinkingDisablePolicy {
-    pub kind: ThinkingDisableKind,
-    pub append_no_think: bool,
-}
-
-impl ThinkingDisablePolicy {
-    pub const NONE: Self = Self {
-        kind: ThinkingDisableKind::None,
-        append_no_think: false,
-    };
-
+impl ThinkingDisableKind {
     pub fn for_endpoint(base_url: &str, model: &str) -> Self {
         let host = host_of(base_url);
         let qwen = is_qwen_family(model);
 
         if is_openai_host(&host) || is_gemini_host(&host) {
-            return Self::NONE;
+            return Self::None;
         }
-        if is_dashscope_host(&host) {
-            return Self {
-                kind: ThinkingDisableKind::EnableThinking,
-                append_no_think: qwen,
-            };
-        }
-        if is_siliconflow_host(&host) {
-            return Self {
-                kind: ThinkingDisableKind::EnableThinking,
-                append_no_think: qwen,
-            };
+        if is_dashscope_host(&host) || is_siliconflow_host(&host) {
+            return Self::EnableThinking;
         }
         if is_openrouter_host(&host) {
-            return Self {
-                kind: ThinkingDisableKind::OpenRouterReasoning,
-                append_no_think: qwen,
-            };
+            return Self::OpenRouterReasoning;
         }
         if is_zhipu_host(&host) || is_deepseek_host(&host) || is_volcengine_host(&host) {
-            return Self {
-                kind: ThinkingDisableKind::ThinkingType,
-                append_no_think: false,
-            };
+            return Self::ThinkingType;
         }
         if qwen {
-            return Self {
-                kind: ThinkingDisableKind::ChatTemplateKwargs,
-                append_no_think: true,
-            };
+            return Self::ChatTemplateKwargs;
         }
         if is_glm_family(model) || is_deepseek_family(model) {
-            return Self {
-                kind: ThinkingDisableKind::ThinkingType,
-                append_no_think: false,
-            };
+            return Self::ThinkingType;
         }
-        Self::NONE
+        Self::None
+    }
+
+    pub fn extra_config_json(self) -> String {
+        let value = match self {
+            Self::None => return String::new(),
+            Self::EnableThinking => json!({"enable_thinking": false}),
+            Self::ChatTemplateKwargs => json!({"chat_template_kwargs": {"enable_thinking": false}}),
+            Self::ThinkingType => json!({"thinking": {"type": "disabled"}}),
+            Self::OpenRouterReasoning => json!({"reasoning": {"enabled": false}}),
+        };
+        compact_json(&value)
     }
 }
 
-pub fn ensure_no_think_suffix(text: &str) -> String {
-    let trimmed = text.trim_end();
-    if trimmed.ends_with("/no_think") {
-        return text.to_string();
+/// Empty Extra Config → provider default. Any saved object, including `{}`, is
+/// used as-is so the user can turn the built-in fields off.
+pub fn resolve_extra_config(raw: &str, base_url: &str, model: &str) -> String {
+    if raw.trim().is_empty() {
+        ThinkingDisableKind::for_endpoint(base_url, model).extra_config_json()
+    } else {
+        raw.to_string()
     }
-    if trimmed.is_empty() {
-        return "/no_think".to_string();
-    }
-    format!("{trimmed}\n/no_think")
+}
+
+pub fn default_extra_config_json(base_url: &str, model: &str) -> String {
+    ThinkingDisableKind::for_endpoint(base_url, model).extra_config_json()
+}
+
+fn compact_json(value: &Value) -> String {
+    serde_json::to_string(value).unwrap_or_default()
 }
 
 pub fn is_qwen_family(model: &str) -> bool {
@@ -119,9 +107,6 @@ fn host_of(base_url: &str) -> String {
 }
 
 fn is_dashscope_host(host: &str) -> bool {
-    // Public DashScope, plus Alibaba internal OpenAI-compatible proxies
-    // such as IdeaLab. Those gateways honour top-level `enable_thinking`
-    // and default it to true when the field is missing.
     host.contains("dashscope")
         || host.contains("bailian")
         || host.contains("alibaba-inc.com")
@@ -160,100 +145,97 @@ fn is_gemini_host(host: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
-    fn dashscope_qwen_uses_enable_thinking_and_no_think() {
-        let policy = ThinkingDisablePolicy::for_endpoint(
+    fn dashscope_qwen_default_is_enable_thinking() {
+        let extra = default_extra_config_json(
             "https://dashscope.aliyuncs.com/compatible-mode/v1",
             "qwen-plus",
         );
-        assert_eq!(policy.kind, ThinkingDisableKind::EnableThinking);
-        assert!(policy.append_no_think);
+        assert_eq!(extra, json!({"enable_thinking": false}).to_string());
     }
 
     #[test]
-    fn dashscope_intl_matches_beijing_preset() {
-        let policy = ThinkingDisablePolicy::for_endpoint(
-            "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
-            "qwen3-max",
-        );
-        assert_eq!(policy.kind, ThinkingDisableKind::EnableThinking);
-        assert!(policy.append_no_think);
-    }
-
-    #[test]
-    fn alibaba_idealab_qwen_uses_enable_thinking() {
-        let policy = ThinkingDisablePolicy::for_endpoint(
+    fn alibaba_idealab_default_is_enable_thinking() {
+        let extra = default_extra_config_json(
             "https://idealab.alibaba-inc.com/api/openai/v1",
             "qwen3.7-flash",
         );
-        assert_eq!(policy.kind, ThinkingDisableKind::EnableThinking);
-        assert!(policy.append_no_think);
+        assert_eq!(extra, json!({"enable_thinking": false}).to_string());
     }
 
     #[test]
-    fn siliconflow_qwen_uses_enable_thinking_only() {
-        let policy =
-            ThinkingDisablePolicy::for_endpoint("https://api.siliconflow.cn/v1", "Qwen/Qwen3-8B");
-        assert_eq!(policy.kind, ThinkingDisableKind::EnableThinking);
-        assert!(policy.append_no_think);
+    fn siliconflow_qwen_default_is_enable_thinking() {
+        let extra = default_extra_config_json("https://api.siliconflow.cn/v1", "Qwen/Qwen3-8B");
+        assert_eq!(extra, json!({"enable_thinking": false}).to_string());
     }
 
     #[test]
-    fn self_hosted_qwen_uses_chat_template_kwargs() {
-        let policy =
-            ThinkingDisablePolicy::for_endpoint("http://127.0.0.1:8000/v1", "Qwen/Qwen3-8B");
-        assert_eq!(policy.kind, ThinkingDisableKind::ChatTemplateKwargs);
-        assert!(policy.append_no_think);
-    }
-
-    #[test]
-    fn openai_sends_no_thinking_fields() {
-        let policy = ThinkingDisablePolicy::for_endpoint("https://api.openai.com/v1", "gpt-4o");
-        assert_eq!(policy, ThinkingDisablePolicy::NONE);
-    }
-
-    #[test]
-    fn deepseek_uses_thinking_type() {
-        let policy =
-            ThinkingDisablePolicy::for_endpoint("https://api.deepseek.com/v1", "deepseek-v4-flash");
-        assert_eq!(policy.kind, ThinkingDisableKind::ThinkingType);
-        assert!(!policy.append_no_think);
-    }
-
-    #[test]
-    fn zhipu_uses_thinking_type() {
-        let policy =
-            ThinkingDisablePolicy::for_endpoint("https://open.bigmodel.cn/api/paas/v4", "glm-4.6");
-        assert_eq!(policy.kind, ThinkingDisableKind::ThinkingType);
-    }
-
-    #[test]
-    fn openrouter_uses_reasoning_flag() {
-        let policy =
-            ThinkingDisablePolicy::for_endpoint("https://openrouter.ai/api/v1", "qwen/qwen3-32b");
-        assert_eq!(policy.kind, ThinkingDisableKind::OpenRouterReasoning);
-        assert!(policy.append_no_think);
-    }
-
-    #[test]
-    fn custom_glm_uses_thinking_type() {
-        let policy = ThinkingDisablePolicy::for_endpoint("https://gateway.example/v1", "glm-4.6");
-        assert_eq!(policy.kind, ThinkingDisableKind::ThinkingType);
-    }
-
-    #[test]
-    fn unknown_gpt_sends_nothing() {
-        let policy = ThinkingDisablePolicy::for_endpoint("https://gateway.example/v1", "gpt-4o");
-        assert_eq!(policy, ThinkingDisablePolicy::NONE);
-    }
-
-    #[test]
-    fn no_think_suffix_is_idempotent() {
-        assert_eq!(ensure_no_think_suffix("hello"), "hello\n/no_think");
+    fn self_hosted_qwen_default_is_chat_template_kwargs() {
+        let extra = default_extra_config_json("http://127.0.0.1:8000/v1", "Qwen/Qwen3-8B");
         assert_eq!(
-            ensure_no_think_suffix("hello\n/no_think"),
-            "hello\n/no_think"
+            extra,
+            json!({"chat_template_kwargs": {"enable_thinking": false}}).to_string()
         );
+    }
+
+    #[test]
+    fn openai_default_is_empty() {
+        assert!(default_extra_config_json("https://api.openai.com/v1", "gpt-4o").is_empty());
+    }
+
+    #[test]
+    fn deepseek_default_is_thinking_type() {
+        let extra = default_extra_config_json("https://api.deepseek.com/v1", "deepseek-v4-flash");
+        assert_eq!(extra, json!({"thinking": {"type": "disabled"}}).to_string());
+    }
+
+    #[test]
+    fn openrouter_default_is_reasoning() {
+        let extra = default_extra_config_json("https://openrouter.ai/api/v1", "qwen/qwen3-32b");
+        assert_eq!(extra, json!({"reasoning": {"enabled": false}}).to_string());
+    }
+
+    #[test]
+    fn custom_glm_default_is_thinking_type() {
+        let extra = default_extra_config_json("https://gateway.example/v1", "glm-4.6");
+        assert_eq!(extra, json!({"thinking": {"type": "disabled"}}).to_string());
+    }
+
+    #[test]
+    fn empty_extra_resolves_to_provider_default() {
+        let resolved = resolve_extra_config(
+            "  ",
+            "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            "qwen-plus",
+        );
+        assert_eq!(resolved, json!({"enable_thinking": false}).to_string());
+    }
+
+    #[test]
+    fn explicit_empty_object_replaces_default() {
+        let resolved = resolve_extra_config(
+            "{}",
+            "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            "qwen-plus",
+        );
+        assert_eq!(resolved, "{}");
+    }
+
+    #[test]
+    fn user_extra_is_kept_as_is() {
+        let raw = r#"{"enable_thinking": true, "thinking_budget": 0}"#;
+        let resolved = resolve_extra_config(
+            raw,
+            "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            "qwen-plus",
+        );
+        assert_eq!(resolved, raw);
+    }
+
+    #[test]
+    fn unknown_gpt_default_is_empty() {
+        assert!(default_extra_config_json("https://gateway.example/v1", "gpt-4o").is_empty());
     }
 }

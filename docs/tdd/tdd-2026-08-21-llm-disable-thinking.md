@@ -17,7 +17,7 @@ successor:
 
 ## 1. 技术结论
 
-所有 `POST /chat/completions` 都从 `LlmTranslator::chat_request` 构造。关闭 thinking 的字段由 `ThinkingDisablePolicy::for_endpoint(base_url, model)` 按服务商选择，一次只带一套。这是基础设施层的请求形状，不是 domain 规则。
+所有 `POST /chat/completions` 都从 `LlmTranslator::chat_request` 构造。关闭 thinking 的字段由 `ThinkingDisableKind::for_endpoint` 生成 Extra Config 默认 JSON，经 `resolve_extra_config` 合并。这是基础设施层的请求形状，不是 domain 规则。后续修订：字段只出现在 Extra Config，不再写入 `ChatRequest`，也不追加 `/no_think`，见 [tdd-2026-08-21-llm-extra-config.md](tdd-2026-08-21-llm-extra-config.md)。
 
 先前把三条扩展一起发出去，百炼等网关若因未知字段 400，重试会连 `enable_thinking` 一并剥掉，Qwen 就关不掉 thinking。
 
@@ -25,20 +25,20 @@ successor:
 
 | 模块 | 职责 |
 | --- | --- |
-| `thinking_control.rs` | 根据 Base URL host 与模型名决定字段种类，以及是否追加 `/no_think`。 |
+| `thinking_control.rs` | 根据 Base URL host 与模型名生成默认 Extra Config JSON。后续修订：不再追加 `/no_think`，见 [tdd-2026-08-21-llm-extra-config.md](tdd-2026-08-21-llm-extra-config.md)。 |
 | `LlmTranslator::chat_request` | 单词 / 句子 / 导读 / 图片探测共用的请求构造。 |
 | `send_chat_request` / `stream_completion` | 400 且报未知字段时，去掉这些扩展（以及 `stream_options`）再试一次。 |
 
 ## 3. 映射
 
-| 判定 | 请求字段 | `/no_think` |
+| 判定 | Extra Config | `/no_think` |
 | --- | --- | --- |
-| host 含 `dashscope` / `bailian` / `alibaba-inc.com` / `aliyuncs.com` / `idealab` | `enable_thinking: false` | Qwen 系 |
-| host 含 `siliconflow` | `enable_thinking: false` | Qwen 系 |
-| host 含 `openrouter.ai` | `reasoning.enabled: false` | Qwen 系 |
+| host 含 `dashscope` / `bailian` / `alibaba-inc.com` / `aliyuncs.com` / `idealab` | `enable_thinking: false` | 否（后续修订，见 [tdd-2026-08-21-llm-extra-config.md](tdd-2026-08-21-llm-extra-config.md)） |
+| host 含 `siliconflow` | `enable_thinking: false` | 否 |
+| host 含 `openrouter.ai` | `reasoning.enabled: false` | 否 |
 | DeepSeek / 智谱 / 火山 | `thinking.type: disabled` | 否 |
 | OpenAI / Gemini | 不带 | 否 |
-| 其它 URL + Qwen 系 | `chat_template_kwargs.enable_thinking: false` | 是 |
+| 其它 URL + Qwen 系 | `chat_template_kwargs.enable_thinking: false` | 否 |
 | 其它 URL + GLM / DeepSeek 模型名 | `thinking.type: disabled` | 否 |
 | 其它 | 不带 | 否 |
 
@@ -48,7 +48,7 @@ Qwen 系：模型名含 `qwen` / `qwq`，或等于 `coder-model`。`enable_think
 
 `thinking_control` / `llm_translator` 单测：
 
-- 百炼 / IdeaLab Qwen：只有 `enable_thinking`，用户消息以 `/no_think` 结尾
+- 百炼 / IdeaLab Qwen：Extra Config 默认只有 `enable_thinking`，消息不含 `/no_think`
 - OpenAI：无扩展字段
 - 自建 Qwen：只有 `chat_template_kwargs`
 - DeepSeek：`thinking.type: disabled`

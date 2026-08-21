@@ -38,6 +38,9 @@ final class SettingsRuntimeService {
             settingsStore.persistExtraConfig(validatedExtra, for: snapshot.baseURL)
         }
         let persisted = settingsStore.persist(baseURL: snapshot.baseURL, model: snapshot.model)
+        let liveExtra = validatedExtra.isEmpty
+            ? LLMThinkingExtraConfig.defaultJSON(baseURL: persisted.baseURL, model: persisted.model)
+            : validatedExtra
         try updateConfig(
             baseURL: persisted.baseURL,
             apiKey: apiKey,
@@ -49,7 +52,7 @@ final class SettingsRuntimeService {
             wordSystemPrompt: wordSystemPrompt,
             sentenceSystemPrompt: sentenceSystemPrompt,
             explanationSystemPrompt: explanationSystemPrompt,
-            extraConfig: validatedExtra
+            extraConfig: liveExtra
         )
         return persisted
     }

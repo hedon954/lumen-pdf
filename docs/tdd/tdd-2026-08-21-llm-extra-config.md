@@ -12,38 +12,40 @@ predecessor:
 
 ## 1. 技术结论
 
-Extra Config 是一段 JSON 对象字符串，经 UniFFI `AppConfig.llm_extra_config` 进入 `LlmConfig`。发送 chat 请求前用 `extra_config::merge_chat_request` 深度合并进已序列化的请求体。只在「保存设置」时写入 `llm_extra_config_by_base_url` 并 `updateLlmConfig`；编辑框草稿不会进请求。API Key 链接是 `LLMProviderPreset.apiKeyURL`，画在 API Key 输入旁。
-
-阿里内部 OpenAI 兼容网关（IdeaLab）在请求缺少 `enable_thinking` 时会自行填 `true`，控制台里还常补 `n: 1`。这类 host 的内置字段是顶层 `enable_thinking: false`，不是 `chat_template_kwargs`。
+关闭 thinking 的字段来自 Extra Config，不再写入 `ChatRequest`。空 Extra Config 在发送前由 `resolve_extra_config` / `LLMSettingsStore.effectiveExtraConfig` 填入 `ThinkingDisableKind` 对应 JSON；已保存的对象（含 `{}`）原样使用。Swift 设置页用同一套 host/模型规则显示默认值。`JSONEditorView` 做语法着色，`LLMExtraConfig.prettyPrinted` 在失焦和保存时格式化。不追加 `/no_think`。
 
 ## 2. 模块
 
 | 模块 | 职责 |
 | --- | --- |
-| `LLMConfigurationSection` | API Key 旁的官方申请链接。 |
-| `LLMSettingsPage` Extra Config 区 | JSON 编辑；空表示不合并。 |
-| `LLMSettingsStore` | `llm_extra_config_by_base_url`：按规范化 Base URL 存取。 |
-| `LLMExtraConfig` | 保存前校验：空、对象、禁止保留键。 |
-| `extra_config.rs` | 合并算法；忽略 `messages` / `stream` / `stream_options`。 |
-| `LlmTranslator` | `send_chat_request` / `stream_completion` / 图片探测都走合并后的 JSON。 |
+| `thinking_control.rs` | 按 Base URL / 模型生成默认 Extra Config JSON。 |
+| `LLMThinkingExtraConfig` | Swift 侧同一套默认 JSON，供设置页展示。 |
+| `LLMSettingsStore` | `llm_extra_config_by_base_url` 存用户值；空则 `effectiveExtraConfig` 返回默认。 |
+| `LLMExtraConfig` | 校验、自动格式化、JSON 相等比较。 |
+| `JSONSyntaxHighlighter` / `JSONEditorView` | 轻量 JSON 着色与 NSTextView 编辑。 |
+| `extra_config.rs` | 深度合并；忽略 `messages` / `stream` / `stream_options`。 |
+| `LlmTranslator::chat_json` | 空 Extra Config 先 resolve 再合并。 |
 
-## 3. 合并规则
+## 3. 默认 Extra Config
 
-```text
-序列化 ChatRequest
-若 Extra Config 为空 → 原样发送
-否则解析为 object，深度合并，用户标量覆盖内置值
-保留键不合并
-```
+| 判定 | Extra Config |
+| --- | --- |
+| host 含 `dashscope` / `bailian` / `alibaba-inc.com` / `aliyuncs.com` / `idealab` / `siliconflow` | `{"enable_thinking": false}` |
+| host 含 `openrouter.ai` | `{"reasoning": {"enabled": false}}` |
+| DeepSeek / 智谱 / 火山 | `{"thinking": {"type": "disabled"}}` |
+| OpenAI / Gemini | 空 |
+| 其它 URL + Qwen 系 | `{"chat_template_kwargs": {"enable_thinking": false}}` |
+| 其它 URL + GLM / DeepSeek 模型名 | `{"thinking": {"type": "disabled"}}` |
+| 其它 | 空 |
 
-400 重试仍只剥内置 vendor thinking 字段，然后再合并 Extra Config。用户显式写的字段不会在重试时被丢掉。
+空字符串 = 未修改 = 用上表。`{}` = 用户关掉默认字段。400 重试只剥 `stream_options`，然后仍合并 Extra Config（含默认或用户值）。
 
 ## 4. 验证
 
-- `extra_config`：空、覆盖、深合并、保留键、非对象报错
-- IdeaLab Qwen：内置顶层 `enable_thinking: false`；Extra Config 同名字段覆盖后仍为用户值
-- `LLMSettingsStore`：按 Base URL 隔离；`openai.com` 与 `/v1` 读回同一份
-- `LLMExtraConfig`：非法 JSON / 数组 / `messages` 不能过校验
-- `LLMModelCatalogServiceTests`：每个内置服务商都有 https 官方 Key 链接
+- `thinking_control`：各服务商默认 JSON；空 resolve 到默认；`{}` 与用户 JSON 原样保留
+- `llm_translator`：空 Extra Config 的百炼/IdeaLab 请求带 `enable_thinking: false`，消息无 `/no_think`
+- `LLMThinkingExtraConfig` / `LLMSettingsStore`：未修改用默认，已保存用用户值
+- `JSONSyntaxHighlighter`：键、字符串、数字、关键字着色
+- `LLMExtraConfig`：自动格式化、非法 JSON / 数组 / `messages` 不能过校验
 
-本环境无法运行 macOS 设置页。运行时须确认保存后的请求体带上 Extra Config，且 API Key 旁链接可打开。
+本环境无法运行 macOS 设置页。运行时须确认 Extra Config 默认可见、语法着色、失焦后格式化，以及保存后的请求体与编辑器内容一致。

@@ -101,6 +101,14 @@ struct LLMSettingsStore {
         return ""
     }
 
+    func effectiveExtraConfig(for baseURL: String, model: String) -> String {
+        let stored = loadExtraConfig(for: baseURL)
+        if stored.isEmpty {
+            return LLMThinkingExtraConfig.defaultJSON(baseURL: baseURL, model: model)
+        }
+        return LLMExtraConfig.prettyPrinted(stored)
+    }
+
     private func extraConfigMap() -> [String: String] {
         defaults.dictionary(forKey: Self.extraConfigByBaseURLKey) as? [String: String] ?? [:]
     }
@@ -130,7 +138,43 @@ enum LLMExtraConfig {
         if !reserved.isEmpty {
             throw LLMExtraConfigError.reservedKeys(reserved)
         }
-        return trimmed
+        return prettyPrinted(trimmed)
+    }
+
+    static func prettyPrinted(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            return ""
+        }
+        guard let data = trimmed.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data),
+              JSONSerialization.isValidJSONObject(object),
+              let pretty = try? JSONSerialization.data(
+                withJSONObject: object,
+                options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+              ),
+              let text = String(data: pretty, encoding: .utf8)
+        else {
+            return raw
+        }
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    static func jsonEquals(_ lhs: String, _ rhs: String) -> Bool {
+        let left = lhs.trimmingCharacters(in: .whitespacesAndNewlines)
+        let right = rhs.trimmingCharacters(in: .whitespacesAndNewlines)
+        if left.isEmpty || right.isEmpty {
+            return left.isEmpty && right.isEmpty
+        }
+        guard let leftData = left.data(using: .utf8),
+              let rightData = right.data(using: .utf8),
+              let leftObject = try? JSONSerialization.jsonObject(with: leftData),
+              let rightObject = try? JSONSerialization.jsonObject(with: rightData)
+        else {
+            return left == right
+        }
+        return NSDictionary(dictionary: ["value": leftObject])
+            .isEqual(NSDictionary(dictionary: ["value": rightObject]))
     }
 }
 

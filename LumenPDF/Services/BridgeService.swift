@@ -54,7 +54,10 @@ final class BridgeService {
             wordSystemPrompt: UserDefaults.standard.string(forKey: "word_system_prompt") ?? "",
             sentenceSystemPrompt: UserDefaults.standard.string(forKey: "sentence_system_prompt") ?? "",
             explanationSystemPrompt: UserDefaults.standard.string(forKey: "explanation_system_prompt") ?? "",
-            llmExtraConfig: LLMSettingsStore().loadExtraConfig(for: baseURL)
+            llmExtraConfig: LLMSettingsStore().effectiveExtraConfig(
+                for: baseURL,
+                model: UserDefaults.standard.string(forKey: "llm_model") ?? "gpt-4o-mini"
+            )
         )
         guard (try? _initialize(dbURL.path, config)) != nil else {
             // Do not flip isInitialized — allow retry on next launch / next call path.

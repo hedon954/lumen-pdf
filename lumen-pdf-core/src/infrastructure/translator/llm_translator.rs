@@ -10,9 +10,7 @@ use crate::infrastructure::translator::streaming::{
     describe_empty_model_output, extract_complete_string_fields, extract_message_content_from_json,
     extract_streaming_string_value, preview_text, SseAccumulator, SseChunkOutcome, TokenUsage,
 };
-use crate::infrastructure::translator::thinking_control::{
-    ensure_no_think_suffix, ThinkingDisableKind, ThinkingDisablePolicy,
-};
+use crate::infrastructure::translator::thinking_control::resolve_extra_config;
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -579,12 +577,6 @@ impl LlmTranslator {
         response_format: Option<ResponseFormat>,
         max_tokens: Option<u32>,
     ) -> ChatRequest {
-        let policy = ThinkingDisablePolicy::for_endpoint(&self.config.base_url, &self.config.model);
-        let messages = if policy.append_no_think {
-            with_no_think_on_last_user(messages)
-        } else {
-            messages
-        };
         ChatRequest {
             model: self.config.model.clone(),
             messages,
@@ -594,24 +586,16 @@ impl LlmTranslator {
             stream_options: stream.then_some(StreamOptions {
                 include_usage: true,
             }),
-            enable_thinking: matches!(policy.kind, ThinkingDisableKind::EnableThinking)
-                .then_some(false),
-            chat_template_kwargs: matches!(policy.kind, ThinkingDisableKind::ChatTemplateKwargs)
-                .then_some(ChatTemplateKwargs {
-                    enable_thinking: false,
-                }),
-            thinking: matches!(policy.kind, ThinkingDisableKind::ThinkingType).then_some(
-                ThinkingControl {
-                    kind: "disabled".into(),
-                },
-            ),
-            reasoning: matches!(policy.kind, ThinkingDisableKind::OpenRouterReasoning)
-                .then_some(ReasoningControl { enabled: false }),
         }
     }
 
     fn chat_json(&self, body: &ChatRequest) -> Result<Value, LumenError> {
-        merge_chat_request(body, &self.config.extra_config)
+        let extra = resolve_extra_config(
+            &self.config.extra_config,
+            &self.config.base_url,
+            &self.config.model,
+        );
+        merge_chat_request(body, &extra)
     }
 
     async fn send_chat_request(&self, body: &ChatRequest) -> Result<CompletionOutput, LumenError> {
@@ -982,73 +966,17 @@ struct ChatRequest {
     stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     stream_options: Option<StreamOptions>,
-    /// Qwen / DashScope / SiliconFlow and many OpenAI-compatible gateways.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    enable_thinking: Option<bool>,
-    /// vLLM / SGLang chat templates that read `enable_thinking` from kwargs.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    chat_template_kwargs: Option<ChatTemplateKwargs>,
-    /// DeepSeek / GLM / Anthropic-compatible thinking control.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    thinking: Option<ThinkingControl>,
-    /// OpenRouter reasoning switch.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    reasoning: Option<ReasoningControl>,
 }
 
 impl ChatRequest {
     fn has_vendor_extensions(&self) -> bool {
         self.stream_options.is_some()
-            || self.enable_thinking.is_some()
-            || self.chat_template_kwargs.is_some()
-            || self.thinking.is_some()
-            || self.reasoning.is_some()
     }
 
     fn without_vendor_extensions(mut self) -> Self {
         self.stream_options = None;
-        self.enable_thinking = None;
-        self.chat_template_kwargs = None;
-        self.thinking = None;
-        self.reasoning = None;
         self
     }
-}
-
-#[derive(Clone, Serialize)]
-struct ChatTemplateKwargs {
-    enable_thinking: bool,
-}
-
-#[derive(Clone, Serialize)]
-struct ThinkingControl {
-    #[serde(rename = "type")]
-    kind: String,
-}
-
-#[derive(Clone, Serialize)]
-struct ReasoningControl {
-    enabled: bool,
-}
-
-fn with_no_think_on_last_user(mut messages: Vec<Message>) -> Vec<Message> {
-    if let Some(message) = messages.iter_mut().rev().find(|item| item.role == "user") {
-        match &mut message.content {
-            RequestMessageContent::Text(text) => {
-                *text = ensure_no_think_suffix(text);
-            }
-            RequestMessageContent::Parts(parts) => {
-                if let Some(RequestContentPart::Text { text }) = parts
-                    .iter_mut()
-                    .rev()
-                    .find(|part| matches!(part, RequestContentPart::Text { .. }))
-                {
-                    *text = ensure_no_think_suffix(text);
-                }
-            }
-        }
-    }
-    messages
 }
 
 fn is_unknown_optional_field_error(status: reqwest::StatusCode, body: &str) -> bool {
@@ -1340,7 +1268,7 @@ mod tests {
     }
 
     #[test]
-    fn dashscope_qwen_only_sends_enable_thinking_and_no_think() {
+    fn dashscope_qwen_empty_extra_sends_enable_thinking_false() {
         let translator = dashscope_qwen();
         let requests = [
             translator.build_word_request("word", "a sentence", false),
@@ -1348,12 +1276,12 @@ mod tests {
             translator.build_explanation_request("selected", "context", "", &[], true),
         ];
         for request in requests {
-            let json = serde_json::to_value(&request).unwrap();
+            let json = translator.chat_json(&request).unwrap();
             assert_eq!(json["enable_thinking"], false);
             assert!(json.get("chat_template_kwargs").is_none());
             assert!(json.get("thinking").is_none());
             assert!(json.get("reasoning").is_none());
-            assert_last_user_ends_with_no_think(&json);
+            assert_last_user_has_no_think_suffix(&json);
         }
     }
 
@@ -1371,19 +1299,30 @@ mod tests {
     }
 
     #[test]
+    fn empty_object_extra_config_sends_no_thinking_fields() {
+        let mut translator = dashscope_qwen();
+        translator.config.extra_config = "{}".into();
+        let json = translator
+            .chat_json(&translator.build_word_request("word", "a sentence", false))
+            .unwrap();
+        assert!(json.get("enable_thinking").is_none());
+        assert!(json.get("chat_template_kwargs").is_none());
+        assert!(json.get("thinking").is_none());
+    }
+
+    #[test]
     fn alibaba_idealab_qwen_sends_enable_thinking_false() {
-        let json = serde_json::to_value(
-            translator_with(
-                "https://idealab.alibaba-inc.com/api/openai/v1",
-                "qwen3.7-flash",
-            )
-            .build_word_request("word", "a sentence", true),
-        )
-        .unwrap();
+        let translator = translator_with(
+            "https://idealab.alibaba-inc.com/api/openai/v1",
+            "qwen3.7-flash",
+        );
+        let json = translator
+            .chat_json(&translator.build_word_request("word", "a sentence", true))
+            .unwrap();
         assert_eq!(json["enable_thinking"], false);
         assert!(json.get("chat_template_kwargs").is_none());
         assert!(json.get("n").is_none());
-        assert_last_user_ends_with_no_think(&json);
+        assert_last_user_has_no_think_suffix(&json);
     }
 
     #[test]
@@ -1402,43 +1341,34 @@ mod tests {
 
     #[test]
     fn openai_omits_vendor_thinking_fields() {
-        let json = serde_json::to_value(
-            translator_with("https://api.openai.com/v1", "gpt-4o").build_word_request(
-                "word",
-                "a sentence",
-                false,
-            ),
-        )
-        .unwrap();
+        let translator = translator_with("https://api.openai.com/v1", "gpt-4o");
+        let json = translator
+            .chat_json(&translator.build_word_request("word", "a sentence", false))
+            .unwrap();
         assert!(json.get("enable_thinking").is_none());
         assert!(json.get("chat_template_kwargs").is_none());
         assert!(json.get("thinking").is_none());
         assert!(json.get("reasoning").is_none());
+        assert_last_user_has_no_think_suffix(&json);
     }
 
     #[test]
     fn self_hosted_qwen_uses_chat_template_kwargs() {
-        let json = serde_json::to_value(
-            translator_with("http://127.0.0.1:8000/v1", "Qwen/Qwen3-8B").build_word_request(
-                "word",
-                "a sentence",
-                false,
-            ),
-        )
-        .unwrap();
+        let translator = translator_with("http://127.0.0.1:8000/v1", "Qwen/Qwen3-8B");
+        let json = translator
+            .chat_json(&translator.build_word_request("word", "a sentence", false))
+            .unwrap();
         assert!(json.get("enable_thinking").is_none());
         assert_eq!(json["chat_template_kwargs"]["enable_thinking"], false);
         assert!(json.get("thinking").is_none());
-        assert_last_user_ends_with_no_think(&json);
+        assert_last_user_has_no_think_suffix(&json);
     }
 
     #[test]
     fn deepseek_uses_thinking_type_disabled() {
-        let json =
-            serde_json::to_value(
-                translator_with("https://api.deepseek.com/v1", "deepseek-v4-flash")
-                    .build_word_request("word", "a sentence", false),
-            )
+        let translator = translator_with("https://api.deepseek.com/v1", "deepseek-v4-flash");
+        let json = translator
+            .chat_json(&translator.build_word_request("word", "a sentence", false))
             .unwrap();
         assert_eq!(json["thinking"]["type"], "disabled");
         assert!(json.get("enable_thinking").is_none());
@@ -1447,31 +1377,27 @@ mod tests {
 
     #[test]
     fn openrouter_uses_reasoning_enabled_false() {
-        let json =
-            serde_json::to_value(
-                translator_with("https://openrouter.ai/api/v1", "qwen/qwen3-32b")
-                    .build_word_request("word", "a sentence", false),
-            )
+        let translator = translator_with("https://openrouter.ai/api/v1", "qwen/qwen3-32b");
+        let json = translator
+            .chat_json(&translator.build_word_request("word", "a sentence", false))
             .unwrap();
         assert_eq!(json["reasoning"]["enabled"], false);
         assert!(json.get("enable_thinking").is_none());
         assert!(json.get("thinking").is_none());
+        assert_last_user_has_no_think_suffix(&json);
     }
 
     #[test]
-    fn stripping_vendor_extensions_omits_thinking_fields() {
+    fn stripping_vendor_extensions_omits_stream_options() {
         let request = dashscope_qwen()
             .build_word_request("word", "a sentence", true)
             .without_vendor_extensions();
         let json = serde_json::to_value(request).unwrap();
-        assert!(json.get("enable_thinking").is_none());
-        assert!(json.get("chat_template_kwargs").is_none());
-        assert!(json.get("thinking").is_none());
-        assert!(json.get("reasoning").is_none());
         assert!(json.get("stream_options").is_none());
+        assert!(json.get("enable_thinking").is_none());
     }
 
-    fn assert_last_user_ends_with_no_think(json: &Value) {
+    fn assert_last_user_has_no_think_suffix(json: &Value) {
         let messages = json["messages"].as_array().unwrap();
         let user = messages
             .iter()
@@ -1491,8 +1417,8 @@ mod tests {
                 .to_string()
         };
         assert!(
-            content.trim_end().ends_with("/no_think"),
-            "expected /no_think suffix, got {content}"
+            !content.contains("/no_think"),
+            "did not expect /no_think suffix, got {content}"
         );
     }
 

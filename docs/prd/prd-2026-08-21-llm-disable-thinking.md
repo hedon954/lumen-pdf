@@ -34,7 +34,7 @@ Qwen3、GLM、DeepSeek 等兼容 OpenAI 的接口默认会开 thinking。把 `en
   - DeepSeek、智谱、火山方舟：`thinking.type: disabled`
   - OpenRouter：`reasoning.enabled: false`
   - OpenAI、Gemini：不带扩展字段
-- Qwen 系模型额外在最后一条用户消息末尾加 `/no_think`，避免只认模板软开关的网关漏关。
+- Qwen 系模型额外在最后一条用户消息末尾加 `/no_think`，避免只认模板软开关的网关漏关。后续修订：不再追加 `/no_think`；这些字段作为 Extra Config 默认值显示，用户可改，见 [prd-2026-08-21-llm-extra-config.md](prd-2026-08-21-llm-extra-config.md)。
 - 不提供 thinking 开关。后续修订：用户可通过 Extra Config 自行补厂商字段（含覆盖 `enable_thinking`），见 [prd-2026-08-21-llm-extra-config.md](prd-2026-08-21-llm-extra-config.md)。
 - 拉取 `/models` 列表不属于生成调用，不带这些字段。
 
@@ -53,6 +53,6 @@ Qwen3、GLM、DeepSeek 等兼容 OpenAI 的接口默认会开 thinking。把 `en
 
 ## 5. 验收标准
 
-1. 百炼或 IdeaLab + Qwen 的请求 JSON 只有 `enable_thinking: false`，没有另外两条 thinking 字段，用户消息以 `/no_think` 结尾。
+1. 百炼或 IdeaLab + Qwen 的请求 JSON 只有 `enable_thinking: false`，没有另外两条 thinking 字段，用户消息以 `/no_think` 结尾。后续修订：消息不再带 `/no_think`，字段来自 Extra Config 默认值，见 [prd-2026-08-21-llm-extra-config.md](prd-2026-08-21-llm-extra-config.md)。
 2. 用默认会思考的 Qwen 时，回复不再先空等一段 thinking。
 3. 对不接受这些字段的 OpenAI 兼容接口，请求仍能成功，而不是一直 400。

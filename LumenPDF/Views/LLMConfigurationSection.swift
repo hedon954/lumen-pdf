@@ -147,6 +147,9 @@ struct LLMConfigurationSection: View {
                     .foregroundStyle(.secondary)
             }
         }
+        .onChange(of: model) { oldModel, newModel in
+            refreshDefaultExtraIfUnmodified(previousModel: oldModel, newModel: newModel)
+        }
     }
 
     private var providerSelection: Binding<String> {
@@ -285,11 +288,16 @@ struct LLMConfigurationSection: View {
         let providerAPIKey = draftAPIKeysByBaseURL[newBaseURLKey]
             ?? KeychainService.loadLLMAPIKey(for: newBaseURL)
             ?? ""
-        extraConfig = draftExtraConfigByBaseURL[newBaseURLKey]
-            ?? LLMSettingsStore().loadExtraConfig(for: newBaseURL)
+        extraConfig = LLMExtraConfig.prettyPrinted(
+            draftExtraConfigByBaseURL[newBaseURLKey]
+                ?? LLMSettingsStore().loadExtraConfig(for: newBaseURL)
+        )
         apiKey = providerAPIKey
         baseURL = newBaseURL
         model = configuration.recentModels(for: newBaseURL).first ?? previousModel
+        if extraConfig.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            extraConfig = LLMThinkingExtraConfig.defaultJSON(baseURL: newBaseURL, model: model)
+        }
         Task {
             await Task.yield()
             configuration.remember(
@@ -300,6 +308,16 @@ struct LLMConfigurationSection: View {
                 baseURL: newBaseURL,
                 apiKey: providerAPIKey
             )
+        }
+    }
+
+    private func refreshDefaultExtraIfUnmodified(previousModel: String, newModel: String) {
+        guard previousModel != newModel else { return }
+        let previousDefault = LLMThinkingExtraConfig.defaultJSON(baseURL: baseURL, model: previousModel)
+        if extraConfig.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || LLMExtraConfig.jsonEquals(extraConfig, previousDefault)
+        {
+            extraConfig = LLMThinkingExtraConfig.defaultJSON(baseURL: baseURL, model: newModel)
         }
     }
 
