@@ -17,7 +17,7 @@ final class WorkspaceSearchController: ObservableObject {
     private var hitRefreshTask: Task<Void, Never>?
 
     var activeRecords: [WorkspaceSearchRecord] {
-        WorkspaceSearchKind.allCases.flatMap { kind in
+        WorkspaceSearchKind.allCases.flatMap { kind -> [WorkspaceSearchRecord] in
             guard enabledKinds.contains(kind) else { return [] }
             return recordsByKind[kind] ?? []
         }
