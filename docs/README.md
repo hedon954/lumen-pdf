@@ -41,6 +41,7 @@ PRD 记录**用户可感知的行为与验收标准**。TDD 记录**如何实现
 | unreleased | 2026-08-21 | 工作区 Cmd+F 搜索 | [prd-2026-08-21-workspace-search.md](prd/prd-2026-08-21-workspace-search.md) | [tdd-2026-08-21-workspace-search.md](tdd/tdd-2026-08-21-workspace-search.md) |
 | unreleased | 2026-08-21 | 划线按行区间合并 | [prd-2026-08-21-markup-interval-merge.md](prd/prd-2026-08-21-markup-interval-merge.md) | [tdd-2026-08-21-markup-interval-merge.md](tdd/tdd-2026-08-21-markup-interval-merge.md) |
 | unreleased | 2026-08-21 | LLM 关闭 thinking | [prd-2026-08-21-llm-disable-thinking.md](prd/prd-2026-08-21-llm-disable-thinking.md) | [tdd-2026-08-21-llm-disable-thinking.md](tdd/tdd-2026-08-21-llm-disable-thinking.md) |
+| unreleased | 2026-08-21 | LLM JSON 修复 | [prd-2026-08-21-llm-json-repair.md](prd/prd-2026-08-21-llm-json-repair.md) | [tdd-2026-08-21-llm-json-repair.md](tdd/tdd-2026-08-21-llm-json-repair.md) |
 
 未单独成对的发布：
 
@@ -96,6 +97,7 @@ v1.0.12 / v1.0.13 导读进入 Inspector
   → unreleased 设置保存失败只在设置页保存栏提示；ad-hoc 安装可写入钥匙串
   → unreleased 当前导读会话可经 ⌘F 检索
   → unreleased 所有 chat 请求显式关闭 thinking
+  → unreleased 期望 JSON 的模型输出先 json repair 再解析
 ```
 
 ## 其他文档

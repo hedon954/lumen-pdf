@@ -4,6 +4,7 @@ use crate::domain::translation::{
 };
 use crate::error::LumenError;
 use crate::infrastructure::translator::http_client::shared_client;
+use crate::infrastructure::translator::model_json::{parse_model_json, streaming_json_view};
 use crate::infrastructure::translator::streaming::{
     describe_empty_model_output, extract_complete_string_fields, extract_message_content_from_json,
     extract_streaming_string_value, preview_text, SseAccumulator, SseChunkOutcome, TokenUsage,
@@ -347,7 +348,9 @@ impl LlmTranslator {
                 // Stream the `translation` field character by character. Other
                 // fields (`breakdown`) only appear at the end and are handled
                 // after the stream closes.
-                let Some(current) = extract_streaming_string_value(raw, "translation") else {
+                let Some(current) =
+                    extract_streaming_string_value(&streaming_json_view(raw), "translation")
+                else {
                     return;
                 };
                 if current != *last_emitted {
@@ -849,60 +852,6 @@ fn append_raw_preview(preview: &mut String, bytes: &[u8], limit: usize) {
     preview.push_str(&String::from_utf8_lossy(&bytes[..take]));
 }
 
-fn parse_model_json<T: serde::de::DeserializeOwned>(raw: &str) -> Result<T, LumenError> {
-    let normalized = normalize_json_payload(raw);
-    serde_json::from_str(&normalized)
-        .or_else(|_| serde_json::from_str(raw.trim()))
-        .map_err(|err| json_parse_error(raw, err))
-}
-
-fn normalize_json_payload(raw: &str) -> String {
-    let unfenced = strip_code_fence(raw.trim());
-    extract_json_span(&unfenced)
-        .map(ToOwned::to_owned)
-        .unwrap_or(unfenced)
-}
-
-fn strip_code_fence(raw: &str) -> String {
-    let trimmed = raw.trim();
-    if !trimmed.starts_with("```") {
-        return trimmed.to_string();
-    }
-    let mut lines = trimmed.lines();
-    let _ = lines.next();
-    let mut body: Vec<&str> = lines.collect();
-    if body.last().is_some_and(|line| line.trim() == "```") {
-        body.pop();
-    }
-    body.join("\n").trim().to_string()
-}
-
-fn extract_json_span(raw: &str) -> Option<&str> {
-    let start = raw.find('{')?;
-    let end = raw.rfind('}')?;
-    if end >= start {
-        Some(&raw[start..=end])
-    } else {
-        None
-    }
-}
-
-fn json_parse_error(raw: &str, err: serde_json::Error) -> LumenError {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        return LumenError::LlmApiError {
-            message: "模型没有返回任何内容（空响应），因此无法解析 JSON。常见原因：网关返回空 body、流式协议不匹配，或模型拒绝输出。".into(),
-        };
-    }
-    LumenError::SerializationError {
-        message: format!(
-            "{err}。响应长度 {} 字符。内容预览：{}",
-            trimmed.chars().count(),
-            preview_text(trimmed, 400)
-        ),
-    }
-}
-
 fn map_to_translation_result(
     map: &HashMap<String, String>,
     fallback_word: &str,
@@ -1229,7 +1178,7 @@ impl Translator for LlmTranslator {
         let mut last_keys: Vec<String> = Vec::new();
         let completion = self
             .stream_completion(&url, &body, |raw, _: &mut String| {
-                let fields = extract_complete_string_fields(raw);
+                let fields = extract_complete_string_fields(&streaming_json_view(raw));
                 if fields.is_empty() {
                     return;
                 }
@@ -1421,25 +1370,5 @@ mod tests {
         customized.word_prompt_template = "custom {word} {sentence} {lang}".into();
 
         assert_ne!(config.word_cache_scope(), customized.word_cache_scope());
-    }
-
-    #[test]
-    fn parse_model_json_strips_code_fences_and_surrounding_text() {
-        let parsed: SentencePromptJson = parse_model_json(
-            "here you go\n```json\n{\"translation\":\"你好\",\"breakdown\":[]}\n```\n",
-        )
-        .expect("fenced JSON should parse");
-        assert_eq!(parsed.translation.as_deref(), Some("你好"));
-    }
-
-    #[test]
-    fn empty_json_payload_becomes_llm_api_error() {
-        match parse_model_json::<SentencePromptJson>("") {
-            Err(LumenError::LlmApiError { message }) => {
-                assert!(message.contains("空响应"));
-            }
-            Err(other) => panic!("unexpected error: {other}"),
-            Ok(_) => panic!("empty payload should not parse"),
-        }
     }
 }

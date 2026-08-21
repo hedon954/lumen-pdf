@@ -8,6 +8,8 @@ predecessor:
   - prd/prd-2026-08-20-llm-settings-persistence.md
 related:
   - prd/prd-2026-08-21-workspace-search.md
+successor:
+  - prd/prd-2026-08-21-llm-json-repair.md
 ---
 
 # LumenPDF — LLM 关闭 thinking PRD
@@ -37,6 +39,8 @@ Qwen3、GLM、DeepSeek 等兼容 OpenAI 的接口默认会开 thinking。不关�
 - 不在界面展示 thinking 开关。
 - 不解析或渲染模型的 thinking 过程。
 - 不改 MyMemory 兜底翻译。
+
+后续修订：期望 JSON 的模型输出在解析前做 json repair，见 [prd-2026-08-21-llm-json-repair.md](prd-2026-08-21-llm-json-repair.md)。
 
 ## 5. 验收标准
 

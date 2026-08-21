@@ -8,6 +8,8 @@ predecessor:
   - tdd/tdd-2026-08-20-llm-settings-persistence.md
 related:
   - tdd/tdd-2026-08-21-workspace-search.md
+successor:
+  - tdd/tdd-2026-08-21-llm-json-repair.md
 ---
 
 # LumenPDF — LLM 关闭 thinking TDD
@@ -49,3 +51,5 @@ related:
 - 400 + unrecognized `enable_thinking` 视为可重试
 
 本环境无法对真实百炼/OpenAI 网关做联调。运行时须确认思考模型不再先推理再回答。
+
+后续修订：期望 JSON 的模型输出经 `parse_model_json` / `jsonrepair-rs` 再反序列化，见 [tdd-2026-08-21-llm-json-repair.md](tdd-2026-08-21-llm-json-repair.md)。
