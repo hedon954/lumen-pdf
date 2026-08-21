@@ -6,6 +6,7 @@ predecessor:
   - prd/prd-2026-06-26-v1011.md
 successor:
   - prd/prd-2026-07-03-reading-inspector.md
+  - prd/prd-2026-08-21-markup-interval-merge.md
 ---
 
 # LumenPDF — 阅读上下文与 AI 导读 PRD
@@ -76,7 +77,7 @@ LumenPDF 的阅读页需要同时承担阅读、理解、标注和复习。当�
 
 - 完全相同选区：通过「添加笔记」追加内容；通过「取消笔记」删除。
 - 新选区完全位于已有笔记内部：不创建重复笔记。
-- 新选区与已有笔记部分重叠且包含新增区域：合并为扩展后的选区。
+- 新选区与已有笔记部分重叠且包含新增区域：合并为扩展后的选区。后续修订：部分重叠只计同一文本行上的水平区间，相邻行框的垂直重叠不算，见 [prd-2026-08-21-markup-interval-merge.md](prd-2026-08-21-markup-interval-merge.md)。
 - 无重叠：创建新的独立笔记。
 - 合并只在同一文本行上合并相交或相邻矩形，跨行选区保留逐行 bounds。
 

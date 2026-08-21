@@ -39,6 +39,7 @@ PRD 记录**用户可感知的行为与验收标准**。TDD 记录**如何实现
 | unreleased | 2026-08-20 | LLM 设置跨重启持久化 | [prd-2026-08-20-llm-settings-persistence.md](prd/prd-2026-08-20-llm-settings-persistence.md) | [tdd-2026-08-20-llm-settings-persistence.md](tdd/tdd-2026-08-20-llm-settings-persistence.md) |
 | unreleased | 2026-08-21 | 选区标题误入与设置保存反馈 | [prd-2026-08-21-selection-settings-feedback.md](prd/prd-2026-08-21-selection-settings-feedback.md) | [tdd-2026-08-21-selection-settings-feedback.md](tdd/tdd-2026-08-21-selection-settings-feedback.md) |
 | unreleased | 2026-08-21 | 工作区 Cmd+F 搜索 | [prd-2026-08-21-workspace-search.md](prd/prd-2026-08-21-workspace-search.md) | [tdd-2026-08-21-workspace-search.md](tdd/tdd-2026-08-21-workspace-search.md) |
+| unreleased | 2026-08-21 | 划线按行区间合并 | [prd-2026-08-21-markup-interval-merge.md](prd/prd-2026-08-21-markup-interval-merge.md) | [tdd-2026-08-21-markup-interval-merge.md](tdd/tdd-2026-08-21-markup-interval-merge.md) |
 
 未单独成对的发布：
 
@@ -70,6 +71,15 @@ v1.0.2 笔记 + 划线
   → v1.0.22 回顾浮窗内删除单条/全部
   → v1.0.26 Inspector、回顾浮窗、笔记列表可编辑并自动保存
   → unreleased ⌘F 工作区搜索覆盖笔记、单词、划线、原文与 AI 解释
+  → unreleased 邻近新划线不再抹掉未选中的旧行
+```
+
+### 划线与高亮
+
+```text
+v1.0.0 Toggle：包围盒重叠则合并或整段取消
+  → v1.0.24 跨页逐页落笔、页眉页脚
+  → unreleased 按文本行一维区间合并，禁止用多行包围盒误删上一行
 ```
 
 ### LLM 与 AI 导读

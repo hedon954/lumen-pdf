@@ -6,6 +6,7 @@ predecessor:
   - tdd/tdd-2026-06-26-v1011.md
 successor:
   - tdd/tdd-2026-07-03-reading-inspector.md
+  - tdd/tdd-2026-08-21-markup-interval-merge.md
 ---
 
 # LumenPDF — 阅读上下文与 AI 导读 TDD
@@ -120,7 +121,7 @@ PDFKit coordinator 处理流程：
 
 - 已有完全相同选区：追加笔记文本或删除该笔记，由菜单动作决定。
 - 新选区被已有笔记完全覆盖：不创建重复 note。
-- 新选区与已有笔记部分重叠：删除参与合并的旧 notes，创建包含旧 rects 和新 rects 的新 note。
+- 新选区与已有笔记部分重叠：删除参与合并的旧 notes，创建包含旧 rects 和新 rects 的新 note。后续修订：重叠判定改为 `TextLineMarkupMerge.overlaps`，见 [tdd-2026-08-21-markup-interval-merge.md](tdd-2026-08-21-markup-interval-merge.md)。
 - 无重叠：创建独立 note。
 - 合并 rects 时只合并同一文本行上相交或相邻的矩形。
 
