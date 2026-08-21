@@ -100,7 +100,7 @@ v1.0.12 / v1.0.13 导读进入 Inspector
   → unreleased 当前导读会话可经 ⌘F 检索
   → unreleased 按服务商关闭 thinking；字段改为 Extra Config 默认值，去掉 /no_think
   → unreleased 期望 JSON 的模型输出先 json repair 再解析
-  → unreleased Extra Config 显示关 thinking 默认值；去掉 /no_think；JSON 着色并自动格式化
+  → unreleased Extra Config 显示关 thinking 默认值；去掉 /no_think；JSON 着色，回车缩进，画笔才整段格式化
   → unreleased 调用日志可展开实际发出的完整 HTTP 请求（密钥脱敏）
 ```
 

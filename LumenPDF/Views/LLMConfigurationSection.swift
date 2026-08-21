@@ -141,7 +141,7 @@ struct LLMConfigurationSection: View {
                     JSONEditorView(text: $extraConfig, minHeight: 140)
                         .frame(minHeight: 140)
                         .accessibilityLabel("Extra Config")
-                    Text("未修改时显示当前服务商关闭 thinking 的默认字段，改了就用你的。清空并保存后恢复默认；保存 {} 表示不附加任何字段。编辑结束会自动格式化。不能改 messages 或 stream。")
+                    Text("未修改时显示当前服务商关闭 thinking 的默认字段，改了就用你的。清空并保存后恢复默认；保存 {} 表示不附加任何字段。回车按层级缩进；需要整齐排版时点画笔格式化。不能改 messages 或 stream。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

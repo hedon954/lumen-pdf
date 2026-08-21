@@ -341,9 +341,11 @@ struct SettingsView: View {
         if persisted.model != model {
             model = persisted.model
         }
-        if persistCredentials {
-            extraConfig = LLMSettingsStore().effectiveExtraConfig(
-                for: persisted.baseURL,
+        if persistCredentials,
+           extraConfig.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        {
+            extraConfig = LLMThinkingExtraConfig.defaultJSON(
+                baseURL: persisted.baseURL,
                 model: persisted.model
             )
         }

@@ -76,6 +76,20 @@ enum JSONSyntaxHighlighter {
         }
         return output
     }
+
+    static func apply(to storage: NSTextStorage, font: NSFont, colors: JSONSyntaxColors = .system) {
+        let full = NSRange(location: 0, length: storage.length)
+        storage.addAttributes(
+            [
+                .font: font,
+                .foregroundColor: colors.plain
+            ],
+            range: full
+        )
+        for token in tokens(in: storage.string) {
+            storage.addAttribute(.foregroundColor, value: colors.color(for: token.kind), range: token.range)
+        }
+    }
 }
 
 struct JSONSyntaxColors {
