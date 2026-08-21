@@ -229,7 +229,6 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showSetupSheet) {
             SettingsView(onDismiss: { showSetupSheet = false })
-                .environmentObject(appState)
         }
         .onChange(of: appState.activeTab) { _, _ in
             selectionActionBarModel.dismiss()

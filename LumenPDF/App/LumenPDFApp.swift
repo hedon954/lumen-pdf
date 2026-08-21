@@ -25,7 +25,6 @@ struct LumenPDFApp: App {
 
         Settings {
             SettingsView()
-                .environmentObject(appState)
                 .background(
                     SettingsWindowConfigurator(minimumSize: NSSize(width: 860, height: 600))
                 )

@@ -1501,18 +1501,22 @@ struct PDFKitView: NSViewRepresentable {
                     return
                 }
 
-                let word = PDFExtractedTextCollapser.collapse(
-                    markups
-                        .map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
-                        .filter { !$0.isEmpty }
-                        .joined(separator: "\n")
+                let word = PDFSelectionHeadingLeakFilter.stripEchoedHeadings(
+                    from: PDFExtractedTextCollapser.collapse(
+                        markups
+                            .map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
+                            .filter { !$0.isEmpty }
+                            .joined(separator: "\n")
+                    )
                 )
                 guard !word.isEmpty else {
                     DispatchQueue.main.async { self.parent.onClearSelection() }
                     return
                 }
-                let sentence = PDFExtractedTextCollapser.collapse(
-                    self.extractSentence(from: pdfView, containing: selectionSnapshot) ?? word
+                let sentence = PDFSelectionHeadingLeakFilter.stripEchoedHeadings(
+                    from: PDFExtractedTextCollapser.collapse(
+                        self.extractSentence(from: pdfView, containing: selectionSnapshot) ?? word
+                    )
                 )
                 let currentPage = doc.page(at: primary.pageIndex) ?? pdfView.currentPage
                 guard let currentPage else { return }
@@ -1656,7 +1660,9 @@ struct PDFKitView: NSViewRepresentable {
                 end += 1
             }
             let r = NSRange(location: start, length: end - start)
-            let sentence = ns.substring(with: r).trimmingCharacters(in: .whitespacesAndNewlines)
+            let sentence = PDFSelectionHeadingLeakFilter.stripEchoedHeadings(
+                from: ns.substring(with: r)
+            )
             if sentence.count >= 2, sentence.count <= 2000 { return sentence }
             return nil
         }
@@ -1673,7 +1679,9 @@ struct PDFKitView: NSViewRepresentable {
             guard !word.isEmpty else { return nil }
             let seps = CharacterSet(charactersIn: ".!?。！？")
             for part in pageText.components(separatedBy: seps) {
-                let t = part.trimmingCharacters(in: .whitespacesAndNewlines)
+                let t = PDFSelectionHeadingLeakFilter.stripEchoedHeadings(
+                    from: part.trimmingCharacters(in: .whitespacesAndNewlines)
+                )
                 if t.contains(word), t.count >= 4, t.count <= 2000 { return t }
             }
             return nil

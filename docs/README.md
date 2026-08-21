@@ -37,6 +37,7 @@ PRD 记录**用户可感知的行为与验收标准**。TDD 记录**如何实现
 | v1.0.25 | 2026-08-20 | 文库封面与翻译重新生成 | [prd-2026-08-20-library-cover-translation-retry.md](prd/prd-2026-08-20-library-cover-translation-retry.md) | [tdd-2026-08-20-library-cover-translation-retry.md](tdd/tdd-2026-08-20-library-cover-translation-retry.md) |
 | v1.0.26 | 2026-08-20 | 笔记自动保存与翻译浮窗位置稳定 | [prd-2026-08-20-note-autosave-overlay-stability.md](prd/prd-2026-08-20-note-autosave-overlay-stability.md) | [tdd-2026-08-20-note-autosave-overlay-stability.md](tdd/tdd-2026-08-20-note-autosave-overlay-stability.md) |
 | unreleased | 2026-08-20 | LLM 设置跨重启持久化 | [prd-2026-08-20-llm-settings-persistence.md](prd/prd-2026-08-20-llm-settings-persistence.md) | [tdd-2026-08-20-llm-settings-persistence.md](tdd/tdd-2026-08-20-llm-settings-persistence.md) |
+| unreleased | 2026-08-21 | 选区标题误入与设置保存反馈 | [prd-2026-08-21-selection-settings-feedback.md](prd/prd-2026-08-21-selection-settings-feedback.md) | [tdd-2026-08-21-selection-settings-feedback.md](tdd/tdd-2026-08-21-selection-settings-feedback.md) |
 
 未单独成对的发布：
 
@@ -54,6 +55,7 @@ v1.0.15 公共窗口外壳
   → v1.0.21 统一定位（下/上/右/左/最小遮挡）
   → v1.0.23 翻译浮窗提升到阅读窗口根层
   → v1.0.26 首次定位后锁定原点，内容变高不再换边跳位
+  → unreleased 小节标题不因正文复述而进入翻译原文
 ```
 
 v1.0.21 曾要求内容变高后重新换边避让；2026-08-20 修订为「首次位置固定」，以 v1.0.15 的稳定方向为优先体验。
@@ -78,6 +80,7 @@ v1.0.12 / v1.0.13 导读进入 Inspector
   → v1.0.24 空响应诊断、追问串行、跨页划线
   → v1.0.25 翻译刷新/重新生成
   → unreleased 保存设置后 API Key 与模型跨重启仍在
+  → unreleased 设置保存失败只在设置页保存栏提示；ad-hoc 安装可写入钥匙串
 ```
 
 ## 其他文档
