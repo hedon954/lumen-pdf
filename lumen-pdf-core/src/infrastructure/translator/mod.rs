@@ -4,3 +4,4 @@ pub mod http_client;
 pub mod llm_translator;
 pub mod model_json;
 pub mod streaming;
+pub mod thinking_control;

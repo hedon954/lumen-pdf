@@ -9,6 +9,9 @@ use crate::infrastructure::translator::streaming::{
     describe_empty_model_output, extract_complete_string_fields, extract_message_content_from_json,
     extract_streaming_string_value, preview_text, SseAccumulator, SseChunkOutcome, TokenUsage,
 };
+use crate::infrastructure::translator::thinking_control::{
+    ensure_no_think_suffix, ThinkingDisableKind, ThinkingDisablePolicy,
+};
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -566,6 +569,12 @@ impl LlmTranslator {
         response_format: Option<ResponseFormat>,
         max_tokens: Option<u32>,
     ) -> ChatRequest {
+        let policy = ThinkingDisablePolicy::for_endpoint(&self.config.base_url, &self.config.model);
+        let messages = if policy.append_no_think {
+            with_no_think_on_last_user(messages)
+        } else {
+            messages
+        };
         ChatRequest {
             model: self.config.model.clone(),
             messages,
@@ -575,13 +584,19 @@ impl LlmTranslator {
             stream_options: stream.then_some(StreamOptions {
                 include_usage: true,
             }),
-            enable_thinking: Some(false),
-            chat_template_kwargs: Some(ChatTemplateKwargs {
-                enable_thinking: false,
-            }),
-            thinking: Some(ThinkingControl {
-                kind: "disabled".into(),
-            }),
+            enable_thinking: matches!(policy.kind, ThinkingDisableKind::EnableThinking)
+                .then_some(false),
+            chat_template_kwargs: matches!(policy.kind, ThinkingDisableKind::ChatTemplateKwargs)
+                .then_some(ChatTemplateKwargs {
+                    enable_thinking: false,
+                }),
+            thinking: matches!(policy.kind, ThinkingDisableKind::ThinkingType).then_some(
+                ThinkingControl {
+                    kind: "disabled".into(),
+                },
+            ),
+            reasoning: matches!(policy.kind, ThinkingDisableKind::OpenRouterReasoning)
+                .then_some(ReasoningControl { enabled: false }),
         }
     }
 
@@ -958,6 +973,9 @@ struct ChatRequest {
     /// DeepSeek / GLM / Anthropic-compatible thinking control.
     #[serde(skip_serializing_if = "Option::is_none")]
     thinking: Option<ThinkingControl>,
+    /// OpenRouter reasoning switch.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning: Option<ReasoningControl>,
 }
 
 impl ChatRequest {
@@ -966,6 +984,7 @@ impl ChatRequest {
             || self.enable_thinking.is_some()
             || self.chat_template_kwargs.is_some()
             || self.thinking.is_some()
+            || self.reasoning.is_some()
     }
 
     fn without_vendor_extensions(mut self) -> Self {
@@ -973,6 +992,7 @@ impl ChatRequest {
         self.enable_thinking = None;
         self.chat_template_kwargs = None;
         self.thinking = None;
+        self.reasoning = None;
         self
     }
 }
@@ -988,6 +1008,31 @@ struct ThinkingControl {
     kind: String,
 }
 
+#[derive(Clone, Serialize)]
+struct ReasoningControl {
+    enabled: bool,
+}
+
+fn with_no_think_on_last_user(mut messages: Vec<Message>) -> Vec<Message> {
+    if let Some(message) = messages.iter_mut().rev().find(|item| item.role == "user") {
+        match &mut message.content {
+            RequestMessageContent::Text(text) => {
+                *text = ensure_no_think_suffix(text);
+            }
+            RequestMessageContent::Parts(parts) => {
+                if let Some(RequestContentPart::Text { text }) = parts
+                    .iter_mut()
+                    .rev()
+                    .find(|part| matches!(part, RequestContentPart::Text { .. }))
+                {
+                    *text = ensure_no_think_suffix(text);
+                }
+            }
+        }
+    }
+    messages
+}
+
 fn is_unknown_optional_field_error(status: reqwest::StatusCode, body: &str) -> bool {
     if status.as_u16() != 400 {
         return false;
@@ -1000,6 +1045,7 @@ fn is_unknown_optional_field_error(status: reqwest::StatusCode, body: &str) -> b
         || lower.contains("chat_template_kwargs")
         || lower.contains("stream_options")
         || lower.contains("include_usage")
+        || lower.contains("reasoning")
 }
 
 #[derive(Clone, Serialize)]
@@ -1214,11 +1260,11 @@ impl Translator for LlmTranslator {
 mod tests {
     use super::*;
 
-    fn translator() -> LlmTranslator {
+    fn translator_with(base_url: &str, model: &str) -> LlmTranslator {
         LlmTranslator::new(LlmConfig {
-            base_url: "https://example.com/v1".into(),
+            base_url: base_url.into(),
             api_key: "key".into(),
-            model: "vision-model".into(),
+            model: model.into(),
             target_language: "简体中文".into(),
             word_prompt_template: String::new(),
             sentence_prompt_template: String::new(),
@@ -1227,6 +1273,17 @@ mod tests {
             sentence_system_prompt: String::new(),
             explanation_system_prompt: String::new(),
         })
+    }
+
+    fn translator() -> LlmTranslator {
+        translator_with("https://example.com/v1", "vision-model")
+    }
+
+    fn dashscope_qwen() -> LlmTranslator {
+        translator_with(
+            "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            "qwen-plus",
+        )
     }
 
     #[test]
@@ -1264,34 +1321,117 @@ mod tests {
     }
 
     #[test]
-    fn all_chat_requests_explicitly_disable_thinking() {
-        let translator = translator();
+    fn dashscope_qwen_only_sends_enable_thinking_and_no_think() {
+        let translator = dashscope_qwen();
         let requests = [
             translator.build_word_request("word", "a sentence", false),
             translator.build_sentence_request("a sentence", true),
             translator.build_explanation_request("selected", "context", "", &[], true),
         ];
         for request in requests {
-            assert_thinking_disabled(&serde_json::to_value(request).unwrap());
+            let json = serde_json::to_value(&request).unwrap();
+            assert_eq!(json["enable_thinking"], false);
+            assert!(json.get("chat_template_kwargs").is_none());
+            assert!(json.get("thinking").is_none());
+            assert!(json.get("reasoning").is_none());
+            assert_last_user_ends_with_no_think(&json);
         }
     }
 
     #[test]
+    fn openai_omits_vendor_thinking_fields() {
+        let json = serde_json::to_value(
+            translator_with("https://api.openai.com/v1", "gpt-4o").build_word_request(
+                "word",
+                "a sentence",
+                false,
+            ),
+        )
+        .unwrap();
+        assert!(json.get("enable_thinking").is_none());
+        assert!(json.get("chat_template_kwargs").is_none());
+        assert!(json.get("thinking").is_none());
+        assert!(json.get("reasoning").is_none());
+    }
+
+    #[test]
+    fn self_hosted_qwen_uses_chat_template_kwargs() {
+        let json = serde_json::to_value(
+            translator_with("http://127.0.0.1:8000/v1", "Qwen/Qwen3-8B").build_word_request(
+                "word",
+                "a sentence",
+                false,
+            ),
+        )
+        .unwrap();
+        assert!(json.get("enable_thinking").is_none());
+        assert_eq!(json["chat_template_kwargs"]["enable_thinking"], false);
+        assert!(json.get("thinking").is_none());
+        assert_last_user_ends_with_no_think(&json);
+    }
+
+    #[test]
+    fn deepseek_uses_thinking_type_disabled() {
+        let json =
+            serde_json::to_value(
+                translator_with("https://api.deepseek.com/v1", "deepseek-v4-flash")
+                    .build_word_request("word", "a sentence", false),
+            )
+            .unwrap();
+        assert_eq!(json["thinking"]["type"], "disabled");
+        assert!(json.get("enable_thinking").is_none());
+        assert!(json.get("chat_template_kwargs").is_none());
+    }
+
+    #[test]
+    fn openrouter_uses_reasoning_enabled_false() {
+        let json =
+            serde_json::to_value(
+                translator_with("https://openrouter.ai/api/v1", "qwen/qwen3-32b")
+                    .build_word_request("word", "a sentence", false),
+            )
+            .unwrap();
+        assert_eq!(json["reasoning"]["enabled"], false);
+        assert!(json.get("enable_thinking").is_none());
+        assert!(json.get("thinking").is_none());
+    }
+
+    #[test]
     fn stripping_vendor_extensions_omits_thinking_fields() {
-        let request = translator()
+        let request = dashscope_qwen()
             .build_word_request("word", "a sentence", true)
             .without_vendor_extensions();
         let json = serde_json::to_value(request).unwrap();
         assert!(json.get("enable_thinking").is_none());
         assert!(json.get("chat_template_kwargs").is_none());
         assert!(json.get("thinking").is_none());
+        assert!(json.get("reasoning").is_none());
         assert!(json.get("stream_options").is_none());
     }
 
-    fn assert_thinking_disabled(json: &Value) {
-        assert_eq!(json["enable_thinking"], false);
-        assert_eq!(json["chat_template_kwargs"]["enable_thinking"], false);
-        assert_eq!(json["thinking"]["type"], "disabled");
+    fn assert_last_user_ends_with_no_think(json: &Value) {
+        let messages = json["messages"].as_array().unwrap();
+        let user = messages
+            .iter()
+            .rev()
+            .find(|message| message["role"] == "user")
+            .unwrap();
+        let content = if user["content"].is_string() {
+            user["content"].as_str().unwrap().to_string()
+        } else {
+            user["content"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .rev()
+                .find_map(|part| part["text"].as_str())
+                .unwrap()
+                .to_string()
+        };
+        assert!(
+            content.trim_end().ends_with("/no_think"),
+            "expected /no_think suffix, got {content}"
+        );
     }
 
     #[test]
