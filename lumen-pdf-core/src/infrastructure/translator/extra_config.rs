@@ -10,9 +10,8 @@ use serde_json::{Map, Value};
 const RESERVED_KEYS: &[&str] = &["messages", "stream", "stream_options"];
 
 pub fn merge_chat_request<T: Serialize>(body: &T, extra_config: &str) -> Result<Value, LumenError> {
-    let mut value = serde_json::to_value(body).map_err(|err| LumenError::SerializationError {
-        message: format!("无法序列化 LLM 请求：{err}"),
-    })?;
+    let mut value = serde_json::to_value(body)
+        .map_err(|err| LumenError::serialization(format!("无法序列化 LLM 请求：{err}")))?;
     if let Some(extra) = parse_extra_object(extra_config)? {
         merge_objects(&mut value, extra);
     }
@@ -24,15 +23,13 @@ fn parse_extra_object(raw: &str) -> Result<Option<Map<String, Value>>, LumenErro
     if trimmed.is_empty() {
         return Ok(None);
     }
-    let value: Value =
-        serde_json::from_str(trimmed).map_err(|err| LumenError::SerializationError {
-            message: format!("Extra Config 不是合法 JSON：{err}"),
-        })?;
+    let value: Value = serde_json::from_str(trimmed)
+        .map_err(|err| LumenError::serialization(format!("Extra Config 不是合法 JSON：{err}")))?;
     match value {
         Value::Object(map) => Ok(Some(map)),
-        _ => Err(LumenError::SerializationError {
-            message: "Extra Config 必须是 JSON 对象，例如 {\"enable_thinking\": false}。".into(),
-        }),
+        _ => Err(LumenError::serialization(
+            "Extra Config 必须是 JSON 对象，例如 {\"enable_thinking\": false}。",
+        )),
     }
 }
 
@@ -110,7 +107,7 @@ mod tests {
         let body = json!({"model": "qwen-plus"});
         let err = merge_chat_request(&body, "[1, 2]").unwrap_err();
         match err {
-            LumenError::SerializationError { message } => {
+            LumenError::SerializationError { message, .. } => {
                 assert!(message.contains("JSON 对象"), "{message}");
             }
             other => panic!("unexpected error: {other}"),

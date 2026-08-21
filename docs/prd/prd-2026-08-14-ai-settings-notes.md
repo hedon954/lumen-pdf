@@ -10,6 +10,7 @@ predecessor:
 successor:
   - prd/prd-2026-08-15-settings-usage-overlay.md
   - prd/prd-2026-08-20-llm-settings-persistence.md
+  - prd/prd-2026-08-21-llm-call-log-http-request.md
 ---
 
 # LumenPDF — AI 阅读、设置与笔记删除 PRD
@@ -34,7 +35,7 @@ v1.0.22 把 AI 解释、LLM 设置和笔记回顾收成可完成的闭环：解�
 
 ### F3 — 调用审计与费用
 
-- 记录阅读相关 LLM 调用：类型、模型、耗时、输入/输出 Token、失败原因。
+- 记录阅读相关 LLM 调用：类型、模型、耗时、输入/输出 Token、失败原因。后续修订：详情可展开实际发出的完整 HTTP 请求（密钥脱敏），见 [prd-2026-08-21-llm-call-log-http-request.md](prd-2026-08-21-llm-call-log-http-request.md)。
 - 提供 Token 统计与费用估算，便于定位问题和了解成本。
 
 ### F4 — 供应商与 Keychain

@@ -36,10 +36,8 @@ impl TranslationCacheRepository for SqliteTranslationCacheRepo {
                     "UPDATE translation_cache SET hit_count = hit_count + 1 WHERE word = ?1 AND sentence_hash = ?2 AND target_language = ?3",
                     rusqlite::params![word, sentence_hash, target_language],
                 ).ok();
-                let r: TranslationResult =
-                    serde_json::from_str(&json).map_err(|e| LumenError::SerializationError {
-                        message: e.to_string(),
-                    })?;
+                let r: TranslationResult = serde_json::from_str(&json)
+                    .map_err(|e| LumenError::serialization(e.to_string()))?;
                 Ok(Some(r))
             }
             None => Ok(None),

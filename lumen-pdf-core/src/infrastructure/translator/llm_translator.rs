@@ -5,6 +5,7 @@ use crate::domain::translation::{
 use crate::error::LumenError;
 use crate::infrastructure::translator::extra_config::merge_chat_request;
 use crate::infrastructure::translator::http_client::shared_client;
+use crate::infrastructure::translator::http_request_log::format_http_request;
 use crate::infrastructure::translator::model_json::{parse_model_json, streaming_json_view};
 use crate::infrastructure::translator::streaming::{
     describe_empty_model_output, extract_complete_string_fields, extract_message_content_from_json,
@@ -279,6 +280,7 @@ impl LlmTranslator {
             prompt_tokens: completion.usage.prompt_tokens,
             completion_tokens: completion.usage.completion_tokens,
             total_tokens: completion.usage.total_tokens,
+            http_request: completion.http_request,
             ..Default::default()
         };
         on_progress(final_result.clone());
@@ -324,8 +326,11 @@ impl LlmTranslator {
         let body = self.build_sentence_request(sentence, false);
         let completion = self.send_chat_request(&body).await?;
 
-        let parsed: SentencePromptJson = parse_model_json(&completion.content)?;
-        Ok(parsed.into_result(sentence, completion.usage))
+        let parsed: SentencePromptJson = parse_model_json(&completion.content)
+            .map_err(|err| err.with_http_request(completion.http_request.clone()))?;
+        Ok(parsed
+            .into_result(sentence, completion.usage)
+            .with_http_request(completion.http_request))
     }
 
     /// Streaming sentence translation.
@@ -371,8 +376,11 @@ impl LlmTranslator {
         // Final, authoritative parse: the streaming extractor is permissive
         // (string-only). At end of stream we run a strict JSON parse so we
         // can extract `breakdown` and guarantee a clean final result.
-        let parsed: SentencePromptJson = parse_model_json(&completion.content)?;
-        let final_result = parsed.into_result(sentence, completion.usage);
+        let parsed: SentencePromptJson = parse_model_json(&completion.content)
+            .map_err(|err| err.with_http_request(completion.http_request.clone()))?;
+        let final_result = parsed
+            .into_result(sentence, completion.usage)
+            .with_http_request(completion.http_request);
         // Emit a terminal progress event so the UI gets the breakdown without
         // having to wait for the outer caller to wire it.
         on_progress(final_result.clone());
@@ -600,59 +608,61 @@ impl LlmTranslator {
 
     async fn send_chat_request(&self, body: &ChatRequest) -> Result<CompletionOutput, LumenError> {
         let url = self.completions_url();
-        let payload = self.chat_json(body)?;
+        let mut payload = self.chat_json(body)?;
+        let mut dump = format_http_request(&url, &payload);
         let resp = shared_client()
             .post(&url)
             .bearer_auth(&self.config.api_key)
             .json(&payload)
             .send()
             .await
-            .map_err(|e| LumenError::LlmApiError {
-                message: e.to_string(),
-            })?;
+            .map_err(|e| LumenError::llm_api(e.to_string()).with_http_request(dump.clone()))?;
 
         let resp = if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
             if is_unknown_optional_field_error(status, &text) && body.has_vendor_extensions() {
                 let compatible_body = body.clone().without_vendor_extensions();
-                let retry_payload = self.chat_json(&compatible_body)?;
+                payload = self.chat_json(&compatible_body)?;
+                dump = format_http_request(&url, &payload);
                 let retry = shared_client()
                     .post(&url)
                     .bearer_auth(&self.config.api_key)
-                    .json(&retry_payload)
+                    .json(&payload)
                     .send()
                     .await
-                    .map_err(|e| LumenError::LlmApiError {
-                        message: e.to_string(),
+                    .map_err(|e| {
+                        LumenError::llm_api(e.to_string()).with_http_request(dump.clone())
                     })?;
                 if !retry.status().is_success() {
                     let retry_status = retry.status();
                     let retry_text = retry.text().await.unwrap_or_default();
-                    return Err(LumenError::LlmApiError {
-                        message: format!("HTTP {retry_status}: {retry_text}"),
-                    });
+                    return Err(
+                        LumenError::llm_api(format!("HTTP {retry_status}: {retry_text}"))
+                            .with_http_request(dump),
+                    );
                 }
                 retry
             } else {
-                return Err(LumenError::LlmApiError {
-                    message: format!("HTTP {status}: {text}"),
-                });
+                return Err(
+                    LumenError::llm_api(format!("HTTP {status}: {text}")).with_http_request(dump)
+                );
             }
         } else {
             resp
         };
 
-        let raw = resp.text().await.map_err(|e| LumenError::LlmApiError {
-            message: e.to_string(),
+        let raw = resp
+            .text()
+            .await
+            .map_err(|e| LumenError::llm_api(e.to_string()).with_http_request(dump.clone()))?;
+        let chat: ChatResponse = serde_json::from_str(&raw).map_err(|e| {
+            LumenError::llm_api(format!(
+                "无法解析模型响应 JSON：{e}。原始响应预览：{}",
+                preview_text(&raw, 420)
+            ))
+            .with_http_request(dump.clone())
         })?;
-        let chat: ChatResponse =
-            serde_json::from_str(&raw).map_err(|e| LumenError::LlmApiError {
-                message: format!(
-                    "无法解析模型响应 JSON：{e}。原始响应预览：{}",
-                    preview_text(&raw, 420)
-                ),
-            })?;
 
         let message = chat.choices.into_iter().next().map(|choice| choice.message);
         let content = message
@@ -667,18 +677,21 @@ impl LlmTranslator {
         if content.trim().is_empty() {
             let mut accumulator = SseAccumulator::default();
             accumulator.reasoning = reasoning;
-            return Err(LumenError::LlmApiError {
-                message: describe_empty_model_output(
-                    raw.len(),
-                    &accumulator,
-                    &raw,
-                    usage,
-                    &self.config.model,
-                    &url,
-                ),
-            });
+            return Err(LumenError::llm_api(describe_empty_model_output(
+                raw.len(),
+                &accumulator,
+                &raw,
+                usage,
+                &self.config.model,
+                &url,
+            ))
+            .with_http_request(dump));
         }
-        Ok(CompletionOutput { content, usage })
+        Ok(CompletionOutput {
+            content,
+            usage,
+            http_request: dump,
+        })
     }
 
     /// Drive an OpenAI-compatible streaming completion: fire the request,
@@ -694,16 +707,15 @@ impl LlmTranslator {
     where
         F: FnMut(&str, &mut String),
     {
-        let payload = self.chat_json(body)?;
+        let mut payload = self.chat_json(body)?;
+        let mut dump = format_http_request(url, &payload);
         let mut resp = shared_client()
             .post(url)
             .bearer_auth(&self.config.api_key)
             .json(&payload)
             .send()
             .await
-            .map_err(|e| LumenError::LlmApiError {
-                message: e.to_string(),
-            })?;
+            .map_err(|e| LumenError::llm_api(e.to_string()).with_http_request(dump.clone()))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -712,27 +724,29 @@ impl LlmTranslator {
                 is_unknown_optional_field_error(status, &text) && body.has_vendor_extensions();
             if can_retry_without_usage {
                 let compatible_body = body.clone().without_vendor_extensions();
-                let retry_payload = self.chat_json(&compatible_body)?;
+                payload = self.chat_json(&compatible_body)?;
+                dump = format_http_request(url, &payload);
                 resp = shared_client()
                     .post(url)
                     .bearer_auth(&self.config.api_key)
-                    .json(&retry_payload)
+                    .json(&payload)
                     .send()
                     .await
-                    .map_err(|e| LumenError::LlmApiError {
-                        message: e.to_string(),
+                    .map_err(|e| {
+                        LumenError::llm_api(e.to_string()).with_http_request(dump.clone())
                     })?;
                 if !resp.status().is_success() {
                     let retry_status = resp.status();
                     let retry_text = resp.text().await.unwrap_or_default();
-                    return Err(LumenError::LlmApiError {
-                        message: format!("HTTP {retry_status}: {retry_text}"),
-                    });
+                    return Err(
+                        LumenError::llm_api(format!("HTTP {retry_status}: {retry_text}"))
+                            .with_http_request(dump),
+                    );
                 }
             } else {
-                return Err(LumenError::LlmApiError {
-                    message: format!("HTTP {status}: {text}"),
-                });
+                return Err(
+                    LumenError::llm_api(format!("HTTP {status}: {text}")).with_http_request(dump)
+                );
             }
         }
 
@@ -749,9 +763,8 @@ impl LlmTranslator {
         let mut bytes_received = 0usize;
 
         while let Some(item) = stream.next().await {
-            let bytes = item.map_err(|e| LumenError::LlmApiError {
-                message: e.to_string(),
-            })?;
+            let bytes = item
+                .map_err(|e| LumenError::llm_api(e.to_string()).with_http_request(dump.clone()))?;
             bytes_received += bytes.len();
             append_raw_preview(&mut raw_preview, &bytes, 8_000);
             byte_buf.extend_from_slice(&bytes);
@@ -795,19 +808,18 @@ impl LlmTranslator {
         );
 
         if let Some(error) = sse.gateway_error.clone() {
-            return Err(LumenError::LlmApiError {
-                message: format!(
-                    "{error} {}",
-                    describe_empty_model_output(
-                        bytes_received,
-                        &sse,
-                        &raw_preview,
-                        usage,
-                        &self.config.model,
-                        url
-                    )
-                ),
-            });
+            return Err(LumenError::llm_api(format!(
+                "{error} {}",
+                describe_empty_model_output(
+                    bytes_received,
+                    &sse,
+                    &raw_preview,
+                    usage,
+                    &self.config.model,
+                    url
+                )
+            ))
+            .with_http_request(dump));
         }
 
         if content_buf.trim().is_empty() {
@@ -823,21 +835,21 @@ impl LlmTranslator {
         }
 
         if content_buf.trim().is_empty() {
-            return Err(LumenError::LlmApiError {
-                message: describe_empty_model_output(
-                    bytes_received,
-                    &sse,
-                    &raw_preview,
-                    usage,
-                    &self.config.model,
-                    url,
-                ),
-            });
+            return Err(LumenError::llm_api(describe_empty_model_output(
+                bytes_received,
+                &sse,
+                &raw_preview,
+                usage,
+                &self.config.model,
+                url,
+            ))
+            .with_http_request(dump));
         }
 
         Ok(CompletionOutput {
             content: content_buf,
             usage,
+            http_request: dump,
         })
     }
 }
@@ -897,6 +909,7 @@ fn map_to_translation_result(
         prompt_tokens: 0,
         completion_tokens: 0,
         total_tokens: 0,
+        http_request: String::new(),
     }
 }
 
@@ -1047,6 +1060,7 @@ struct ChatResponse {
 struct CompletionOutput {
     content: String,
     usage: TokenUsage,
+    http_request: String,
 }
 
 #[derive(Deserialize)]
@@ -1093,6 +1107,7 @@ impl LlmTranslationJson {
             prompt_tokens: usage.prompt_tokens,
             completion_tokens: usage.completion_tokens,
             total_tokens: usage.total_tokens,
+            http_request: String::new(),
         }
     }
 }
@@ -1153,9 +1168,12 @@ impl Translator for LlmTranslator {
         let body = self.build_word_request(word, sentence, false);
         let completion = self.send_chat_request(&body).await?;
 
-        let parsed: LlmTranslationJson = parse_model_json(&completion.content)?;
+        let parsed: LlmTranslationJson = parse_model_json(&completion.content)
+            .map_err(|err| err.with_http_request(completion.http_request.clone()))?;
 
-        Ok(parsed.into_result(word, completion.usage))
+        Ok(parsed
+            .into_result(word, completion.usage)
+            .with_http_request(completion.http_request))
     }
 
     async fn translate_streaming(
@@ -1197,8 +1215,11 @@ impl Translator for LlmTranslator {
 
         // End-of-stream: strict parse so missing optional fields default to
         // empty strings via serde and we always return a complete result.
-        let parsed: LlmTranslationJson = parse_model_json(&completion.content)?;
-        Ok(parsed.into_result(word, completion.usage))
+        let parsed: LlmTranslationJson = parse_model_json(&completion.content)
+            .map_err(|err| err.with_http_request(completion.http_request.clone()))?;
+        Ok(parsed
+            .into_result(word, completion.usage)
+            .with_http_request(completion.http_request))
     }
 }
 

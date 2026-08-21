@@ -101,9 +101,7 @@ fn extract_json_span(raw: &str) -> Option<&str> {
 }
 
 fn empty_json_error() -> LumenError {
-    LumenError::LlmApiError {
-        message: "模型没有返回任何内容（空响应），因此无法解析 JSON。常见原因：网关返回空 body、流式协议不匹配，或模型拒绝输出。".into(),
-    }
+    LumenError::llm_api("模型没有返回任何内容（空响应），因此无法解析 JSON。常见原因：网关返回空 body、流式协议不匹配，或模型拒绝输出。")
 }
 
 fn json_parse_error(raw: &str, err: serde_json::Error) -> LumenError {
@@ -111,13 +109,11 @@ fn json_parse_error(raw: &str, err: serde_json::Error) -> LumenError {
     if trimmed.is_empty() {
         return empty_json_error();
     }
-    LumenError::SerializationError {
-        message: format!(
-            "{err}。响应长度 {} 字符。内容预览：{}",
-            trimmed.chars().count(),
-            preview_text(trimmed, 400)
-        ),
-    }
+    LumenError::serialization(format!(
+        "{err}。响应长度 {} 字符。内容预览：{}",
+        trimmed.chars().count(),
+        preview_text(trimmed, 400)
+    ))
 }
 
 #[cfg(test)]
@@ -179,7 +175,7 @@ mod tests {
     #[test]
     fn empty_payload_is_llm_api_error() {
         match parse_model_json::<WordJson>("") {
-            Err(LumenError::LlmApiError { message }) => {
+            Err(LumenError::LlmApiError { message, .. }) => {
                 assert!(message.contains("空响应"));
             }
             Err(other) => panic!("unexpected error: {other}"),

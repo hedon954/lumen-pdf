@@ -6,6 +6,8 @@ predecessor:
   - tdd/tdd-2026-07-16-llm-configuration-discovery.md
   - tdd/tdd-2026-08-20-llm-settings-persistence.md
   - tdd/tdd-2026-08-21-llm-disable-thinking.md
+related:
+  - tdd/tdd-2026-08-21-llm-call-log-http-request.md
 ---
 
 # LumenPDF — LLM Extra Config 与 API Key 入口 TDD

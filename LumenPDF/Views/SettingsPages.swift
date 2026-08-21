@@ -451,8 +451,8 @@ struct LLMCallLogSettingsPage: View {
                             systemImage: "list.bullet.rectangle",
                             description: Text(
                                 store.entries.isEmpty
-                                    ? "完成一次单词翻译、整句翻译或选区解释后，可在这里查看请求、响应与 Token。"
-                                    : "查看这次请求的响应、耗时与 Token 用量"
+                                    ? "完成一次单词翻译、整句翻译或选区解释后，可在这里查看请求、完整 HTTP、响应与 Token。"
+                                    : "查看这次请求的完整 HTTP、响应、耗时与 Token 用量"
                             )
                         )
                     }
@@ -580,6 +580,7 @@ private struct LLMCallLogDetail: View {
                     text: entry.input,
                     tint: .blue
                 )
+                httpRequestSection
                 logTextSection(
                     "模型响应",
                     systemImage: "arrow.down.doc",
@@ -698,6 +699,69 @@ private struct LLMCallLogDetail: View {
             RoundedRectangle(cornerRadius: 12)
                 .strokeBorder(tint.opacity(0.14), lineWidth: 0.5)
         }
+    }
+
+    private var httpRequestSection: some View {
+        let title = "完整 HTTP 请求"
+        let text = httpRequestDisplay
+        let expanded = expandedSections.contains(title)
+        let preview = httpRequestPreview(text)
+        let shown = expanded ? text : preview
+        let canExpand = text != preview
+        return VStack(alignment: .leading, spacing: 10) {
+            Label(title, systemImage: "network")
+                .font(.headline)
+                .foregroundStyle(.purple)
+            Text(shown)
+                .font(.system(.callout, design: .monospaced))
+                .lineSpacing(3)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if canExpand {
+                Button(expanded ? "收起" : "展开完整请求") {
+                    if expanded {
+                        expandedSections.remove(title)
+                    } else {
+                        expandedSections.insert(title)
+                    }
+                }
+                .buttonStyle(.plain)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+            }
+        }
+        .padding(16)
+        .background(Color.purple.opacity(0.055), in: RoundedRectangle(cornerRadius: 12))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(Color.purple.opacity(0.14), lineWidth: 0.5)
+        }
+    }
+
+    private var httpRequestDisplay: String {
+        let dump = entry.httpRequest.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !dump.isEmpty {
+            return dump
+        }
+        switch entry.source.lowercased() {
+        case "cache":
+            return "未发出 HTTP 请求（命中本地缓存）。"
+        case "":
+            return entry.status == .running
+                ? "请求仍在进行，完成后可查看完整 HTTP 请求。"
+                : "没有可展示的 HTTP 请求。"
+        default:
+            return "没有记录到发出的 HTTP 请求。"
+        }
+    }
+
+    private func httpRequestPreview(_ text: String) -> String {
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+        if lines.count <= 4, text.count <= 400 {
+            return text
+        }
+        let head = lines.prefix(4).joined(separator: "\n")
+        return head + "\n…"
     }
 
     private var statusColor: Color {

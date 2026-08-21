@@ -275,15 +275,17 @@ final class BridgeService {
                 completionTokens: result.completionTokens,
                 totalTokens: result.totalTokens,
                 warning: warning,
-                failed: result.isCompleteFailure
+                failed: result.isCompleteFailure,
+                httpRequest: result.httpRequest
             )
         }
     }
 
     private func failAudit(_ id: UUID, error: Error) async {
         let message = TranslationErrorFormatter.userMessage(from: error)
+        let httpRequest = TranslationErrorFormatter.httpRequest(from: error)
         await MainActor.run {
-            LLMCallLogStore.shared.fail(id: id, error: message)
+            LLMCallLogStore.shared.fail(id: id, error: message, httpRequest: httpRequest)
         }
     }
 

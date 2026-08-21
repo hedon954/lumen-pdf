@@ -43,6 +43,7 @@ PRD 记录**用户可感知的行为与验收标准**。TDD 记录**如何实现
 | unreleased | 2026-08-21 | LLM 关闭 thinking | [prd-2026-08-21-llm-disable-thinking.md](prd/prd-2026-08-21-llm-disable-thinking.md) | [tdd-2026-08-21-llm-disable-thinking.md](tdd/tdd-2026-08-21-llm-disable-thinking.md) |
 | unreleased | 2026-08-21 | LLM JSON 修复 | [prd-2026-08-21-llm-json-repair.md](prd/prd-2026-08-21-llm-json-repair.md) | [tdd-2026-08-21-llm-json-repair.md](tdd/tdd-2026-08-21-llm-json-repair.md) |
 | unreleased | 2026-08-21 | LLM Extra Config 与 API Key 入口 | [prd-2026-08-21-llm-extra-config.md](prd/prd-2026-08-21-llm-extra-config.md) | [tdd-2026-08-21-llm-extra-config.md](tdd/tdd-2026-08-21-llm-extra-config.md) |
+| unreleased | 2026-08-21 | 调用日志完整 HTTP 请求 | [prd-2026-08-21-llm-call-log-http-request.md](prd/prd-2026-08-21-llm-call-log-http-request.md) | [tdd-2026-08-21-llm-call-log-http-request.md](tdd/tdd-2026-08-21-llm-call-log-http-request.md) |
 
 未单独成对的发布：
 
@@ -100,6 +101,7 @@ v1.0.12 / v1.0.13 导读进入 Inspector
   → unreleased 按服务商关闭 thinking；字段改为 Extra Config 默认值，去掉 /no_think
   → unreleased 期望 JSON 的模型输出先 json repair 再解析
   → unreleased Extra Config 显示关 thinking 默认值；去掉 /no_think；JSON 着色并自动格式化
+  → unreleased 调用日志可展开实际发出的完整 HTTP 请求（密钥脱敏）
 ```
 
 ## 其他文档

@@ -8,6 +8,7 @@ successor:
   - tdd/tdd-2026-08-20-library-cover-translation-retry.md
   - tdd/tdd-2026-08-21-selection-settings-feedback.md
   - tdd/tdd-2026-08-21-markup-interval-merge.md
+  - tdd/tdd-2026-08-21-llm-call-log-http-request.md
 ---
 
 # LumenPDF — 跨页划线与失败诊断 TDD
