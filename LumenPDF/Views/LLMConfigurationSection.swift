@@ -4,6 +4,7 @@ struct LLMConfigurationSection: View {
     @Binding var baseURL: String
     @Binding var apiKey: String
     @Binding var model: String
+    @Binding var extraConfig: String
 
     @ObservedObject var configuration: LLMConfigurationModel
     let onSubmit: () -> Void
@@ -11,6 +12,7 @@ struct LLMConfigurationSection: View {
     @State private var isModelPickerPresented = false
     @State private var modelSearch = ""
     @State private var draftAPIKeysByBaseURL: [String: String] = [:]
+    @State private var draftExtraConfigByBaseURL: [String: String] = [:]
 
     var body: some View {
         Section {
@@ -63,6 +65,17 @@ struct LLMConfigurationSection: View {
                         onSubmit()
                         refreshModels()
                     }
+            }
+
+            if let provider = LLMProviderPreset.matching(baseURL: baseURL) {
+                Link(destination: provider.apiKeyURL) {
+                    Label(
+                        "获取 \(provider.name) API Key",
+                        systemImage: "key.fill"
+                    )
+                }
+                .font(.caption)
+                .accessibilityHint("在浏览器中打开官方 API Key 申请页面")
             }
 
             LabeledContent("模型") {
@@ -132,18 +145,6 @@ struct LLMConfigurationSection: View {
                 Label(note, systemImage: "info.circle")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            }
-
-            if let provider = LLMProviderPreset.matching(baseURL: baseURL) {
-                Link(destination: provider.apiKeyURL) {
-                    Label(
-                        "前往 \(provider.name) 官网申请 API Key",
-                        systemImage: "arrow.up.right.square"
-                    )
-                }
-                .font(.caption)
-                .frame(maxWidth: .infinity, alignment: .trailing)
-                .accessibilityHint("在浏览器中打开官方 API Key 申请页面")
             }
         }
     }
@@ -280,9 +281,12 @@ struct LLMConfigurationSection: View {
         let previousBaseURLKey = LLMEndpointIdentity.key(previousBaseURL)
         let newBaseURLKey = LLMEndpointIdentity.key(newBaseURL)
         draftAPIKeysByBaseURL[previousBaseURLKey] = apiKey
+        draftExtraConfigByBaseURL[previousBaseURLKey] = extraConfig
         let providerAPIKey = draftAPIKeysByBaseURL[newBaseURLKey]
             ?? KeychainService.loadLLMAPIKey(for: newBaseURL)
             ?? ""
+        extraConfig = draftExtraConfigByBaseURL[newBaseURLKey]
+            ?? LLMSettingsStore().loadExtraConfig(for: newBaseURL)
         apiKey = providerAPIKey
         baseURL = newBaseURL
         model = configuration.recentModels(for: newBaseURL).first ?? previousModel

@@ -78,6 +78,7 @@ fn set_llm_config_inner(config: AppConfig) -> Result<(), LumenError> {
         word_system_prompt: config.word_system_prompt,
         sentence_system_prompt: config.sentence_system_prompt,
         explanation_system_prompt: config.explanation_system_prompt,
+        extra_config: config.llm_extra_config,
     });
     Ok(())
 }
@@ -151,6 +152,7 @@ pub struct AppConfig {
     pub word_system_prompt: String,
     pub sentence_system_prompt: String,
     pub explanation_system_prompt: String,
+    pub llm_extra_config: String,
 }
 
 // ── Translation API ──────────────────────────────────────────────────────────

@@ -3,6 +3,7 @@ use crate::domain::translation::{
     repository::{StreamProgress, Translator},
 };
 use crate::error::LumenError;
+use crate::infrastructure::translator::extra_config::merge_chat_request;
 use crate::infrastructure::translator::http_client::shared_client;
 use crate::infrastructure::translator::model_json::{parse_model_json, streaming_json_view};
 use crate::infrastructure::translator::streaming::{
@@ -31,6 +32,7 @@ pub struct LlmConfig {
     pub word_system_prompt: String,
     pub sentence_system_prompt: String,
     pub explanation_system_prompt: String,
+    pub extra_config: String,
 }
 
 pub struct LlmTranslator {
@@ -426,10 +428,14 @@ impl LlmTranslator {
             Some(1),
         );
 
+        let payload = match self.chat_json(&body) {
+            Ok(value) => value,
+            Err(_) => return ImageInputCapability::Unknown,
+        };
         let response = match shared_client()
             .post(self.completions_url())
             .bearer_auth(&self.config.api_key)
-            .json(&body)
+            .json(&payload)
             .send()
             .await
         {
@@ -444,10 +450,14 @@ impl LlmTranslator {
         let status = response.status();
         let error_body = response.text().await.unwrap_or_default();
         if is_unknown_optional_field_error(status, &error_body) && body.has_vendor_extensions() {
+            let retry_payload = match self.chat_json(&body.clone().without_vendor_extensions()) {
+                Ok(value) => value,
+                Err(_) => return ImageInputCapability::Unknown,
+            };
             let retry = match shared_client()
                 .post(self.completions_url())
                 .bearer_auth(&self.config.api_key)
-                .json(&body.clone().without_vendor_extensions())
+                .json(&retry_payload)
                 .send()
                 .await
             {
@@ -600,12 +610,17 @@ impl LlmTranslator {
         }
     }
 
+    fn chat_json(&self, body: &ChatRequest) -> Result<Value, LumenError> {
+        merge_chat_request(body, &self.config.extra_config)
+    }
+
     async fn send_chat_request(&self, body: &ChatRequest) -> Result<CompletionOutput, LumenError> {
         let url = self.completions_url();
+        let payload = self.chat_json(body)?;
         let resp = shared_client()
             .post(&url)
             .bearer_auth(&self.config.api_key)
-            .json(body)
+            .json(&payload)
             .send()
             .await
             .map_err(|e| LumenError::LlmApiError {
@@ -617,10 +632,11 @@ impl LlmTranslator {
             let text = resp.text().await.unwrap_or_default();
             if is_unknown_optional_field_error(status, &text) && body.has_vendor_extensions() {
                 let compatible_body = body.clone().without_vendor_extensions();
+                let retry_payload = self.chat_json(&compatible_body)?;
                 let retry = shared_client()
                     .post(&url)
                     .bearer_auth(&self.config.api_key)
-                    .json(&compatible_body)
+                    .json(&retry_payload)
                     .send()
                     .await
                     .map_err(|e| LumenError::LlmApiError {
@@ -694,10 +710,11 @@ impl LlmTranslator {
     where
         F: FnMut(&str, &mut String),
     {
+        let payload = self.chat_json(body)?;
         let mut resp = shared_client()
             .post(url)
             .bearer_auth(&self.config.api_key)
-            .json(body)
+            .json(&payload)
             .send()
             .await
             .map_err(|e| LumenError::LlmApiError {
@@ -711,10 +728,11 @@ impl LlmTranslator {
                 is_unknown_optional_field_error(status, &text) && body.has_vendor_extensions();
             if can_retry_without_usage {
                 let compatible_body = body.clone().without_vendor_extensions();
+                let retry_payload = self.chat_json(&compatible_body)?;
                 resp = shared_client()
                     .post(url)
                     .bearer_auth(&self.config.api_key)
-                    .json(&compatible_body)
+                    .json(&retry_payload)
                     .send()
                     .await
                     .map_err(|e| LumenError::LlmApiError {
@@ -1272,6 +1290,7 @@ mod tests {
             word_system_prompt: String::new(),
             sentence_system_prompt: String::new(),
             explanation_system_prompt: String::new(),
+            extra_config: String::new(),
         })
     }
 
@@ -1336,6 +1355,19 @@ mod tests {
             assert!(json.get("reasoning").is_none());
             assert_last_user_ends_with_no_think(&json);
         }
+    }
+
+    #[test]
+    fn extra_config_overrides_builtin_thinking_fields() {
+        let mut translator = dashscope_qwen();
+        translator.config.extra_config =
+            r#"{"enable_thinking": true, "thinking_budget": 0}"#.into();
+        let json = translator
+            .chat_json(&translator.build_word_request("word", "a sentence", false))
+            .unwrap();
+        assert_eq!(json["enable_thinking"], true);
+        assert_eq!(json["thinking_budget"], 0);
+        assert!(json["messages"].is_array());
     }
 
     #[test]

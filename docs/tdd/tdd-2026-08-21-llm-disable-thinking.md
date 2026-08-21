@@ -10,6 +10,7 @@ related:
   - tdd/tdd-2026-08-21-workspace-search.md
 successor:
   - tdd/tdd-2026-08-21-llm-json-repair.md
+  - tdd/tdd-2026-08-21-llm-extra-config.md
 ---
 
 # LumenPDF — LLM 关闭 thinking TDD

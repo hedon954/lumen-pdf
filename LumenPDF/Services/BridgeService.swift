@@ -53,7 +53,8 @@ final class BridgeService {
             explanationPromptTemplate: UserDefaults.standard.string(forKey: "explanation_prompt_template") ?? "",
             wordSystemPrompt: UserDefaults.standard.string(forKey: "word_system_prompt") ?? "",
             sentenceSystemPrompt: UserDefaults.standard.string(forKey: "sentence_system_prompt") ?? "",
-            explanationSystemPrompt: UserDefaults.standard.string(forKey: "explanation_system_prompt") ?? ""
+            explanationSystemPrompt: UserDefaults.standard.string(forKey: "explanation_system_prompt") ?? "",
+            llmExtraConfig: LLMSettingsStore().loadExtraConfig(for: baseURL)
         )
         guard (try? _initialize(dbURL.path, config)) != nil else {
             // Do not flip isInitialized — allow retry on next launch / next call path.
@@ -73,7 +74,8 @@ final class BridgeService {
         explanationPromptTemplate: String,
         wordSystemPrompt: String,
         sentenceSystemPrompt: String,
-        explanationSystemPrompt: String
+        explanationSystemPrompt: String,
+        extraConfig: String
     ) throws {
         try _updateLlmConfig(AppConfig(
             llmBaseUrl: Self.normalizedLLMBaseURL(baseURL),
@@ -85,7 +87,8 @@ final class BridgeService {
             explanationPromptTemplate: explanationPromptTemplate,
             wordSystemPrompt: wordSystemPrompt,
             sentenceSystemPrompt: sentenceSystemPrompt,
-            explanationSystemPrompt: explanationSystemPrompt
+            explanationSystemPrompt: explanationSystemPrompt,
+            llmExtraConfig: extraConfig
         ))
     }
 

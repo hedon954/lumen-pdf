@@ -6,6 +6,7 @@ successor:
   - prd/prd-2026-08-14-ai-settings-notes.md
   - prd/prd-2026-08-20-llm-settings-persistence.md
   - prd/prd-2026-08-21-llm-disable-thinking.md
+  - prd/prd-2026-08-21-llm-extra-config.md
 related:
   - prd/prd-2026-07-16-reading-ai-input-selection.md
 ---
@@ -57,7 +58,7 @@ related:
   - 智谱开放平台
   - MiniMax 中国
   - 火山方舟
-- 选择预设后自动填写 Base URL。
+- 选择预设后自动填写 Base URL。后续修订：每个内置服务商都在 API Key 旁提供官方获取链接，并支持 Extra Config，见 [prd-2026-08-21-llm-extra-config.md](prd-2026-08-21-llm-extra-config.md)。
 - 用户仍可直接编辑 Base URL；不匹配内置预设时显示为自定义配置。
 - 厂商地址变化时通过应用版本更新预设，不远程覆盖用户当前配置。
 

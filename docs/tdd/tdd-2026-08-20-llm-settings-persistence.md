@@ -8,6 +8,7 @@ predecessor:
 successor:
   - tdd/tdd-2026-08-21-selection-settings-feedback.md
   - tdd/tdd-2026-08-21-llm-disable-thinking.md
+  - tdd/tdd-2026-08-21-llm-extra-config.md
 ---
 
 # LumenPDF — LLM 设置跨重启持久化 TDD

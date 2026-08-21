@@ -42,6 +42,7 @@ PRD 记录**用户可感知的行为与验收标准**。TDD 记录**如何实现
 | unreleased | 2026-08-21 | 划线按行区间合并 | [prd-2026-08-21-markup-interval-merge.md](prd/prd-2026-08-21-markup-interval-merge.md) | [tdd-2026-08-21-markup-interval-merge.md](tdd/tdd-2026-08-21-markup-interval-merge.md) |
 | unreleased | 2026-08-21 | LLM 关闭 thinking | [prd-2026-08-21-llm-disable-thinking.md](prd/prd-2026-08-21-llm-disable-thinking.md) | [tdd-2026-08-21-llm-disable-thinking.md](tdd/tdd-2026-08-21-llm-disable-thinking.md) |
 | unreleased | 2026-08-21 | LLM JSON 修复 | [prd-2026-08-21-llm-json-repair.md](prd/prd-2026-08-21-llm-json-repair.md) | [tdd-2026-08-21-llm-json-repair.md](tdd/tdd-2026-08-21-llm-json-repair.md) |
+| unreleased | 2026-08-21 | LLM Extra Config 与 API Key 入口 | [prd-2026-08-21-llm-extra-config.md](prd/prd-2026-08-21-llm-extra-config.md) | [tdd-2026-08-21-llm-extra-config.md](tdd/tdd-2026-08-21-llm-extra-config.md) |
 
 未单独成对的发布：
 
@@ -98,6 +99,7 @@ v1.0.12 / v1.0.13 导读进入 Inspector
   → unreleased 当前导读会话可经 ⌘F 检索
   → unreleased 按服务商关闭 thinking；Qwen 带 enable_thinking 与 /no_think
   → unreleased 期望 JSON 的模型输出先 json repair 再解析
+  → unreleased 设置页 Extra Config 合并进请求；内置服务商附官方 API Key 链接
 ```
 
 ## 其他文档

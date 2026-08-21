@@ -1,4 +1,5 @@
 pub mod dictionary_phonetic;
+pub mod extra_config;
 pub mod fallback_translator;
 pub mod http_client;
 pub mod llm_translator;

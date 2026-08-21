@@ -15,6 +15,7 @@ struct SettingsView: View {
     @AppStorage("explanation_system_prompt") private var explanationSystemPrompt = PromptTemplateDefaults.explanationSystem
 
     @State private var apiKey = ""
+    @State private var extraConfig = ""
     @State private var selectedDestination: SettingsDestination = .llm
     @State private var selectedPromptKind: PromptTemplateKind = .word
     @State private var showSavedBadge = false
@@ -101,6 +102,7 @@ struct SettingsView: View {
                 baseURL: $baseURL,
                 apiKey: $apiKey,
                 model: $model,
+                extraConfig: $extraConfig,
                 configuration: llmConfiguration,
                 onSubmit: { _ = saveSettings() }
             )
@@ -143,6 +145,7 @@ struct SettingsView: View {
             }
         }
         apiKey = KeychainService.loadLLMAPIKey(for: resolvedBaseURL) ?? ""
+        extraConfig = LLMSettingsStore().loadExtraConfig(for: resolvedBaseURL)
         llmConfiguration.remember(baseURL: baseURL, model: model)
         if llmConfiguration.shouldAutomaticallyRefresh(baseURL: baseURL, apiKey: apiKey) {
             Task {
@@ -308,7 +311,8 @@ struct SettingsView: View {
                 explanationPromptTemplate: explanationPromptTemplate,
                 wordSystemPrompt: wordSystemPrompt,
                 sentenceSystemPrompt: sentenceSystemPrompt,
-                explanationSystemPrompt: explanationSystemPrompt
+                explanationSystemPrompt: explanationSystemPrompt,
+                extraConfig: extraConfig
             )
         } else {
             let normalizedBaseURL = SettingsRuntimeService.shared.normalizedLLMBaseURL(baseURL)
@@ -323,7 +327,8 @@ struct SettingsView: View {
                 explanationPromptTemplate: explanationPromptTemplate,
                 wordSystemPrompt: wordSystemPrompt,
                 sentenceSystemPrompt: sentenceSystemPrompt,
-                explanationSystemPrompt: explanationSystemPrompt
+                explanationSystemPrompt: explanationSystemPrompt,
+                extraConfig: try LLMExtraConfig.validatedJSON(extraConfig)
             )
         }
         if persisted.baseURL != baseURL, !baseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -356,6 +361,8 @@ struct SettingsView: View {
             saveErrorMessage = SettingsSaveFeedback.message(for: error)
             if error is SettingsPromptValidationError {
                 selectedDestination = .prompts
+            } else if error is LLMExtraConfigError {
+                selectedDestination = .llm
             }
             return false
         }

@@ -10,6 +10,7 @@ related:
   - prd/prd-2026-08-21-workspace-search.md
 successor:
   - prd/prd-2026-08-21-llm-json-repair.md
+  - prd/prd-2026-08-21-llm-extra-config.md
 ---
 
 # LumenPDF — LLM 关闭 thinking PRD
@@ -34,7 +35,7 @@ Qwen3、GLM、DeepSeek 等兼容 OpenAI 的接口默认会开 thinking。把 `en
   - OpenRouter：`reasoning.enabled: false`
   - OpenAI、Gemini：不带扩展字段
 - Qwen 系模型额外在最后一条用户消息末尾加 `/no_think`，避免只认模板软开关的网关漏关。
-- 不提供设置项；不能按模型再打开。
+- 不提供 thinking 开关。后续修订：用户可通过 Extra Config 自行补厂商字段（含覆盖 `enable_thinking`），见 [prd-2026-08-21-llm-extra-config.md](prd-2026-08-21-llm-extra-config.md)。
 - 拉取 `/models` 列表不属于生成调用，不带这些字段。
 
 ### F2 — 不认这些字段时仍能调用

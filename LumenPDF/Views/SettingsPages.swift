@@ -34,6 +34,7 @@ struct LLMSettingsPage: View {
     @Binding var baseURL: String
     @Binding var apiKey: String
     @Binding var model: String
+    @Binding var extraConfig: String
     @ObservedObject var configuration: LLMConfigurationModel
     let onSubmit: () -> Void
 
@@ -43,9 +44,21 @@ struct LLMSettingsPage: View {
                 baseURL: $baseURL,
                 apiKey: $apiKey,
                 model: $model,
+                extraConfig: $extraConfig,
                 configuration: configuration,
                 onSubmit: onSubmit
             )
+
+            Section("Extra Config") {
+                TextEditor(text: $extraConfig)
+                    .font(.system(.callout, design: .monospaced))
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 120)
+                    .accessibilityLabel("Extra Config")
+                Text("合并进每次 chat/completions 请求，覆盖同名内置字段。用于厂商特有参数，例如 {\"thinking_budget\": 0}。不能改 messages 或 stream。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
         .contentMargins(.top, 0, for: .scrollContent)
