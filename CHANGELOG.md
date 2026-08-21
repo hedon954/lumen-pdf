@@ -3,6 +3,25 @@
 LumenPDF 的版本记录由人工/AI 维护。每个版本只记录对用户或后续开发有意义的变化，并为具体变更附上对应的 GitHub commit URL。
 
 ---
+## [1.0.28](https://github.com/hedon954/lumen-pdf/compare/v1.0.27..v1.0.28) - 2026-08-21
+
+这一版让阅读窗口可以用 ⌘F 搜索笔记和划线，LLM 设置里能看见并修改 Extra Config（含关闭 thinking 的默认字段），调用日志可以展开实际发出的完整 HTTP 请求，并修了邻近划线误删、小节标题误入选区等问题。
+
+### 主要变化
+
+- 主阅读窗口支持 ⌘F / 菜单「查找…」/ 工具栏放大镜：弹出居中搜索条，默认只搜笔记和划线，需要时再打开单词、原文和 AI；选中结果后跳到对应位置（[e23e63f](https://github.com/hedon954/lumen-pdf/commit/e23e63f6e224efca17b90fb6ec10f292b8be9154)、[748a37c](https://github.com/hedon954/lumen-pdf/commit/748a37cbf3cbdd3e73d9be25d948be575eb5e057)、[119db28](https://github.com/hedon954/lumen-pdf/commit/119db286887d3266795c478c835b962f2e3dec52)）。
+- LLM 设置增加 Extra Config：未改时显示当前服务商关闭 thinking 的默认 JSON，改了并保存后用你的；清空恢复默认，保存 `{}` 表示不附加任何字段。回车按层级缩进，工具栏画笔才整段格式化；官方 API Key 链接在配置表单外右下角（[409e574](https://github.com/hedon954/lumen-pdf/commit/409e57412d108884796a587651dd24b94473bd1e)、[a2f8a41](https://github.com/hedon954/lumen-pdf/commit/a2f8a410665b4e44957aa27b0c025c0f1884939f)、[e7ae9b7](https://github.com/hedon954/lumen-pdf/commit/e7ae9b714f6eef552a9eaa18125f3066e1e7c113)、[a0156f6](https://github.com/hedon954/lumen-pdf/commit/a0156f6b34d2e7af99cae3d45bf1ab3caf9f417d)）。
+- 调用日志详情可展开实际发出的 `/chat/completions` 请求（含 Extra Config）；API Key 脱敏为 `Bearer ***`，图片 data URL 只保留省略说明。缓存命中会标明未发 HTTP（[b93f9dd](https://github.com/hedon954/lumen-pdf/commit/b93f9dd3f8782a3c6482494f2933e50b469fd296)）。
+
+### 修复
+
+- 邻近新划线不再用多行包围盒误删未选中的旧行，改为按文本行一维区间合并或取消（[5297775](https://github.com/hedon954/lumen-pdf/commit/529777580b1eaba81566d6b71c66c7b657c7a9b8)）。
+- 同页小节标题若未被高亮、且其词组已出现在正文中，不再进入翻译原文；设置保存失败只在设置页保存栏提示（[ed1e43a](https://github.com/hedon954/lumen-pdf/commit/ed1e43a3e8e432c5db01ea14ee097952e00538e7)）。
+- ad-hoc 安装缺少 Keychain entitlement 时改为写入普通钥匙串，避免保存设置失败（[63a0a3f](https://github.com/hedon954/lumen-pdf/commit/63a0a3fef160e3268cb536fecd9fd9ce3db55033)）。
+- 期望 JSON 的模型输出会先做 json repair 再解析，减少围栏、尾逗号或截断导致的解析失败（[88f6fa7](https://github.com/hedon954/lumen-pdf/commit/88f6fa752678b04ef88df0bbfc1036080e64463b)）。
+- 阿里内部网关按百炼方式关闭 thinking，避免请求里缺 `enable_thinking`（[8aee5f3](https://github.com/hedon954/lumen-pdf/commit/8aee5f3fa582c475b4ab4762cef5fc3572b05aa6)）。
+
+---
 ## [1.0.27](https://github.com/hedon954/lumen-pdf/compare/v1.0.26..v1.0.27) - 2026-08-20
 
 这一版让翻译失败原因更容易看懂，并修复设置里 API Key 和模型重启后丢失的问题。
