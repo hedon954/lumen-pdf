@@ -148,6 +148,16 @@ final class ReaderPersistence {
         try bridge.deleteNote(id: id)
     }
 
+    func deleteNoteRemovingUnderline(id: String, page: Int, filePath: String) throws {
+        try deleteNote(id: id)
+        ReaderEventBus.shared.postRemoveUnderlineNote(noteId: id, page: page, filePath: filePath)
+    }
+
+    func deleteVocabularyRemovingHighlight(id: String, page: Int, filePath: String) throws {
+        try deleteVocabulary(id: id)
+        ReaderEventBus.shared.postRemoveHighlight(entryId: id, page: page, filePath: filePath)
+    }
+
     @discardableResult
     func updateNote(id: String, note: String) throws -> NoteEntry {
         try bridge.updateNote(id: id, note: note)

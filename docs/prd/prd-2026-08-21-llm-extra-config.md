@@ -7,6 +7,7 @@ predecessor:
   - prd/prd-2026-08-20-llm-settings-persistence.md
   - prd/prd-2026-08-21-llm-disable-thinking.md
 successor:
+  - prd/prd-2026-08-24-codebase-simplification.md
   - prd/prd-2026-08-24-llm-provider-other.md
 related:
   - prd/prd-2026-08-21-llm-call-log-http-request.md
@@ -27,7 +28,7 @@ related:
 ### F1 — Extra Config
 
 - LLM 设置页在服务商、Base URL、API Key、模型同一张配置卡片内、模型字段下方提供 Extra Config 编辑器，内容为 JSON 对象，可为空。不单独成节。
-- 未保存过用户值时，编辑器显示当前 Base URL / 模型对应的系统默认（关闭 thinking 的那一套字段）。OpenAI / Gemini 默认是空。
+- 未保存过用户值时，编辑器显示当前 Base URL / 模型对应的系统默认（关闭 thinking 的那一套字段）。OpenAI / Gemini 默认是空。后续修订：这套默认只在 Rust 计算，设置页不再复制 host/模型规则，见 [prd-2026-08-24-codebase-simplification.md](prd-2026-08-24-codebase-simplification.md)。自定义「其他」端点仍走同一套默认，见 [prd-2026-08-24-llm-provider-other.md](prd-2026-08-24-llm-provider-other.md)。
 - 用户改过并保存后，用用户的 JSON；切换服务商时按 Base URL 隔离，互不覆盖。
 - 清空并保存表示恢复系统默认；保存 `{}` 表示不附加任何字段。
 - 只改编辑框、不点「保存设置」不会进入下一次请求。

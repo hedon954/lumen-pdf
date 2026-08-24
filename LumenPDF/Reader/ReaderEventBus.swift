@@ -22,14 +22,6 @@ struct ReaderEventBus {
 
     var center: NotificationCenter = .default
 
-    func postFreeAnnotation(type: String, boundsStr: String, page: Int, filePath: String) {
-        postFreeAnnotations(
-            type: type,
-            markups: [PDFPageMarkup(pageIndex: page, lineRects: AnnotationBoundsCodec.parse(boundsStr), text: "")],
-            filePath: filePath
-        )
-    }
-
     func postFreeAnnotations(type: String, markups: [PDFPageMarkup], filePath: String) {
         let bodyMarkups = markups.filter { !$0.lineRects.isEmpty }
         guard !bodyMarkups.isEmpty else { return }

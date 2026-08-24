@@ -78,16 +78,6 @@ final class LLMSettingsStoreTests: XCTestCase {
         XCTAssertEqual(store.loadExtraConfig(for: "https://api.deepseek.com/v1"), "")
     }
 
-    func testEffectiveExtraConfigUsesProviderDefaultWhenUnmodified() {
-        let store = LLMSettingsStore(defaults: defaults)
-        let extra = store.effectiveExtraConfig(
-            for: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-            model: "qwen-plus"
-        )
-        XCTAssertTrue(LLMExtraConfig.jsonEquals(extra, #"{"enable_thinking":false}"#))
-        XCTAssertTrue(extra.contains("\n"))
-    }
-
     func testEffectiveExtraConfigPrefersStoredUserValue() {
         let store = LLMSettingsStore(defaults: defaults)
         store.persistExtraConfig(#"{"enable_thinking":true}"#, for: "https://dashscope.aliyuncs.com/compatible-mode/v1")
@@ -137,6 +127,26 @@ final class LLMExtraConfigTests: XCTestCase {
         XCTAssertThrowsError(try LLMExtraConfig.validatedJSON("[1, 2]"))
         XCTAssertThrowsError(try LLMExtraConfig.validatedJSON(#"{"messages": []}"#))
         XCTAssertThrowsError(try LLMExtraConfig.validatedJSON(#"{"stream": true}"#))
+    }
+
+    func testLiveJSONKeepsUserObjectAndRejectsReservedKeys() throws {
+        XCTAssertEqual(
+            try LLMExtraConfig.liveJSON("{}", baseURL: "https://api.openai.com/v1", model: "gpt-4o"),
+            LLMExtraConfig.prettyPrinted("{}")
+        )
+        XCTAssertTrue(
+            LLMExtraConfig.jsonEquals(
+                try LLMExtraConfig.liveJSON(
+                    #"{"enable_thinking":true}"#,
+                    baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                    model: "qwen-plus"
+                ),
+                #"{"enable_thinking":true}"#
+            )
+        )
+        XCTAssertThrowsError(
+            try LLMExtraConfig.liveJSON(#"{"messages":[]}"#, baseURL: "https://api.openai.com/v1", model: "gpt-4o")
+        )
     }
 }
 

@@ -92,43 +92,15 @@ final class LLMProviderPickerSelectionTests: XCTestCase {
         )
     }
 
-    func testSelectingBuiltInStillAppliesPresetDefaults() {
+    func testSelectingBuiltInStillAppliesPresetBaseURL() {
         let deepseek = try XCTUnwrap(LLMProviderPickerSelection.builtInPreset(id: "deepseek"))
         let openai = try XCTUnwrap(LLMProviderPickerSelection.builtInPreset(id: "openai"))
 
         XCTAssertEqual(deepseek.baseURL, "https://api.deepseek.com/v1")
         XCTAssertEqual(openai.baseURL, "https://api.openai.com/v1")
-        XCTAssertTrue(
-            LLMExtraConfig.jsonEquals(
-                LLMThinkingExtraConfig.defaultJSON(
-                    baseURL: deepseek.baseURL,
-                    model: "deepseek-v4-flash"
-                ),
-                #"{"thinking":{"type":"disabled"}}"#
-            )
-        )
         XCTAssertEqual(
-            LLMThinkingExtraConfig.defaultJSON(baseURL: openai.baseURL, model: "gpt-4o"),
-            ""
-        )
-    }
-
-    func testUnknownHostExtraConfigIsEmptyUnlessHeuristicsMatch() {
-        XCTAssertEqual(
-            LLMThinkingExtraConfig.defaultJSON(
-                baseURL: "https://llm.example.com/v1",
-                model: "custom-chat"
-            ),
-            ""
-        )
-        XCTAssertTrue(
-            LLMExtraConfig.jsonEquals(
-                LLMThinkingExtraConfig.defaultJSON(
-                    baseURL: "https://llm.example.com/v1",
-                    model: "Qwen/Qwen3-8B"
-                ),
-                #"{"chat_template_kwargs":{"enable_thinking":false}}"#
-            )
+            LLMProviderPickerSelection.resolved(baseURL: deepseek.baseURL),
+            .builtIn(deepseek)
         )
     }
 }

@@ -5,6 +5,8 @@ tdd: tdd/tdd-2026-08-24-llm-provider-other.md
 predecessor:
   - prd/prd-2026-07-16-llm-configuration-discovery.md
   - prd/prd-2026-08-21-llm-extra-config.md
+related:
+  - prd/prd-2026-08-24-codebase-simplification.md
 ---
 
 # LumenPDF — LLM 服务商「其他」PRD
@@ -30,7 +32,7 @@ LLM 设置的服务商菜单必须提供「其他」，让用户指向任意 Ope
 
 ### F2 — Extra Config 与密钥
 
-- 「其他」不另建一套设置系统。Extra Config 仍按当前 Base URL 隔离读写；未知主机沿用现有启发式：对不上厂商规则且模型名也不命中时，默认为空（未附加厂商字段）。已保存的 `{}` 仍表示不附加任何字段。
+- 「其他」不另建一套设置系统。Extra Config 仍按当前 Base URL 隔离读写；默认值只来自 Rust `default_extra_config`（与请求侧同一套启发式）。未知主机且模型名也不命中时默认为空。已保存的 `{}` 仍表示不附加任何字段。
 - API Key 仍按现有 Base URL 身份写入 Keychain，自定义地址与内置地址使用同一套规范化与别名规则。
 - 当前地址未匹配内置服务商时，不显示官方 API Key 申请链接。
 

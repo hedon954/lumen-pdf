@@ -177,4 +177,13 @@ final class AppState: ObservableObject {
             self?.toastMessage = nil
         }
     }
+
+    func openLibraryDocument(filePath: String, page: Int) {
+        guard let doc = library.first(where: { $0.filePath == filePath }) else { return }
+        selectedDocument = doc
+        activeTab = .reader
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            ReaderEventBus.shared.postJumpToPage(page: page, filePath: filePath)
+        }
+    }
 }

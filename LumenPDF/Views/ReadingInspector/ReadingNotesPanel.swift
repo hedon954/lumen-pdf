@@ -74,9 +74,8 @@ struct ReadingNotesPanel: View {
         var deletedCount = 0
         for noteId in group.sourceIds {
             do {
-                try ReaderPersistence.shared.deleteNote(id: noteId)
-                ReaderEventBus.shared.postRemoveUnderlineNote(
-                    noteId: noteId,
+                try ReaderPersistence.shared.deleteNoteRemovingUnderline(
+                    id: noteId,
                     page: Int(group.pageIndex),
                     filePath: group.pdfPath
                 )

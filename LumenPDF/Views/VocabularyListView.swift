@@ -98,9 +98,8 @@ struct VocabularyListView: View {
     }
 
     private func delete(_ entry: VocabularyEntry) {
-        try? ReaderPersistence.shared.deleteVocabulary(id: entry.id)
-        ReaderEventBus.shared.postRemoveHighlight(
-            entryId: entry.id,
+        try? ReaderPersistence.shared.deleteVocabularyRemovingHighlight(
+            id: entry.id,
             page: Int(entry.pageIndex),
             filePath: entry.pdfPath
         )
@@ -108,16 +107,7 @@ struct VocabularyListView: View {
     }
 
     private func jumpToPDF(entry: VocabularyEntry) {
-        if let doc = appState.library.first(where: { $0.filePath == entry.pdfPath }) {
-            appState.selectedDocument = doc
-            appState.activeTab = .reader
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                ReaderEventBus.shared.postJumpToPage(
-                    page: Int(entry.pageIndex),
-                    filePath: entry.pdfPath
-                )
-            }
-        }
+        appState.openLibraryDocument(filePath: entry.pdfPath, page: Int(entry.pageIndex))
     }
 }
 

@@ -286,9 +286,11 @@ struct SettingsView: View {
             (.explanation, explanationPromptTemplate, explanationSystemPrompt)
         ]
         return prompts.flatMap { kind, userPrompt, systemPrompt in
-            let user = PromptTemplateValidator.validateUserPrompt(userPrompt, kind: kind)
-            let system = PromptTemplateValidator.validateSystemPrompt(systemPrompt)
-            return (user.errors + system.errors).map { "\(kind.title)：\($0)" }
+            PromptTemplateValidator.validatePair(
+                userPrompt: userPrompt,
+                systemPrompt: systemPrompt,
+                kind: kind
+            ).errors.map { "\(kind.title)：\($0)" }
         }
     }
 
@@ -317,10 +319,11 @@ struct SettingsView: View {
         } else {
             let normalizedBaseURL = SettingsRuntimeService.shared.normalizedLLMBaseURL(baseURL)
             persisted = (normalizedBaseURL, model)
-            let validated = try LLMExtraConfig.validatedJSON(extraConfig)
-            let liveExtra = validated.isEmpty
-                ? LLMThinkingExtraConfig.defaultJSON(baseURL: persisted.baseURL, model: persisted.model)
-                : validated
+            let liveExtra = try LLMExtraConfig.liveJSON(
+                extraConfig,
+                baseURL: persisted.baseURL,
+                model: persisted.model
+            )
             try SettingsRuntimeService.shared.updateConfig(
                 baseURL: persisted.baseURL,
                 apiKey: apiKey,

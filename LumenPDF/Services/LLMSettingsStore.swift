@@ -141,6 +141,17 @@ enum LLMExtraConfig {
         return prettyPrinted(trimmed)
     }
 
+    /// Empty Extra Config becomes the provider default used at request time.
+    static func resolvedOrDefault(_ validated: String, baseURL: String, model: String) -> String {
+        validated.isEmpty
+            ? LLMThinkingExtraConfig.defaultJSON(baseURL: baseURL, model: model)
+            : validated
+    }
+
+    static func liveJSON(_ raw: String, baseURL: String, model: String) throws -> String {
+        resolvedOrDefault(try validatedJSON(raw), baseURL: baseURL, model: model)
+    }
+
     static func prettyPrinted(_ raw: String) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {

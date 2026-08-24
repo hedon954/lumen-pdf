@@ -431,18 +431,16 @@ struct ContentView: View {
         request: TranslationBubbleRequest
     ) {
         if savedToNote {
-            try? ReaderPersistence.shared.deleteNote(id: id)
-            ReaderEventBus.shared.postRemoveUnderlineNote(
-                noteId: id,
+            try? ReaderPersistence.shared.deleteNoteRemovingUnderline(
+                id: id,
                 page: request.page,
                 filePath: request.pdfPath
             )
             appState.refreshNotes()
             appState.showToast("已从笔记删除")
         } else {
-            try? ReaderPersistence.shared.deleteVocabulary(id: id)
-            ReaderEventBus.shared.postRemoveHighlight(
-                entryId: id,
+            try? ReaderPersistence.shared.deleteVocabularyRemovingHighlight(
+                id: id,
                 page: request.page,
                 filePath: request.pdfPath
             )

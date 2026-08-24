@@ -91,10 +91,8 @@ struct NoteListView: View {
     }
 
     private func delete(_ note: NoteEntry) {
-        try? ReaderPersistence.shared.deleteNote(id: note.id)
-        // Remove underline annotation from PDF when deleting note
-        ReaderEventBus.shared.postRemoveUnderlineNote(
-            noteId: note.id,
+        try? ReaderPersistence.shared.deleteNoteRemovingUnderline(
+            id: note.id,
             page: Int(note.pageIndex),
             filePath: note.pdfPath
         )
@@ -102,16 +100,7 @@ struct NoteListView: View {
     }
 
     private func jumpToPDF(note: NoteEntry) {
-        if let doc = appState.library.first(where: { $0.filePath == note.pdfPath }) {
-            appState.selectedDocument = doc
-            appState.activeTab = .reader
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                ReaderEventBus.shared.postJumpToPage(
-                    page: Int(note.pageIndex),
-                    filePath: note.pdfPath
-                )
-            }
-        }
+        appState.openLibraryDocument(filePath: note.pdfPath, page: Int(note.pageIndex))
     }
 }
 

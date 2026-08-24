@@ -109,6 +109,19 @@ enum PromptTemplateValidator {
         return PromptTemplateValidation(errors: errors, variables: variables)
     }
 
+    static func validatePair(
+        userPrompt: String,
+        systemPrompt: String,
+        kind: PromptTemplateKind
+    ) -> PromptTemplateValidation {
+        let user = validateUserPrompt(userPrompt, kind: kind)
+        let system = validateSystemPrompt(systemPrompt)
+        return PromptTemplateValidation(
+            errors: user.errors + system.errors,
+            variables: user.variables
+        )
+    }
+
     private static func extractedVariables(from template: String) -> [String] {
         let range = NSRange(template.startIndex..<template.endIndex, in: template)
         var seen = Set<String>()
