@@ -316,23 +316,6 @@ impl LlmTranslator {
         capability
     }
 
-    /// Translate a full sentence without word-level analysis (non-streaming).
-    /// Returns a `TranslationResult` with `context_sentence_translation` and
-    /// (when applicable) `sentence_breakdown` filled in.
-    pub async fn translate_sentence(
-        &self,
-        sentence: &str,
-    ) -> Result<TranslationResult, LumenError> {
-        let body = self.build_sentence_request(sentence, false);
-        let completion = self.send_chat_request(&body).await?;
-
-        let parsed: SentencePromptJson = parse_model_json(&completion.content)
-            .map_err(|err| err.with_http_request(completion.http_request.clone()))?;
-        Ok(parsed
-            .into_result(sentence, completion.usage)
-            .with_http_request(completion.http_request))
-    }
-
     /// Streaming sentence translation.
     ///
     /// During the stream, `on_progress` is invoked **whenever a new character

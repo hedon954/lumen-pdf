@@ -21,6 +21,7 @@ private let _listNotes: () throws -> [NoteEntry]                         = listN
 private let _listNotesByPdf: (String) throws -> [NoteEntry]              = listNotesByPdf(pdfPath:)
 private let _deleteNote: (String) throws -> Void                         = deleteNote(id:)
 private let _updateNote: (UpdateNoteRequest) throws -> NoteEntry         = updateNote(req:)
+private let _defaultExtraConfig: (String, String) -> String              = defaultExtraConfig(baseUrl:model:)
 
 /// Wraps all UniFFI-generated top-level calls and manages app initialization.
 final class BridgeService {
@@ -111,6 +112,12 @@ final class BridgeService {
 
         let normalized = components.string ?? trimmed
         return normalized.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    }
+
+    /// Compact Extra Config JSON for the provider. Empty means no built-in fields.
+    /// Does not require `initializeIfNeeded`.
+    static func defaultExtraConfig(baseURL: String, model: String) -> String {
+        _defaultExtraConfig(baseURL, model)
     }
 
     // MARK: - Translation

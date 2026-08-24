@@ -155,13 +155,16 @@ pub struct AppConfig {
     pub llm_extra_config: String,
 }
 
-// ── Translation API ──────────────────────────────────────────────────────────
-
-#[uniffi::export(async_runtime = "tokio")]
-pub async fn translate(request: TranslationRequest) -> Result<TranslationResult, LumenError> {
-    let config = llm_config()?;
-    translation_use_case(&config)?.translate(request).await
+/// Provider Extra Config used when Settings leaves the field empty.
+/// Pure host/model heuristics; does not require `initialize`.
+#[uniffi::export]
+pub fn default_extra_config(base_url: String, model: String) -> String {
+    crate::infrastructure::translator::thinking_control::default_extra_config_json(
+        &base_url, &model,
+    )
 }
+
+// ── Translation API ──────────────────────────────────────────────────────────
 
 /// Foreign-implemented callback used by streaming translation APIs to publish
 /// partial `TranslationResult`s as soon as individual JSON fields finish
@@ -173,8 +176,8 @@ pub trait TranslationStreamCallback: Send + Sync {
     fn on_progress(&self, partial: TranslationResult);
 }
 
-/// Streaming variant of `translate`. Returns the same final `TranslationResult`
-/// as `translate`, but invokes `callback.on_progress` repeatedly while the
+/// Streaming word-level translation. Returns the same final `TranslationResult`
+/// as a blocking lookup, but invokes `callback.on_progress` repeatedly while the
 /// response streams in. Cache hits emit exactly once unless `skip_cache` is
 /// true, which forces a fresh LLM call so the user can regenerate an
 /// unsatisfactory explanation.
@@ -188,14 +191,6 @@ pub async fn translate_streaming(
     translation_use_case(&config)?
         .translate_streaming(request, stream_progress(callback), skip_cache)
         .await
-}
-
-/// Translate a full sentence without word-level analysis.
-/// Use this when the user selects a phrase/sentence instead of a single word.
-/// Long / complex sentences also come back with a `sentence_breakdown`.
-#[uniffi::export(async_runtime = "tokio")]
-pub async fn translate_sentence(sentence: String) -> Result<TranslationResult, LumenError> {
-    llm_translator()?.translate_sentence(&sentence).await
 }
 
 /// Streaming sentence translation. The callback fires repeatedly with partial
@@ -249,11 +244,6 @@ pub async fn detect_image_input_capability() -> Result<ImageInputCapability, Lum
 #[uniffi::export]
 pub fn save_vocabulary(req: SaveVocabularyRequest) -> Result<VocabularyEntry, LumenError> {
     vocabulary_use_case()?.save(req)
-}
-
-#[uniffi::export]
-pub fn get_vocabulary_entry(id: String) -> Result<Option<VocabularyEntry>, LumenError> {
-    vocabulary_use_case()?.get_by_id(&id)
 }
 
 #[uniffi::export]
@@ -340,9 +330,4 @@ pub fn delete_note(id: String) -> Result<(), LumenError> {
 #[uniffi::export]
 pub fn update_note(req: UpdateNoteRequest) -> Result<NoteEntry, LumenError> {
     note_use_case()?.update(req)
-}
-
-#[uniffi::export]
-pub fn export_notes_markdown(pdf_path: Option<String>) -> Result<String, LumenError> {
-    note_use_case()?.export_markdown(pdf_path.as_deref())
 }

@@ -25,13 +25,6 @@ impl TranslationUseCase {
         }
     }
 
-    pub async fn translate(
-        &self,
-        request: TranslationRequest,
-    ) -> Result<TranslationResult, LumenError> {
-        self.service.translate(request).await
-    }
-
     pub async fn translate_streaming(
         &self,
         request: TranslationRequest,

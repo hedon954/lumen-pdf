@@ -500,6 +500,8 @@ pub fn update_note(id: String, note: String) -> Result<(), LumenError>;
 pub fn export_notes_markdown(pdf_path: Option<String>) -> Result<String, LumenError>;
 ```
 
+**后续修订（2026-08-24）**：Rust `export_notes_markdown` 已删除。笔记导出只留 Swift `BridgeService.exportNotesMarkdown`（`NoteTextList.markdown`），见 [tdd-2026-08-24-codebase-simplification.md](tdd-2026-08-24-codebase-simplification.md)。
+
 #### 4.2.2 Swift 层 UI
 
 **新增视图文件**：
@@ -628,7 +630,7 @@ private func requestTranslation(word: String, sentence: String, ...) {
         // 句子模式：直接翻译选中内容作为句子
         Task {
             let result = try await BridgeService.shared.translateSentence(
-                sentence: word // 选中的完整句子
+                sentence: word // 选中的完整句子。后续修订：生产改为 `translateSentenceStreaming`，阻塞 UniFFI 已删除，见 [tdd-2026-08-24-codebase-simplification.md](tdd-2026-08-24-codebase-simplification.md)。
             )
             // 显示句子翻译气泡
         }
@@ -672,6 +674,8 @@ pub async fn translate_sentence(sentence: String) -> Result<TranslationResult, L
     })
 }
 ```
+
+**后续修订（2026-08-24）**：阻塞 `translate_sentence` UniFFI 与 `LlmTranslator::translate_sentence` 已删除。句子翻译只走 `translate_sentence_streaming`，见 [tdd-2026-08-24-codebase-simplification.md](tdd-2026-08-24-codebase-simplification.md)。
 
 #### 5.2.3 LLM Prompt 改动
 
