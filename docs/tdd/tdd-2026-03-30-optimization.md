@@ -6,6 +6,7 @@ predecessor:
   - tdd/tdd-2026-03-27.md
 successor:
   - tdd/tdd-2026-03-31-v103.md
+  - tdd/tdd-2026-08-24-codebase-simplification.md
 ---
 
 # LumenPDF — 优化需求技术实现文档 (TDD)
@@ -225,6 +226,8 @@ PDF 标注（Highlight、Underline、Note）存储在 PDF 文件的元数据层�
 ### 3.3 技术方案
 
 #### 3.3.1 新增服务：`AnnotationPersistenceService`
+
+**后续修订（2026-08-24）**：该服务没有生产调用点，已删除。标注不写入 PDF 文件；笔记与单词位置存在 SQLite，打开文档时由 `PDFKitView` 按 bounds 重建。见 [tdd-2026-08-24-codebase-simplification.md](tdd-2026-08-24-codebase-simplification.md)。
 
 **文件**: `LumenPDF/Services/AnnotationPersistenceService.swift`
 

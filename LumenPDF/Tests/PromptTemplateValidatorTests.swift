@@ -28,4 +28,17 @@ final class PromptTemplateValidatorTests: XCTestCase {
 
         XCTAssertTrue(result.isValid)
     }
+
+    func testValidatePairCombinesUserAndSystemErrors() {
+        let result = PromptTemplateValidator.validatePair(
+            userPrompt: "Translate {word} to {lang}",
+            systemPrompt: "",
+            kind: .word
+        )
+
+        XCTAssertFalse(result.isValid)
+        XCTAssertTrue(result.errors.contains { $0.contains("{sentence}") })
+        XCTAssertTrue(result.errors.contains { $0.contains("System Prompt 不能为空") })
+        XCTAssertEqual(result.variables, ["word", "lang"])
+    }
 }

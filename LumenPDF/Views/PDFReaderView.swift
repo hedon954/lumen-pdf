@@ -10,7 +10,6 @@ struct PDFReaderView: View {
     let onExplainSelection: (PDFSelectionContext) -> Void
     let onOpenNotes: () -> Void
     @EnvironmentObject private var appState: AppState
-    @StateObject private var session = ReadingSessionService()
 
     @State private var underlineDraft: UnderlineNoteDraft?
     @State private var noteAnchorPositions: [NoteAnchorPosition] = []
@@ -206,9 +205,8 @@ struct PDFReaderView: View {
 
         do {
             if remainingText.isEmpty {
-                try ReaderPersistence.shared.deleteNote(id: note.id)
-                ReaderEventBus.shared.postRemoveUnderlineNote(
-                    noteId: note.id,
+                try ReaderPersistence.shared.deleteNoteRemovingUnderline(
+                    id: note.id,
                     page: Int(note.pageIndex),
                     filePath: note.pdfPath
                 )
@@ -226,9 +224,8 @@ struct PDFReaderView: View {
         var deletedCount = 0
         for note in review.notes {
             do {
-                try ReaderPersistence.shared.deleteNote(id: note.id)
-                ReaderEventBus.shared.postRemoveUnderlineNote(
-                    noteId: note.id,
+                try ReaderPersistence.shared.deleteNoteRemovingUnderline(
+                    id: note.id,
                     page: Int(note.pageIndex),
                     filePath: note.pdfPath
                 )
@@ -358,9 +355,8 @@ struct PDFReaderView: View {
     }
 
     private func removeUnderlineNote(_ note: NoteEntry) {
-        try? ReaderPersistence.shared.deleteNote(id: note.id)
-        ReaderEventBus.shared.postRemoveUnderlineNote(
-            noteId: note.id,
+        try? ReaderPersistence.shared.deleteNoteRemovingUnderline(
+            id: note.id,
             page: Int(note.pageIndex),
             filePath: document.filePath
         )
@@ -378,7 +374,7 @@ struct PDFReaderView: View {
 
         ReaderPersistence.shared.initializeIfNeeded()
 
-        let newRects = Self.parseAnnotationRectsStatic(boundsStr)
+        let newRects = AnnotationBoundsCodec.parse(boundsStr)
         guard !newRects.isEmpty else {
             appState.showToast("保存笔记失败")
             return
@@ -398,14 +394,14 @@ struct PDFReaderView: View {
 
         // If the new selection is entirely inside an existing note, keep the existing note unchanged.
         if samePageNotes.contains(where: { note in
-            Self.rects(newRects, areCoveredBy: Self.parseAnnotationRectsStatic(note.boundsStr))
+            UnderlineNoteMergePolicy.rects(newRects, areCoveredBy: AnnotationBoundsCodec.parse(note.boundsStr))
         }) {
             appState.showToast("已在现有笔记范围内")
             return
         }
 
         let overlappingNotes = samePageNotes.filter { note in
-            Self.rects(newRects, overlap: Self.parseAnnotationRectsStatic(note.boundsStr))
+            UnderlineNoteMergePolicy.rects(newRects, overlap: AnnotationBoundsCodec.parse(note.boundsStr))
         }
 
         if !overlappingNotes.isEmpty {
@@ -446,13 +442,15 @@ struct PDFReaderView: View {
                 boundsStr: note.boundsStr
             )
         }
-        let oldRects = overlappingNotes.flatMap { Self.parseAnnotationRectsStatic($0.boundsStr) }
-        let mergedBoundsStr = Self.annotationBoundsString(from: Self.mergeAnnotationRects(oldRects + newRects))
-        let mergedContent = Self.mergedNoteContent(
+        let oldRects = overlappingNotes.flatMap { AnnotationBoundsCodec.parse($0.boundsStr) }
+        let mergedBoundsStr = AnnotationBoundsCodec.string(
+            from: UnderlineNoteMergePolicy.mergeAnnotationRects(oldRects + newRects)
+        )
+        let mergedContent = UnderlineNoteMergePolicy.mergedNoteContent(
             existing: overlappingNotes.map(\.content),
             new: word
         )
-        let mergedNoteText = Self.mergedNoteText(
+        let mergedNoteText = UnderlineNoteMergePolicy.mergedNoteText(
             existing: overlappingNotes.map(\.note),
             new: noteText
         )
@@ -526,35 +524,6 @@ struct PDFReaderView: View {
         return noteEntry
     }
 
-    /// 静态方法解析 boundsStr，供多处使用
-    private static func parseAnnotationRectsStatic(_ boundsStr: String) -> [CGRect] {
-        AnnotationBoundsCodec.parse(boundsStr)
-    }
-
-    private static func annotationBoundsString(from rects: [CGRect]) -> String {
-        AnnotationBoundsCodec.string(from: rects)
-    }
-
-    private static func rects(_ candidates: [CGRect], areCoveredBy existing: [CGRect]) -> Bool {
-        UnderlineNoteMergePolicy.rects(candidates, areCoveredBy: existing)
-    }
-
-    private static func rects(_ lhs: [CGRect], overlap rhs: [CGRect]) -> Bool {
-        UnderlineNoteMergePolicy.rects(lhs, overlap: rhs)
-    }
-
-    private static func mergedNoteContent(existing: [String], new: String) -> String {
-        UnderlineNoteMergePolicy.mergedNoteContent(existing: existing, new: new)
-    }
-
-    private static func mergedNoteText(existing: [String], new: String) -> String {
-        UnderlineNoteMergePolicy.mergedNoteText(existing: existing, new: new)
-    }
-
-    private static func mergeAnnotationRects(_ rects: [CGRect]) -> [CGRect] {
-        UnderlineNoteMergePolicy.mergeAnnotationRects(rects)
-    }
-
     // MARK: - Document loaded
 
     private func handleDocumentLoaded(totalPages: Int) {
@@ -586,7 +555,7 @@ struct PDFReaderView: View {
         // correct saved/unsaved state on its very first frame. An entry is the *same word at the
         // same position* — keyed by word + context (sentence hash) — so the same spelling in a
         // different context (different sentence) is a separate entry and can still be added.
-        let sentenceHash = session.sentenceHash(sentence)
+        let sentenceHash = ReadingSessionService.sentenceHash(sentence)
         var existingEntryId: String?
         if !isSentenceMode {
             if let existing = try? ReaderPersistence.shared.getVocabularyByWordAndHash(

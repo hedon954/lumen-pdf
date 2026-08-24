@@ -138,6 +138,26 @@ final class LLMExtraConfigTests: XCTestCase {
         XCTAssertThrowsError(try LLMExtraConfig.validatedJSON(#"{"messages": []}"#))
         XCTAssertThrowsError(try LLMExtraConfig.validatedJSON(#"{"stream": true}"#))
     }
+
+    func testLiveJSONUsesProviderDefaultWhenEmpty() throws {
+        XCTAssertTrue(
+            LLMExtraConfig.jsonEquals(
+                try LLMExtraConfig.liveJSON(
+                    "  ",
+                    baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                    model: "qwen-plus"
+                ),
+                #"{"enable_thinking":false}"#
+            )
+        )
+        XCTAssertEqual(
+            try LLMExtraConfig.liveJSON("{}", baseURL: "https://api.openai.com/v1", model: "gpt-4o"),
+            LLMExtraConfig.prettyPrinted("{}")
+        )
+        XCTAssertThrowsError(
+            try LLMExtraConfig.liveJSON(#"{"messages":[]}"#, baseURL: "https://api.openai.com/v1", model: "gpt-4o")
+        )
+    }
 }
 
 final class LLMEndpointIdentityTests: XCTestCase {

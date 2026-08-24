@@ -15,6 +15,22 @@ enum PDFMarkupAppearance {
         annotation.color = underlineColor
         annotation.markupType = .underline
     }
+
+    static func makeUnderline(
+        bounds: CGRect,
+        userName: String? = nil,
+        contents: String? = nil
+    ) -> PDFAnnotation {
+        let annotation = PDFAnnotation(bounds: bounds, forType: .underline, withProperties: nil)
+        applyUnderline(to: annotation)
+        if let userName {
+            annotation.userName = userName
+        }
+        if let contents {
+            annotation.contents = contents
+        }
+        return annotation
+    }
 }
 
 /// Builds PDFKit highlight annotations that match macOS Preview markup style.

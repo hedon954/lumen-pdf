@@ -848,10 +848,11 @@ struct PDFKitView: NSViewRepresentable {
             // 添加新划线标注
             var addedAnnotations: [PDFAnnotation] = []
             for rect in lineRects {
-                let ann = PDFAnnotation(bounds: rect, forType: .underline, withProperties: nil)
-                PDFMarkupAppearance.applyUnderline(to: ann)
-                ann.userName = noteId
-                ann.contents = "note:\(noteId)"
+                let ann = PDFMarkupAppearance.makeUnderline(
+                    bounds: rect,
+                    userName: noteId,
+                    contents: "note:\(noteId)"
+                )
                 page.addAnnotation(ann)
                 addedAnnotations.append(ann)
             }
@@ -896,10 +897,11 @@ struct PDFKitView: NSViewRepresentable {
             // 恢复旧的划线标注
             var restoredAnnotations: [PDFAnnotation] = []
             for snap in removedSnapshots {
-                let ann = PDFAnnotation(bounds: snap.bounds, forType: .underline, withProperties: nil)
-                PDFMarkupAppearance.applyUnderline(to: ann)
-                ann.userName = snap.noteId
-                ann.contents = "note:\(snap.noteId)"
+                let ann = PDFMarkupAppearance.makeUnderline(
+                    bounds: snap.bounds,
+                    userName: snap.noteId,
+                    contents: "note:\(snap.noteId)"
+                )
                 page.addAnnotation(ann)
                 restoredAnnotations.append(ann)
             }
@@ -1036,13 +1038,14 @@ struct PDFKitView: NSViewRepresentable {
         }
 
         private func restoreNoteUnderline(noteId: String, boundsStr: String, on page: PDFPage) {
-            let lineRects = Self.parseAnnotationRects(boundsStr)
-            for rect in lineRects where !rect.isEmpty && rect != .zero {
-                let ann = PDFAnnotation(bounds: rect, forType: .underline, withProperties: nil)
-                PDFMarkupAppearance.applyUnderline(to: ann)
-                ann.userName = noteId
-                ann.contents = "note:\(noteId)"
-                page.addAnnotation(ann)
+            for rect in Self.parseAnnotationRects(boundsStr) {
+                page.addAnnotation(
+                    PDFMarkupAppearance.makeUnderline(
+                        bounds: rect,
+                        userName: noteId,
+                        contents: "note:\(noteId)"
+                    )
+                )
             }
         }
 
@@ -1724,10 +1727,7 @@ struct PDFKitView: NSViewRepresentable {
         /// Parse a pipe-separated per-line bounds string back to CGRect array.
         /// Backward compatible: strings without `|` are treated as a single rect.
         static func parseAnnotationRects(_ boundsStr: String) -> [CGRect] {
-            boundsStr.components(separatedBy: "|").compactMap { part -> CGRect? in
-                let r = NSRectFromString(part)
-                return r.isEmpty ? nil : r
-            }
+            AnnotationBoundsCodec.parse(boundsStr)
         }
 
         @discardableResult

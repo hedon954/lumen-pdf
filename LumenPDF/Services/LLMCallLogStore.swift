@@ -34,6 +34,22 @@ enum LLMCallStatus: String, Codable {
     case running
     case succeeded
     case failed
+
+    var title: String {
+        switch self {
+        case .running: return "进行中"
+        case .succeeded: return "成功"
+        case .failed: return "失败"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .running: return "clock.fill"
+        case .succeeded: return "checkmark.circle.fill"
+        case .failed: return "xmark.octagon.fill"
+        }
+    }
 }
 
 struct LLMCallLogEntry: Identifiable, Equatable {

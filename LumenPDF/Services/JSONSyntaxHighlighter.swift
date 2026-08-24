@@ -59,24 +59,6 @@ enum JSONSyntaxHighlighter {
         return tokens
     }
 
-    static func attributedString(
-        from text: String,
-        font: NSFont,
-        colors: JSONSyntaxColors = .system
-    ) -> NSAttributedString {
-        let output = NSMutableAttributedString(
-            string: text,
-            attributes: [
-                .font: font,
-                .foregroundColor: colors.plain
-            ]
-        )
-        for token in tokens(in: text) {
-            output.addAttribute(.foregroundColor, value: colors.color(for: token.kind), range: token.range)
-        }
-        return output
-    }
-
     static func apply(to storage: NSTextStorage, font: NSFont, colors: JSONSyntaxColors = .system) {
         let full = NSRange(location: 0, length: storage.length)
         storage.addAttributes(
