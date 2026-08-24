@@ -7,6 +7,8 @@ predecessor:
   - tdd/tdd-2026-05-06-v104.md
   - tdd/tdd-2026-07-04-v1014-refactor-automation.md
   - tdd/tdd-2026-08-21-llm-extra-config.md
+related:
+  - tdd/tdd-2026-08-24-llm-provider-other.md
 ---
 
 # LumenPDF — 内部去重与结构收缩 TDD

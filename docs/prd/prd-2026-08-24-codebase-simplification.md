@@ -7,6 +7,8 @@ predecessor:
   - prd/prd-2026-05-06-v104.md
   - prd/prd-2026-07-04-v1014-refactor-automation.md
   - prd/prd-2026-08-21-llm-extra-config.md
+related:
+  - prd/prd-2026-08-24-llm-provider-other.md
 ---
 
 # LumenPDF — 内部去重与结构收缩 PRD

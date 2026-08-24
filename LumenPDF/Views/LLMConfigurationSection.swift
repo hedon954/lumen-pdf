@@ -13,6 +13,8 @@ struct LLMConfigurationSection: View {
     @State private var modelSearch = ""
     @State private var draftAPIKeysByBaseURL: [String: String] = [:]
     @State private var draftExtraConfigByBaseURL: [String: String] = [:]
+    @State private var lastCustomBaseURL = ""
+    @State private var preferOther = false
 
     var body: some View {
         Section {
@@ -24,6 +26,11 @@ struct LLMConfigurationSection: View {
                     }
                 }
 
+                Section {
+                    Text(LLMProviderPickerSelection.otherTitle)
+                        .tag(LLMProviderPickerSelection.otherTag)
+                }
+
                 if !recentCustomBaseURLs.isEmpty {
                     Section("最近使用") {
                         ForEach(recentCustomBaseURLs, id: \.self) { recentBaseURL in
@@ -32,16 +39,6 @@ struct LLMConfigurationSection: View {
                                 .tag(recentTag(recentBaseURL))
                         }
                     }
-                }
-
-                if LLMProviderPreset.matching(baseURL: baseURL) == nil,
-                   !recentCustomBaseURLs.contains(where: {
-                       LLMConfigurationHistory.canonicalBaseURLKey($0)
-                           == LLMConfigurationHistory.canonicalBaseURLKey(baseURL)
-                   })
-                {
-                    Text("自定义")
-                        .tag(customTag)
                 }
             }
             .pickerStyle(.menu)
@@ -125,7 +122,7 @@ struct LLMConfigurationSection: View {
                         : Color.secondary
                 )
             } else {
-                Text("选择服务商后会填入常用 Base URL；模型列表来自当前厂商的兼容接口，也可以继续手动输入。")
+                Text("选择内置服务商会填入常用 Base URL；选择「其他」可自定义任意兼容端点。模型列表来自当前地址的兼容接口，也可以继续手动输入。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -151,23 +148,28 @@ struct LLMConfigurationSection: View {
         .onChange(of: model) { oldModel, newModel in
             refreshDefaultExtraIfUnmodified(previousModel: oldModel, newModel: newModel)
         }
+        .onChange(of: baseURL) { _, newBaseURL in
+            rememberCustomBaseURLIfNeeded(newBaseURL)
+            if LLMProviderPreset.matching(baseURL: newBaseURL) != nil {
+                preferOther = false
+            }
+        }
     }
 
     private var providerSelection: Binding<String> {
         Binding(
             get: {
-                if let provider = LLMProviderPreset.matching(baseURL: baseURL) {
-                    return providerTag(provider)
-                }
-                if let recentBaseURL = recentCustomBaseURLs.first(where: {
-                    LLMConfigurationHistory.canonicalBaseURLKey($0)
-                        == LLMConfigurationHistory.canonicalBaseURLKey(baseURL)
-                }) {
-                    return recentTag(recentBaseURL)
-                }
-                return customTag
+                LLMProviderPickerSelection.resolved(
+                    baseURL: baseURL,
+                    preferOther: preferOther
+                ).tag
             },
             set: { tag in
+                if tag == LLMProviderPickerSelection.otherTag {
+                    selectOther()
+                    return
+                }
+                preferOther = false
                 if tag.hasPrefix("provider:"),
                    let provider = LLMProviderPreset.builtIn.first(where: {
                        providerTag($0) == tag
@@ -260,10 +262,6 @@ struct LLMConfigurationSection: View {
         .frame(width: 420, height: 340)
     }
 
-    private var customTag: String {
-        "custom"
-    }
-
     private func providerTag(_ provider: LLMProviderPreset) -> String {
         "provider:\(provider.id)"
     }
@@ -272,9 +270,32 @@ struct LLMConfigurationSection: View {
         "recent:\(baseURL.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) ?? baseURL)"
     }
 
+    private func selectOther() {
+        preferOther = true
+        rememberCustomBaseURLIfNeeded(baseURL)
+        guard let restoredBaseURL = LLMProviderPickerSelection.restoredCustomBaseURL(
+            currentBaseURL: baseURL,
+            lastCustomBaseURL: lastCustomBaseURL
+        ) else {
+            return
+        }
+        selectBaseURL(restoredBaseURL)
+    }
+
+    private func rememberCustomBaseURLIfNeeded(_ candidate: String) {
+        let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              LLMProviderPreset.matching(baseURL: trimmed) == nil
+        else {
+            return
+        }
+        lastCustomBaseURL = candidate
+    }
+
     private func selectBaseURL(_ newBaseURL: String) {
         let previousBaseURL = baseURL
         let previousModel = model
+        rememberCustomBaseURLIfNeeded(previousBaseURL)
         if LLMEndpointIdentity.isSame(previousBaseURL, newBaseURL) {
             if previousBaseURL != newBaseURL {
                 baseURL = newBaseURL

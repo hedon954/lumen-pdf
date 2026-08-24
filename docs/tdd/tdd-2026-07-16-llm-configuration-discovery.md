@@ -7,6 +7,7 @@ successor:
   - tdd/tdd-2026-08-20-llm-settings-persistence.md
   - tdd/tdd-2026-08-21-llm-disable-thinking.md
   - tdd/tdd-2026-08-21-llm-extra-config.md
+  - tdd/tdd-2026-08-24-llm-provider-other.md
 related:
   - tdd/tdd-2026-07-16-reading-ai-input-selection.md
 ---
@@ -40,7 +41,7 @@ struct LLMProviderPreset: Identifiable, Hashable {
 ```
 
 - 预设只保存厂商名称和 OpenAI-compatible Base URL。后续修订：预设还包含官方 API Key 链接；请求 Extra Config 按 Base URL 持久化并在发送前合并，见 [tdd-2026-08-21-llm-extra-config.md](tdd-2026-08-21-llm-extra-config.md)。
-- 当前 Base URL 规范化后与预设比较，决定 Picker 当前选择。
+- 当前 Base URL 规范化后与预设比较，决定 Picker 当前选择。后续修订：比较只认规范化后的完整地址，不就近归到某个内置商；菜单固定有「其他」，未匹配时选中它，见 [tdd-2026-08-24-llm-provider-other.md](tdd-2026-08-24-llm-provider-other.md)。
 - 自定义 Base URL 不强制映射到厂商。
 - 最近使用的自定义地址作为独立分组加入 Picker。
 
