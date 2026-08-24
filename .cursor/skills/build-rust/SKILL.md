@@ -1,6 +1,6 @@
 ---
 name: build-rust
-description: 构建 LumenPDF 的 Rust 后端并重新生成 UniFFI Swift 绑定。当 Rust 代码有改动、UDL 有更新、或 Swift 侧报"符号找不到"错误时使用。
+description: 构建 LumenPDF 的 Rust 后端并重新生成 UniFFI Swift 绑定。当 Rust 代码有改动或 Swift 侧报"符号找不到"错误时使用。
 ---
 
 # 构建 Rust 后端 & 生成 Swift 绑定

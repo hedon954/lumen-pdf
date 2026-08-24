@@ -11,7 +11,6 @@ pub trait VocabularyRepository: Send + Sync {
     ) -> Result<Option<VocabularyEntry>, LumenError>;
     fn list(&self) -> Result<Vec<VocabularyEntry>, LumenError>;
     fn delete(&self, id: &str) -> Result<(), LumenError>;
-    fn update_annotation_id(&self, id: &str, annotation_id: &str) -> Result<(), LumenError>;
     fn increment_query_count(&self, id: &str) -> Result<(), LumenError>;
     fn update(&self, req: UpdateVocabularyRequest) -> Result<VocabularyEntry, LumenError>;
 }

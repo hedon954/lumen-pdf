@@ -147,15 +147,6 @@ impl VocabularyRepository for SqliteVocabularyRepo {
         Ok(())
     }
 
-    fn update_annotation_id(&self, id: &str, annotation_id: &str) -> Result<(), LumenError> {
-        let conn = self.pool.get()?;
-        conn.execute(
-            "UPDATE vocabulary_entries SET annotation_id = ?1 WHERE id = ?2",
-            rusqlite::params![annotation_id, id],
-        )?;
-        Ok(())
-    }
-
     fn increment_query_count(&self, id: &str) -> Result<(), LumenError> {
         let conn = self.pool.get()?;
         conn.execute(

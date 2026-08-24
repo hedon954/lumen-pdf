@@ -1,44 +1,21 @@
 ---
-description: LumenPDF 项目总览：技术栈、架构分层、核心约束
+description: LumenPDF 项目总览：技术栈、分层、当前规格
 alwaysApply: true
 ---
 
-# LumenPDF 项目总览
+# LumenPDF
 
-## 技术栈
-
-- **前端**: SwiftUI + PDFKit（macOS 13+）
-- **桥接**: Mozilla UniFFI（自动生成 Swift 绑定）
-- **后端**: Rust + Tokio + SQLite（rusqlite + r2d2）
-- **HTTP**: reqwest（LLM 调用 + MyMemory 兜底翻译）
-- **TTS**: AVSpeechSynthesizer（本地发音，Swift 侧，无需 Rust）
-
-## 架构分层（硬约束）
+SwiftUI + PDFKit（macOS 15+）→ UniFFI → Rust（interfaces / domain / infrastructure）。TTS 在 Swift 本地。翻译：SQLite 缓存 → LLM → MyMemory。
 
 ```
-Swift UI  →  UniFFI 桥接  →  Rust interfaces  →  application  →  domain  ←  infrastructure
+Swift UI  →  BridgeService  →  UniFFI  →  interfaces  →  domain ← infrastructure
 ```
 
-| 层                  | 目录                  | 约束                                   |
-| ------------------- | --------------------- | -------------------------------------- |
-| Swift UI            | `LumenPDF/`           | 不直接访问 DB、不发 HTTP               |
-| Rust interfaces     | `src/interfaces/`     | 只做 UniFFI export + 依赖注入          |
-| Rust application    | `src/application/`    | 用例编排，不直接写 SQL/HTTP            |
-| Rust domain         | `src/domain/`         | 零外部 I/O 依赖（无 reqwest/rusqlite） |
-| Rust infrastructure | `src/infrastructure/` | 实现 domain traits，不含业务逻辑       |
+| 层 | 目录 | 约束 |
+| --- | --- | --- |
+| Swift | `LumenPDF/` | 不直接 SQLite/HTTP；跨语言走 `BridgeService` |
+| interfaces | `src/interfaces/` | UniFFI export + 组装依赖 |
+| domain | `src/domain/` | 零 I/O |
+| infrastructure | `src/infrastructure/` | 实现 domain traits |
 
-## 关键文件
-
-- 文档索引: `docs/README.md`（PRD/TDD 配对与演进）
-- 基线 PRD: `docs/prd/prd-2026-03-22.md`
-- 基线 TDD: `docs/tdd/tdd-2026-03-22.md`
-- UniFFI 接口: `lumen-pdf-core/src/interfaces/lumen_pdf_lib.udl`
-- 构建脚本: `scripts/build-rust.sh`
-
-## PRD 与 TDD
-
-用户可感知行为或模块边界变化时，同一 PR 必须更新或新增成对的 PRD 与 TDD，并在 YAML frontmatter 中互链（`tdd`/`prd`、`predecessor`、`successor`）。后一份文档改写前一份需求时，要在旧条款旁标注修订链接。详见 `CLAUDE.md` 的「PRD 与 TDD」和 `docs/README.md`。
-
-## 翻译降级策略
-
-本地缓存（SQLite）→ LLM（OpenAI 兼容）→ MyMemory API（兜底）
+规格：`docs/product.md`、`docs/architecture.md`。构建：`scripts/build-rust.sh`。桥：`LumenPDF/Services/BridgeService.swift`、`lumen-pdf-core/src/interfaces/api.rs`。

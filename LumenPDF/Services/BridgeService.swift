@@ -9,7 +9,6 @@ private let _saveVocabulary: (SaveVocabularyRequest) throws -> VocabularyEntry =
 private let _getVocabByHash: (String, String) throws -> VocabularyEntry? = getVocabularyByWordAndHash(word:sentenceHash:)
 private let _listVocabulary: () throws -> [VocabularyEntry]              = listVocabulary
 private let _deleteVocabulary: (String) throws -> Void                   = deleteVocabulary(id:)
-private let _updateAnnotation: (String, String) throws -> Void           = updateVocabularyAnnotation(id:annotationId:)
 private let _incrementQueryCount: (String) throws -> Void                = incrementVocabularyQueryCount(id:)
 private let _updateVocabulary: (UpdateVocabularyRequest) throws -> VocabularyEntry = updateVocabulary(req:)
 private let _upsertPdf: (UpsertPdfRequest) throws -> PdfDocument         = upsertPdfDocument(req:)
@@ -309,10 +308,6 @@ final class BridgeService {
         try _deleteVocabulary(id)
     }
 
-    func updateVocabularyAnnotation(id: String, annotationId: String) throws {
-        try _updateAnnotation(id, annotationId)
-    }
-
     func incrementQueryCount(id: String) {
         try? _incrementQueryCount(id)
     }
@@ -378,6 +373,16 @@ final class BridgeService {
 
     func deleteNote(id: String) throws {
         try _deleteNote(id)
+    }
+
+    func deleteNoteRemovingUnderline(id: String, page: Int, filePath: String) throws {
+        try deleteNote(id: id)
+        ReaderEventBus.shared.postRemoveUnderlineNote(noteId: id, page: page, filePath: filePath)
+    }
+
+    func deleteVocabularyRemovingHighlight(id: String, page: Int, filePath: String) throws {
+        try deleteVocabulary(id: id)
+        ReaderEventBus.shared.postRemoveHighlight(entryId: id, page: page, filePath: filePath)
     }
 
     @discardableResult

@@ -34,7 +34,7 @@ struct NoteListView: View {
                 Divider().frame(height: 18)
 
                 Button {
-                    exportContent = ReaderPersistence.shared.exportNotesMarkdown()
+                    exportContent = BridgeService.shared.exportNotesMarkdown()
                     showExportSheet = true
                 } label: {
                     Label("导出", systemImage: "square.and.arrow.up")
@@ -91,7 +91,7 @@ struct NoteListView: View {
     }
 
     private func delete(_ note: NoteEntry) {
-        try? ReaderPersistence.shared.deleteNoteRemovingUnderline(
+        try? BridgeService.shared.deleteNoteRemovingUnderline(
             id: note.id,
             page: Int(note.pageIndex),
             filePath: note.pdfPath

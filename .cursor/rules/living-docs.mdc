@@ -1,0 +1,10 @@
+---
+description: 当前规格只维护 product.md 与 architecture.md
+alwaysApply: true
+---
+
+# 文档
+
+用户可感知行为变化时改 `docs/product.md`。模块边界、持久化、桥接、算法变化时改 `docs/architecture.md`。同一 PR 改代码和对应的那一份（或两份）。
+
+不要新增 `docs/prd/` 或 `docs/tdd/` 文件。不要给 `docs/archive/` 打「后续修订」。发布说明只写 `CHANGELOG.md`。

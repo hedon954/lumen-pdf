@@ -98,7 +98,7 @@ struct VocabularyListView: View {
     }
 
     private func delete(_ entry: VocabularyEntry) {
-        try? ReaderPersistence.shared.deleteVocabularyRemovingHighlight(
+        try? BridgeService.shared.deleteVocabularyRemovingHighlight(
             id: entry.id,
             page: Int(entry.pageIndex),
             filePath: entry.pdfPath
@@ -378,7 +378,7 @@ private struct VocabularyEditSheet: View {
                 Button("取消") { dismiss() }
                 Spacer()
                 Button("保存") {
-                    _ = try? ReaderPersistence.shared.updateVocabulary(
+                    _ = try? BridgeService.shared.updateVocabulary(
                         id: entry.id, phonetic: phonetic, partOfSpeech: partOfSpeech,
                         contextTranslation: contextTranslation,
                         contextExplanation: contextExplanation,

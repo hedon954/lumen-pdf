@@ -205,13 +205,13 @@ struct PDFReaderView: View {
 
         do {
             if remainingText.isEmpty {
-                try ReaderPersistence.shared.deleteNoteRemovingUnderline(
+                try BridgeService.shared.deleteNoteRemovingUnderline(
                     id: note.id,
                     page: Int(note.pageIndex),
                     filePath: note.pdfPath
                 )
             } else {
-                try ReaderPersistence.shared.updateNote(id: note.id, note: remainingText)
+                try BridgeService.shared.updateNote(id: note.id, note: remainingText)
             }
             refreshActiveNoteReview(matching: review)
             appState.showToast("已删除这条笔记")
@@ -224,7 +224,7 @@ struct PDFReaderView: View {
         var deletedCount = 0
         for note in review.notes {
             do {
-                try ReaderPersistence.shared.deleteNoteRemovingUnderline(
+                try BridgeService.shared.deleteNoteRemovingUnderline(
                     id: note.id,
                     page: Int(note.pageIndex),
                     filePath: note.pdfPath
@@ -332,7 +332,7 @@ struct PDFReaderView: View {
     }
 
     private func exactUnderlineNote(boundsStr: String, page: Int) -> NoteEntry? {
-        guard let existingNotes = try? ReaderPersistence.shared.listNotesByPdf(pdfPath: document.filePath) else {
+        guard let existingNotes = try? BridgeService.shared.listNotesByPdf(pdfPath: document.filePath) else {
             return nil
         }
         return existingNotes.first { note in
@@ -346,7 +346,7 @@ struct PDFReaderView: View {
             appState.showToast("请输入笔记内容")
             return
         }
-        _ = try? ReaderPersistence.shared.updateNote(
+        _ = try? BridgeService.shared.updateNote(
             id: noteId,
             note: NoteTextList.appending(trimmed, to: existingNoteText)
         )
@@ -355,7 +355,7 @@ struct PDFReaderView: View {
     }
 
     private func removeUnderlineNote(_ note: NoteEntry) {
-        try? ReaderPersistence.shared.deleteNoteRemovingUnderline(
+        try? BridgeService.shared.deleteNoteRemovingUnderline(
             id: note.id,
             page: Int(note.pageIndex),
             filePath: document.filePath
@@ -372,7 +372,7 @@ struct PDFReaderView: View {
             return
         }
 
-        ReaderPersistence.shared.initializeIfNeeded()
+        BridgeService.shared.initializeIfNeeded()
 
         let newRects = AnnotationBoundsCodec.parse(boundsStr)
         guard !newRects.isEmpty else {
@@ -380,7 +380,7 @@ struct PDFReaderView: View {
             return
         }
 
-        guard let existingNotes = try? ReaderPersistence.shared.listNotesByPdf(pdfPath: document.filePath) else {
+        guard let existingNotes = try? BridgeService.shared.listNotesByPdf(pdfPath: document.filePath) else {
             appState.showToast("保存笔记失败")
             return
         }
@@ -456,7 +456,7 @@ struct PDFReaderView: View {
         )
 
         for note in overlappingNotes {
-            try? ReaderPersistence.shared.deleteNote(id: note.id)
+            try? BridgeService.shared.deleteNote(id: note.id)
         }
 
         guard createUnderlineNote(
@@ -468,7 +468,7 @@ struct PDFReaderView: View {
             toastMessage: "已扩展笔记"
         ) != nil else {
             for info in deletedNotesInfo {
-                _ = try? ReaderPersistence.shared.saveNote(
+                _ = try? BridgeService.shared.saveNote(
                     pdfPath: info.pdfPath,
                     pdfName: info.pdfName,
                     pageIndex: info.pageIndex,
@@ -490,7 +490,7 @@ struct PDFReaderView: View {
         deletedNotesInfo: [NoteUndoInfo],
         toastMessage: String = "已添加笔记"
     ) -> NoteEntry? {
-        guard let noteEntry = try? ReaderPersistence.shared.saveNote(
+        guard let noteEntry = try? BridgeService.shared.saveNote(
             pdfPath: document.filePath,
             pdfName: document.fileName,
             pageIndex: UInt32(page),
@@ -528,7 +528,7 @@ struct PDFReaderView: View {
 
     private func handleDocumentLoaded(totalPages: Int) {
         appState.totalPages = totalPages
-        try? ReaderPersistence.shared.upsertPdfDocument(
+        try? BridgeService.shared.upsertPdfDocument(
             filePath: document.filePath,
             fileName: document.fileName,
             totalPages: UInt32(totalPages)
@@ -546,7 +546,7 @@ struct PDFReaderView: View {
                                      selectionAnchorRect: CGRect) {
         underlineDraft = nil
         activeNoteReview = nil
-        ReaderPersistence.shared.initializeIfNeeded()
+        BridgeService.shared.initializeIfNeeded()
 
         // Determine if this is sentence mode (multi-word selection)
         let isSentenceMode = word.split(separator: " ").count > 3 || word.count > 25
@@ -555,15 +555,15 @@ struct PDFReaderView: View {
         // correct saved/unsaved state on its very first frame. An entry is the *same word at the
         // same position* — keyed by word + context (sentence hash) — so the same spelling in a
         // different context (different sentence) is a separate entry and can still be added.
-        let sentenceHash = ReadingSessionService.sentenceHash(sentence)
+        let sentenceHash = SentenceHash.hash(sentence)
         var existingEntryId: String?
         if !isSentenceMode {
-            if let existing = try? ReaderPersistence.shared.getVocabularyByWordAndHash(
+            if let existing = try? BridgeService.shared.getVocabularyByWordAndHash(
                 word: word,
                 sentenceHash: sentenceHash
             ) {
                 existingEntryId = existing.id
-                ReaderPersistence.shared.incrementQueryCount(id: existing.id)
+                BridgeService.shared.incrementQueryCount(id: existing.id)
             }
         }
 
@@ -605,12 +605,12 @@ struct PDFReaderView: View {
             do {
                 let result: TranslationResult
                 if isSentenceMode {
-                    result = try await ReaderPersistence.shared.translateSentenceStreaming(
+                    result = try await BridgeService.shared.translateSentenceStreaming(
                         sentence: word,
                         onPartial: { partial in applyPartial(partial) }
                     )
                 } else {
-                    result = try await ReaderPersistence.shared.translateStreaming(
+                    result = try await BridgeService.shared.translateStreaming(
                         word: word,
                         sentence: sentence,
                         skipCache: skipCache,

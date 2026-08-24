@@ -318,7 +318,7 @@ struct LLMConfigurationSection: View {
         baseURL = newBaseURL
         model = configuration.recentModels(for: newBaseURL).first ?? previousModel
         if extraConfig.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            extraConfig = LLMThinkingExtraConfig.defaultJSON(baseURL: newBaseURL, model: model)
+            extraConfig = LLMExtraConfig.defaultJSON(baseURL: newBaseURL, model: model)
         }
         Task {
             await Task.yield()
@@ -335,11 +335,11 @@ struct LLMConfigurationSection: View {
 
     private func refreshDefaultExtraIfUnmodified(previousModel: String, newModel: String) {
         guard previousModel != newModel else { return }
-        let previousDefault = LLMThinkingExtraConfig.defaultJSON(baseURL: baseURL, model: previousModel)
+        let previousDefault = LLMExtraConfig.defaultJSON(baseURL: baseURL, model: previousModel)
         if extraConfig.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || LLMExtraConfig.jsonEquals(extraConfig, previousDefault)
         {
-            extraConfig = LLMThinkingExtraConfig.defaultJSON(baseURL: baseURL, model: newModel)
+            extraConfig = LLMExtraConfig.defaultJSON(baseURL: baseURL, model: newModel)
         }
     }
 
