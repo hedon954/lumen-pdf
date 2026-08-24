@@ -1,5 +1,7 @@
 # LumenPDF 当前产品行为
 
+当前行为写在本文。决策按什么顺序落地，见 [history.md](history.md)。实现边界见 [architecture.md](architecture.md)。
+
 macOS PDF 阅读器：翻译、划线、笔记、单词本、AI 导读在同一阅读窗口完成。不配置 LLM 也能用基础翻译；上下文解释和追问需要 OpenAI 兼容接口。
 
 ## 文库

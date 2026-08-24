@@ -1,5 +1,7 @@
 # LumenPDF 当前实现
 
+当前模块边界写在本文。现行产品行为见 [product.md](product.md)；决策顺序见 [history.md](history.md)。
+
 ```
 SwiftUI / PDFKit  →  BridgeService  →  UniFFI  →  interfaces/api.rs  →  domain ← infrastructure
 ```

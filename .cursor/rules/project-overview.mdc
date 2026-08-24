@@ -18,4 +18,4 @@ Swift UI  →  BridgeService  →  UniFFI  →  interfaces  →  domain ← infr
 | domain | `src/domain/` | 零 I/O |
 | infrastructure | `src/infrastructure/` | 实现 domain traits |
 
-规格：`docs/product.md`、`docs/architecture.md`。构建：`scripts/build-rust.sh`。桥：`LumenPDF/Services/BridgeService.swift`、`lumen-pdf-core/src/interfaces/api.rs`。
+规格：`docs/product.md`、`docs/architecture.md`、`docs/history.md`。构建：`scripts/build-rust.sh`。桥：`LumenPDF/Services/BridgeService.swift`、`lumen-pdf-core/src/interfaces/api.rs`。

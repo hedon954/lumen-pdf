@@ -6,7 +6,7 @@ LumenPDF：macOS PDF 阅读器（翻译、划线、笔记、单词本、AI 导�
 SwiftUI / PDFKit  →  BridgeService  →  UniFFI  →  interfaces  →  domain ← infrastructure
 ```
 
-当前规格：[`docs/product.md`](docs/product.md)（行为）、[`docs/architecture.md`](docs/architecture.md)（实现）。不要再新增 dated PRD/TDD，不要改 `docs/archive/`。
+当前规格：[`docs/product.md`](docs/product.md)（现在的行为）、[`docs/architecture.md`](docs/architecture.md)（现在的实现）、[`docs/history.md`](docs/history.md)（演进顺序）。用户可感知或架构变化时改前两份，并在 history 表末追加一行。不要新增 dated PRD/TDD，不要改 `docs/archive/`。`CHANGELOG.md` 只写发布说明。
 
 ## 命令
 
