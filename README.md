@@ -136,9 +136,7 @@ flowchart TB
 
 ## 文档
 
-- 当前产品行为：[docs/product.md](docs/product.md)
-- 当前实现边界：[docs/architecture.md](docs/architecture.md)
-- 演进时间线：[docs/history.md](docs/history.md)
+- 当前主题头与配对表：[docs/README.md](docs/README.md)
 - 签名与 Keychain：[docs/code-signing.md](docs/code-signing.md)
 
 ## 数据位置

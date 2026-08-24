@@ -1,0 +1,19 @@
+---
+description: PRD 与 TDD 成对新增，用 prev/next 接成主题链表
+alwaysApply: true
+---
+
+# PRD / TDD 维护
+
+用户可感知行为、交互规则或模块边界发生变化时，同一 PR 必须**新增**成对的：
+
+- `docs/prd/prd-YYYY-MM-DD-<topic>.md`
+- `docs/tdd/tdd-YYYY-MM-DD-<topic>.md`
+
+PRD = 需求；TDD = 技术设计；`docs/plan/` 是 agent 调研/执行报告，不进规格链。
+
+每个主题一条双向链表。YAML frontmatter 用单值 `prev` / `next`（前置/后置），另加 `version` / `date` / `tdd` 或 `prd`，可选 `related`。路径相对 `docs/`。不要在正文重复这些字段，也不要链到 `docs/README.md`。
+
+最新节点没有 `next`。祖先只允许把 `next` 设为后继，不要改写旧正文或加「后续修订」文章。沿 `next` 走到主题头即当前方案；沿 `prev` 看演进。主题不同不要硬接。登记 `docs/README.md` 当前主题头与配对表。
+
+不要只改代码或只写 CHANGELOG。完整规则见 `CLAUDE.md` 的「PRD 与 TDD」。
