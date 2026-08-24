@@ -202,11 +202,10 @@ private struct PromptTemplateEditor: View {
     @State private var validationTask: Task<Void, Never>?
 
     private var liveValidation: PromptTemplateValidation {
-        let user = PromptTemplateValidator.validateUserPrompt(userPrompt, kind: kind)
-        let system = PromptTemplateValidator.validateSystemPrompt(systemPrompt)
-        return PromptTemplateValidation(
-            errors: user.errors + system.errors,
-            variables: user.variables
+        PromptTemplateValidator.validatePair(
+            userPrompt: userPrompt,
+            systemPrompt: systemPrompt,
+            kind: kind
         )
     }
 
@@ -483,6 +482,16 @@ struct LLMCallLogSettingsPage: View {
     }
 }
 
+private extension LLMCallStatus {
+    var color: Color {
+        switch self {
+        case .running: return .orange
+        case .succeeded: return .green
+        case .failed: return .red
+        }
+    }
+}
+
 private struct LogRow: View, Equatable {
     let title: String
     let model: String
@@ -504,10 +513,10 @@ private struct LogRow: View, Equatable {
         HStack(alignment: .top, spacing: 10) {
             ZStack {
                 Circle()
-                    .fill(statusColor.opacity(0.12))
+                    .fill(status.color.opacity(0.12))
                 Image(systemName: kindImage)
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(statusColor)
+                    .foregroundStyle(status.color)
             }
             .frame(width: 30, height: 30)
 
@@ -518,9 +527,9 @@ private struct LogRow: View, Equatable {
                         .lineLimit(1)
                     Spacer(minLength: 4)
                     Circle()
-                        .fill(statusColor)
+                        .fill(status.color)
                         .frame(width: 7, height: 7)
-                        .help(statusTitle)
+                        .help(status.title)
                 }
                 Text(model)
                     .font(.caption)
@@ -538,22 +547,6 @@ private struct LogRow: View, Equatable {
             }
         }
         .padding(.vertical, 7)
-    }
-
-    private var statusColor: Color {
-        switch status {
-        case .running: return .orange
-        case .succeeded: return .green
-        case .failed: return .red
-        }
-    }
-
-    private var statusTitle: String {
-        switch status {
-        case .running: return "进行中"
-        case .succeeded: return "成功"
-        case .failed: return "失败"
-        }
     }
 }
 
@@ -598,10 +591,10 @@ private struct LLMCallLogDetail: View {
             HStack(alignment: .top, spacing: 12) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(statusColor.opacity(0.12))
+                        .fill(entry.status.color.opacity(0.12))
                     Image(systemName: entry.kind.logSystemImage)
                         .font(.title3.weight(.semibold))
-                        .foregroundStyle(statusColor)
+                        .foregroundStyle(entry.status.color)
                 }
                 .frame(width: 44, height: 44)
 
@@ -615,12 +608,12 @@ private struct LLMCallLogDetail: View {
 
                 Spacer()
 
-                Label(statusTitle, systemImage: statusSystemImage)
+                Label(entry.status.title, systemImage: entry.status.systemImage)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(statusColor)
+                    .foregroundStyle(entry.status.color)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
-                    .background(statusColor.opacity(0.1), in: Capsule())
+                    .background(entry.status.color.opacity(0.1), in: Capsule())
             }
 
             Divider()
@@ -762,30 +755,6 @@ private struct LLMCallLogDetail: View {
         }
         let head = lines.prefix(4).joined(separator: "\n")
         return head + "\n…"
-    }
-
-    private var statusColor: Color {
-        switch entry.status {
-        case .running: return .orange
-        case .succeeded: return .green
-        case .failed: return .red
-        }
-    }
-
-    private var statusTitle: String {
-        switch entry.status {
-        case .running: return "进行中"
-        case .succeeded: return "成功"
-        case .failed: return "失败"
-        }
-    }
-
-    private var statusSystemImage: String {
-        switch entry.status {
-        case .running: return "clock.fill"
-        case .succeeded: return "checkmark.circle.fill"
-        case .failed: return "xmark.octagon.fill"
-        }
     }
 
     private var sourceTitle: String {

@@ -6,7 +6,6 @@ import Foundation
 private let _initialize: (String, AppConfig) throws -> Void              = initialize(dbPath:config:)
 private let _updateLlmConfig: (AppConfig) throws -> Void                 = updateLlmConfig(config:)
 private let _saveVocabulary: (SaveVocabularyRequest) throws -> VocabularyEntry = saveVocabulary(req:)
-private let _getVocabularyEntry: (String) throws -> VocabularyEntry?     = getVocabularyEntry(id:)
 private let _getVocabByHash: (String, String) throws -> VocabularyEntry? = getVocabularyByWordAndHash(word:sentenceHash:)
 private let _listVocabulary: () throws -> [VocabularyEntry]              = listVocabulary
 private let _deleteVocabulary: (String) throws -> Void                   = deleteVocabulary(id:)
@@ -22,7 +21,7 @@ private let _listNotes: () throws -> [NoteEntry]                         = listN
 private let _listNotesByPdf: (String) throws -> [NoteEntry]              = listNotesByPdf(pdfPath:)
 private let _deleteNote: (String) throws -> Void                         = deleteNote(id:)
 private let _updateNote: (UpdateNoteRequest) throws -> NoteEntry         = updateNote(req:)
-private let _exportNotesMarkdown: (String?) throws -> String             = exportNotesMarkdown(pdfPath:)
+private let _defaultExtraConfig: (String, String) -> String              = defaultExtraConfig(baseUrl:model:)
 
 /// Wraps all UniFFI-generated top-level calls and manages app initialization.
 final class BridgeService {
@@ -115,42 +114,13 @@ final class BridgeService {
         return normalized.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
     }
 
+    /// Compact Extra Config JSON for the provider. Empty means no built-in fields.
+    /// Does not require `initializeIfNeeded`.
+    static func defaultExtraConfig(baseURL: String, model: String) -> String {
+        _defaultExtraConfig(baseURL, model)
+    }
+
     // MARK: - Translation
-
-    func translate(word: String, sentence: String) async throws -> TranslationResult {
-        let word = PDFExtractedTextCollapser.collapse(word)
-        let sentence = PDFExtractedTextCollapser.collapse(sentence)
-        let auditID = await beginAudit(
-            kind: .wordTranslation,
-            input: "选中单词：\(word)\n\n上下文：\(sentence)"
-        )
-        do {
-            // translate(request:) has different param label — no shadowing conflict
-            let result = try await LumenPDF.translate(
-                request: TranslationRequest(word: word, sentence: sentence)
-            )
-            await finishAudit(auditID, result: result)
-            return result
-        } catch {
-            await failAudit(auditID, error: error)
-            throw error
-        }
-    }
-
-    /// Translate a full sentence without word-level analysis.
-    /// Use this when the user selects a phrase/sentence instead of a single word.
-    func translateSentence(sentence: String) async throws -> TranslationResult {
-        let sentence = PDFExtractedTextCollapser.collapse(sentence)
-        let auditID = await beginAudit(kind: .sentenceTranslation, input: sentence)
-        do {
-            let result = try await LumenPDF.translateSentence(sentence: sentence)
-            await finishAudit(auditID, result: result)
-            return result
-        } catch {
-            await failAudit(auditID, error: error)
-            throw error
-        }
-    }
 
     /// Streaming word-level translation. `onPartial` fires repeatedly on
     /// `MainActor` while fields stream in; the returned `TranslationResult`
@@ -325,10 +295,6 @@ final class BridgeService {
             contextSentenceTranslation: contextSentenceTranslation,
             translationSource: translationSource, annotationId: annotationId
         ))
-    }
-
-    func getVocabularyEntry(id: String) throws -> VocabularyEntry? {
-        try _getVocabularyEntry(id)
     }
 
     func getVocabularyByWordAndHash(word: String, sentenceHash: String) throws -> VocabularyEntry? {

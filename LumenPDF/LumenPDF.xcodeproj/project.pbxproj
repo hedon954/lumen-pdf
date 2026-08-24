@@ -71,7 +71,6 @@
 		BB1E0DACC0305E57AD2A5809 /* NoteTextListTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C88A756D118B5E7C64879F2C /* NoteTextListTests.swift */; };
 		BB1E55DF99A85DA5569B31DC /* PDFHighlightAnnotationFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F133B2E2B5413CFCFCF1B03 /* PDFHighlightAnnotationFactory.swift */; };
 		BDBFE24F5EF8330FD84BE662 /* PDFSelectionMarkupGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = D444422EBCC4FB2B029AD3BB /* PDFSelectionMarkupGeometry.swift */; };
-		C30E64BC2A1D11DB6F4E8D3F /* AnnotationPersistenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D3B4F729F31701EFC6C20E3 /* AnnotationPersistenceService.swift */; };
 		CAFB7CEAC60EAAC5C36307CD /* LLMCallLogStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22C5D0AB8D952215A819CA33 /* LLMCallLogStore.swift */; };
 		CB5B8EE514E3A1A44E8623B3 /* SelectionActionBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEED3A291C974F7E4E2DB11A /* SelectionActionBar.swift */; };
 		D1DA9D4B44DDB8037F8B5335 /* PromptTemplateUpdateCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAF7255A0FB99F30B44BBF35 /* PromptTemplateUpdateCoordinator.swift */; };
@@ -133,7 +132,6 @@
 		1D42C9FDDF84D251D9C2EAC5 /* PDFCoverThumbnailCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFCoverThumbnailCache.swift; sourceTree = "<group>"; };
 		22C5D0AB8D952215A819CA33 /* LLMCallLogStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMCallLogStore.swift; sourceTree = "<group>"; };
 		289641D4E088EC11218E96E7 /* NoteListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteListView.swift; sourceTree = "<group>"; };
-		2D3B4F729F31701EFC6C20E3 /* AnnotationPersistenceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnotationPersistenceService.swift; sourceTree = "<group>"; };
 		2D8152F2758E707FF7AF44CA /* LLMModelCatalogServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMModelCatalogServiceTests.swift; sourceTree = "<group>"; };
 		2D8F15A139BF01B323AF0BA2 /* PDFKitView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFKitView.swift; sourceTree = "<group>"; };
 		32758932B2FC895E4526CA2E /* PDFReaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFReaderView.swift; sourceTree = "<group>"; };
@@ -263,7 +261,6 @@
 		28B6CB79ED534223E8AC25BB /* Services */ = {
 			isa = PBXGroup;
 			children = (
-				2D3B4F729F31701EFC6C20E3 /* AnnotationPersistenceService.swift */,
 				DCF17425FFE3A224B125B14E /* AudioService.swift */,
 				D971163E74432C8E4D8E88B6 /* BridgeService.swift */,
 				FD4E62576C65814E3950EBA5 /* KeychainService.swift */,
@@ -511,7 +508,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				0FCA880AEE9A07C841BE7CA3 /* AnnotationBoundsCodec.swift in Sources */,
-				C30E64BC2A1D11DB6F4E8D3F /* AnnotationPersistenceService.swift in Sources */,
 				F2CDC7FD8BBAD40DD2870EBF /* AppState.swift in Sources */,
 				482C829E5FEBA2F21ABA0AE9 /* AudioService.swift in Sources */,
 				B4C91E07A2D84F1B9C5E7A11 /* AutoSavingNoteEditor.swift in Sources */,

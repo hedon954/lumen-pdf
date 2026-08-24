@@ -139,9 +139,8 @@ struct ReadingWordsPanel: View {
 
     private func delete(_ item: WordItem) {
         do {
-            try ReaderPersistence.shared.deleteVocabulary(id: item.id)
-            ReaderEventBus.shared.postRemoveHighlight(
-                entryId: item.id,
+            try ReaderPersistence.shared.deleteVocabularyRemovingHighlight(
+                id: item.id,
                 page: Int(item.pageIndex),
                 filePath: item.pdfPath
             )

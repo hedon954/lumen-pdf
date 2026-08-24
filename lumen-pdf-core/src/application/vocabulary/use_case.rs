@@ -18,10 +18,6 @@ impl VocabularyUseCase {
         self.repo.save(req)
     }
 
-    pub fn get_by_id(&self, id: &str) -> Result<Option<VocabularyEntry>, LumenError> {
-        self.repo.get_by_id(id)
-    }
-
     pub fn get_by_word_and_hash(
         &self,
         word: &str,

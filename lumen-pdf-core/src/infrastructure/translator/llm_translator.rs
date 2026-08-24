@@ -316,23 +316,6 @@ impl LlmTranslator {
         capability
     }
 
-    /// Translate a full sentence without word-level analysis (non-streaming).
-    /// Returns a `TranslationResult` with `context_sentence_translation` and
-    /// (when applicable) `sentence_breakdown` filled in.
-    pub async fn translate_sentence(
-        &self,
-        sentence: &str,
-    ) -> Result<TranslationResult, LumenError> {
-        let body = self.build_sentence_request(sentence, false);
-        let completion = self.send_chat_request(&body).await?;
-
-        let parsed: SentencePromptJson = parse_model_json(&completion.content)
-            .map_err(|err| err.with_http_request(completion.http_request.clone()))?;
-        Ok(parsed
-            .into_result(sentence, completion.usage)
-            .with_http_request(completion.http_request))
-    }
-
     /// Streaming sentence translation.
     ///
     /// During the stream, `on_progress` is invoked **whenever a new character
@@ -606,51 +589,56 @@ impl LlmTranslator {
         merge_chat_request(body, &extra)
     }
 
-    async fn send_chat_request(&self, body: &ChatRequest) -> Result<CompletionOutput, LumenError> {
-        let url = self.completions_url();
+    async fn post_chat(
+        &self,
+        url: &str,
+        body: &ChatRequest,
+    ) -> Result<(reqwest::Response, String), LumenError> {
         let mut payload = self.chat_json(body)?;
-        let mut dump = format_http_request(&url, &payload);
-        let resp = shared_client()
-            .post(&url)
+        let mut dump = format_http_request(url, &payload);
+        let response = shared_client()
+            .post(url)
             .bearer_auth(&self.config.api_key)
             .json(&payload)
             .send()
             .await
             .map_err(|e| LumenError::llm_api(e.to_string()).with_http_request(dump.clone()))?;
 
-        let resp = if !resp.status().is_success() {
-            let status = resp.status();
-            let text = resp.text().await.unwrap_or_default();
-            if is_unknown_optional_field_error(status, &text) && body.has_vendor_extensions() {
-                let compatible_body = body.clone().without_vendor_extensions();
-                payload = self.chat_json(&compatible_body)?;
-                dump = format_http_request(&url, &payload);
-                let retry = shared_client()
-                    .post(&url)
-                    .bearer_auth(&self.config.api_key)
-                    .json(&payload)
-                    .send()
-                    .await
-                    .map_err(|e| {
-                        LumenError::llm_api(e.to_string()).with_http_request(dump.clone())
-                    })?;
-                if !retry.status().is_success() {
-                    let retry_status = retry.status();
-                    let retry_text = retry.text().await.unwrap_or_default();
-                    return Err(
-                        LumenError::llm_api(format!("HTTP {retry_status}: {retry_text}"))
-                            .with_http_request(dump),
-                    );
-                }
-                retry
-            } else {
-                return Err(
-                    LumenError::llm_api(format!("HTTP {status}: {text}")).with_http_request(dump)
-                );
-            }
-        } else {
-            resp
-        };
+        if response.status().is_success() {
+            return Ok((response, dump));
+        }
+
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        if !(is_unknown_optional_field_error(status, &text) && body.has_vendor_extensions()) {
+            return Err(
+                LumenError::llm_api(format!("HTTP {status}: {text}")).with_http_request(dump)
+            );
+        }
+
+        payload = self.chat_json(&body.clone().without_vendor_extensions())?;
+        dump = format_http_request(url, &payload);
+        let retry = shared_client()
+            .post(url)
+            .bearer_auth(&self.config.api_key)
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| LumenError::llm_api(e.to_string()).with_http_request(dump.clone()))?;
+        if !retry.status().is_success() {
+            let retry_status = retry.status();
+            let retry_text = retry.text().await.unwrap_or_default();
+            return Err(
+                LumenError::llm_api(format!("HTTP {retry_status}: {retry_text}"))
+                    .with_http_request(dump),
+            );
+        }
+        Ok((retry, dump))
+    }
+
+    async fn send_chat_request(&self, body: &ChatRequest) -> Result<CompletionOutput, LumenError> {
+        let url = self.completions_url();
+        let (resp, dump) = self.post_chat(&url, body).await?;
 
         let raw = resp
             .text()
@@ -707,48 +695,7 @@ impl LlmTranslator {
     where
         F: FnMut(&str, &mut String),
     {
-        let mut payload = self.chat_json(body)?;
-        let mut dump = format_http_request(url, &payload);
-        let mut resp = shared_client()
-            .post(url)
-            .bearer_auth(&self.config.api_key)
-            .json(&payload)
-            .send()
-            .await
-            .map_err(|e| LumenError::llm_api(e.to_string()).with_http_request(dump.clone()))?;
-
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let text = resp.text().await.unwrap_or_default();
-            let can_retry_without_usage =
-                is_unknown_optional_field_error(status, &text) && body.has_vendor_extensions();
-            if can_retry_without_usage {
-                let compatible_body = body.clone().without_vendor_extensions();
-                payload = self.chat_json(&compatible_body)?;
-                dump = format_http_request(url, &payload);
-                resp = shared_client()
-                    .post(url)
-                    .bearer_auth(&self.config.api_key)
-                    .json(&payload)
-                    .send()
-                    .await
-                    .map_err(|e| {
-                        LumenError::llm_api(e.to_string()).with_http_request(dump.clone())
-                    })?;
-                if !resp.status().is_success() {
-                    let retry_status = resp.status();
-                    let retry_text = resp.text().await.unwrap_or_default();
-                    return Err(
-                        LumenError::llm_api(format!("HTTP {retry_status}: {retry_text}"))
-                            .with_http_request(dump),
-                    );
-                }
-            } else {
-                return Err(
-                    LumenError::llm_api(format!("HTTP {status}: {text}")).with_http_request(dump)
-                );
-            }
-        }
+        let (resp, dump) = self.post_chat(url, body).await?;
 
         let mut byte_buf: Vec<u8> = Vec::new();
         let mut content_buf = String::new();

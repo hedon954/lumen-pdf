@@ -73,7 +73,7 @@ fn compact_json(value: &Value) -> String {
     serde_json::to_string(value).unwrap_or_default()
 }
 
-pub fn is_qwen_family(model: &str) -> bool {
+fn is_qwen_family(model: &str) -> bool {
     let model = model.to_ascii_lowercase();
     model.contains("qwen") || model.contains("qwq") || model == "coder-model"
 }

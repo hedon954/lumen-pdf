@@ -6,6 +6,7 @@ predecessor:
   - tdd/tdd-2026-07-03-reading-inspector.md
 successor:
   - tdd/tdd-2026-07-10-note-overlay-optimization.md
+  - tdd/tdd-2026-08-24-codebase-simplification.md
 ---
 
 # LumenPDF — v1.0.14 重构与验证收口 TDD
