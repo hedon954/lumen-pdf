@@ -2,13 +2,8 @@
 version: v1.0.24
 date: 2026-08-19
 prd: prd/prd-2026-08-19-markup-diagnostics.md
-predecessor:
-  - tdd/tdd-2026-08-15-settings-usage-overlay.md
-successor:
-  - tdd/tdd-2026-08-20-library-cover-translation-retry.md
-  - tdd/tdd-2026-08-21-selection-settings-feedback.md
-  - tdd/tdd-2026-08-21-markup-interval-merge.md
-  - tdd/tdd-2026-08-21-llm-call-log-http-request.md
+prev: tdd/tdd-2026-08-15-settings-usage-overlay.md
+next: tdd/tdd-2026-08-20-library-cover-translation-retry.md
 ---
 
 # LumenPDF — 跨页划线与失败诊断 TDD

@@ -2,11 +2,8 @@
 version: v1.0.21
 date: 2026-08-09
 tdd: tdd/tdd-2026-08-09-selection-overlay-placement.md
-predecessor:
-  - prd/prd-2026-08-05-viewport-restore-overlay-drag.md
-  - prd/prd-2026-07-10-note-overlay-optimization.md
-successor:
-  - prd/prd-2026-08-20-note-autosave-overlay-stability.md
+prev: prd/prd-2026-08-05-viewport-restore-overlay-drag.md
+next: prd/prd-2026-08-14-ai-settings-notes.md
 ---
 
 # LumenPDF — 选区浮层统一定位 PRD

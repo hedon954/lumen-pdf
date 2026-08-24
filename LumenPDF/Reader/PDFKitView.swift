@@ -910,10 +910,10 @@ struct PDFKitView: NSViewRepresentable {
 
             // 通知 Swift 层恢复/删除笔记
             // 删除新笔记
-            try? ReaderPersistence.shared.deleteNote(id: newNoteInfo.id)
+            try? BridgeService.shared.deleteNote(id: newNoteInfo.id)
             // 恢复旧笔记
             for info in deletedNotesInfo {
-                _ = try? ReaderPersistence.shared.saveNote(
+                _ = try? BridgeService.shared.saveNote(
                     pdfPath: info.pdfPath,
                     pdfName: info.pdfName,
                     pageIndex: info.pageIndex,
@@ -930,9 +930,9 @@ struct PDFKitView: NSViewRepresentable {
             undo.registerUndo(withTarget: self) { coordinator in
                 // 重做：重新删除旧笔记，创建新笔记
                 for info in capturedDeletedNotesInfo {
-                    try? ReaderPersistence.shared.deleteNote(id: info.id)
+                    try? BridgeService.shared.deleteNote(id: info.id)
                 }
-                _ = try? ReaderPersistence.shared.saveNote(
+                _ = try? BridgeService.shared.saveNote(
                     pdfPath: newNoteInfo.pdfPath,
                     pdfName: newNoteInfo.pdfName,
                     pageIndex: newNoteInfo.pageIndex,
@@ -995,7 +995,7 @@ struct PDFKitView: NSViewRepresentable {
             stripManagedAnnotations(from: doc)
 
             // Vocabulary highlights — source of truth: database.
-            let entries = (try? ReaderPersistence.shared.listVocabulary()) ?? []
+            let entries = (try? BridgeService.shared.listVocabulary()) ?? []
             for entry in entries where entry.pdfPath == filePath {
                 guard let page = doc.page(at: Int(entry.pageIndex)) else { continue }
                 addVocabAnnotation(
@@ -1007,7 +1007,7 @@ struct PDFKitView: NSViewRepresentable {
             }
 
             // Note-linked underlines — source of truth: database.
-            let notes = (try? ReaderPersistence.shared.listNotesByPdf(pdfPath: filePath)) ?? []
+            let notes = (try? BridgeService.shared.listNotesByPdf(pdfPath: filePath)) ?? []
             for note in notes {
                 guard let page = doc.page(at: Int(note.pageIndex)) else { continue }
                 restoreNoteUnderline(noteId: note.id, boundsStr: note.boundsStr, on: page)
@@ -1418,7 +1418,7 @@ struct PDFKitView: NSViewRepresentable {
             lastKnownPageIndex = pageIndex
             lastScrollOffset = offset
             persistViewportState()
-            try? ReaderPersistence.shared.saveReadingPosition(
+            try? BridgeService.shared.saveReadingPosition(
                 filePath: currentFilePath,
                 page: UInt32(pageIndex),
                 scrollOffset: offset
@@ -1472,7 +1472,7 @@ struct PDFKitView: NSViewRepresentable {
             persistFreeMarkups()
             persistViewportState()
             let pageIndex = doc.index(for: currentPage)
-            try? ReaderPersistence.shared.saveReadingPosition(
+            try? BridgeService.shared.saveReadingPosition(
                 filePath: currentFilePath,
                 page: UInt32(pageIndex),
                 scrollOffset: scrollOffset(for: pdfView)

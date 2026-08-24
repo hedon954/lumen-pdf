@@ -244,7 +244,7 @@ final class ReadingGuideService {
 
     func deleteSavedMessages(in session: ExplanationSession) {
         for noteId in session.savedNoteIdsByMessageId.values {
-            try? ReaderPersistence.shared.deleteNoteRemovingUnderline(
+            try? BridgeService.shared.deleteNoteRemovingUnderline(
                 id: noteId,
                 page: session.selection.pageIndex,
                 filePath: session.selection.pdfPath

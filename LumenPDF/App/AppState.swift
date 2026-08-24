@@ -97,7 +97,7 @@ final class AppState: ObservableObject {
     func saveNoteItem(noteId: String, itemIndex: Int, text: String) -> Bool {
         guard let note = notes.first(where: { $0.id == noteId }),
               let updated = NoteTextList.replacingItem(at: itemIndex, with: text, from: note.note),
-              (try? ReaderPersistence.shared.updateNote(id: noteId, note: updated)) != nil
+              (try? BridgeService.shared.updateNote(id: noteId, note: updated)) != nil
         else {
             return false
         }

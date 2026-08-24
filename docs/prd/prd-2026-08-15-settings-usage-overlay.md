@@ -2,13 +2,8 @@
 version: v1.0.23
 date: 2026-08-15
 tdd: tdd/tdd-2026-08-15-settings-usage-overlay.md
-predecessor:
-  - prd/prd-2026-08-14-ai-settings-notes.md
-  - prd/prd-2026-08-09-selection-overlay-placement.md
-  - prd/prd-2026-08-05-viewport-restore-overlay-drag.md
-successor:
-  - prd/prd-2026-08-19-markup-diagnostics.md
-  - prd/prd-2026-08-21-llm-call-log-http-request.md
+prev: prd/prd-2026-08-14-ai-settings-notes.md
+next: prd/prd-2026-08-19-markup-diagnostics.md
 ---
 
 # LumenPDF — 用量统计、设置打磨与根层浮窗 PRD

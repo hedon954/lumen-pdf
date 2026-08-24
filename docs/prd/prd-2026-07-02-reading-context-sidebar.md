@@ -2,11 +2,8 @@
 version: v1.0.12
 date: 2026-07-03
 tdd: tdd/tdd-2026-07-02-reading-context-sidebar.md
-predecessor:
-  - prd/prd-2026-06-26-v1011.md
-successor:
-  - prd/prd-2026-07-03-reading-inspector.md
-  - prd/prd-2026-08-21-markup-interval-merge.md
+prev: prd/prd-2026-06-26-v1011.md
+next: prd/prd-2026-07-03-reading-inspector.md
 ---
 
 # LumenPDF — 阅读上下文与 AI 导读 PRD

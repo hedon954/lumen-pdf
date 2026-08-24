@@ -2,11 +2,8 @@
 version: v1.0.25
 date: 2026-08-20
 tdd: tdd/tdd-2026-08-20-library-cover-translation-retry.md
-predecessor:
-  - prd/prd-2026-08-19-markup-diagnostics.md
-  - prd/prd-2026-07-10-note-overlay-optimization.md
-successor:
-  - prd/prd-2026-08-20-note-autosave-overlay-stability.md
+prev: prd/prd-2026-08-19-markup-diagnostics.md
+next: prd/prd-2026-08-20-note-autosave-overlay-stability.md
 ---
 
 # LumenPDF — 文库封面与翻译重新生成 PRD

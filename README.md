@@ -111,36 +111,33 @@ LumenPDF 由 SwiftUI 前端和 Rust 后端组成，中间通过 Mozilla UniFFI �
 flowchart TB
     subgraph Mac["macOS App"]
         UI["SwiftUI + PDFKit"]
+        BR["BridgeService"]
     end
 
     subgraph Core["Rust Core"]
-        IF["interfaces<br/>UniFFI 导出 + 依赖注入"]
-        APP["application<br/>用例编排"]
+        IF["interfaces<br/>UniFFI 导出 + 组装"]
         DOMAIN["domain<br/>纯领域逻辑"]
         INFRA["infrastructure<br/>SQLite / HTTP / LLM"]
     end
 
-    UI -->|"Mozilla UniFFI"| IF
-    IF --> APP
-    APP --> DOMAIN
-    APP --> INFRA
+    UI --> BR
+    BR -->|"Mozilla UniFFI"| IF
+    IF --> DOMAIN
+    IF --> INFRA
+    INFRA --> DOMAIN
     INFRA --> DB[("SQLite 本地存储")]
     INFRA --> LLM["OpenAI-compatible LLM"]
     INFRA --> FALLBACK["MyMemory fallback"]
 ```
 
-Rust 后端按 DDD 分层组织：
-
-- `interfaces/`：UniFFI 导出和依赖注入
-- `application/`：用例编排
+- `interfaces/`：UniFFI 导出，组装 SQLite 与 LLM
 - `domain/`：纯领域逻辑，不依赖 SQL 或 HTTP
 - `infrastructure/`：SQLite、HTTP、LLM 和 fallback 实现
 
 ## 文档
 
-- 最新 PRD：[docs/prd/prd-2026-08-09-selection-overlay-placement.md](docs/prd/prd-2026-08-09-selection-overlay-placement.md)
-- 最新 TDD：[docs/tdd/tdd-2026-08-09-selection-overlay-placement.md](docs/tdd/tdd-2026-08-09-selection-overlay-placement.md)
-- 历史产品和技术文档见 [docs/](docs/)
+- 当前主题头与配对表：[docs/README.md](docs/README.md)
+- 签名与 Keychain：[docs/code-signing.md](docs/code-signing.md)
 
 ## 数据位置
 

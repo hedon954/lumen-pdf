@@ -2,15 +2,8 @@
 version: v1.0.22
 date: 2026-08-14
 tdd: tdd/tdd-2026-08-14-ai-settings-notes.md
-predecessor:
-  - prd/prd-2026-07-03-reading-inspector.md
-  - prd/prd-2026-07-16-llm-configuration-discovery.md
-  - prd/prd-2026-07-16-reading-ai-input-selection.md
-  - prd/prd-2026-07-10-note-overlay-optimization.md
-successor:
-  - prd/prd-2026-08-15-settings-usage-overlay.md
-  - prd/prd-2026-08-20-llm-settings-persistence.md
-  - prd/prd-2026-08-21-llm-call-log-http-request.md
+prev: prd/prd-2026-08-09-selection-overlay-placement.md
+next: prd/prd-2026-08-15-settings-usage-overlay.md
 ---
 
 # LumenPDF — AI 阅读、设置与笔记删除 PRD

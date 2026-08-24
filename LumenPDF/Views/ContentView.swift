@@ -249,7 +249,7 @@ struct ContentView: View {
                 return
             }
             let storedKey = KeychainService.loadLLMAPIKey(
-                for: SettingsRuntimeService.shared.normalizedLLMBaseURL(baseURL)
+                for: BridgeService.normalizedLLMBaseURL(baseURL)
             ) ?? ""
             if storedKey.isEmpty {
                 showSetupSheet = true
@@ -364,7 +364,7 @@ struct ContentView: View {
         result: TranslationResult,
         request: TranslationBubbleRequest
     ) -> String? {
-        guard let entry = try? ReaderPersistence.shared.saveVocabulary(
+        guard let entry = try? BridgeService.shared.saveVocabulary(
             word: result.word,
             sentence: request.sentence,
             sentenceHash: request.sentenceHash,
@@ -397,12 +397,12 @@ struct ContentView: View {
         result: TranslationResult,
         request: TranslationBubbleRequest
     ) -> String? {
-        ReaderPersistence.shared.initializeIfNeeded()
+        BridgeService.shared.initializeIfNeeded()
         let noteText = result.contextSentenceTranslation.isEmpty
             ? result.contextTranslation
             : result.contextSentenceTranslation
 
-        guard let note = try? ReaderPersistence.shared.saveNote(
+        guard let note = try? BridgeService.shared.saveNote(
             pdfPath: request.pdfPath,
             pdfName: request.pdfName,
             pageIndex: UInt32(request.page),
@@ -431,7 +431,7 @@ struct ContentView: View {
         request: TranslationBubbleRequest
     ) {
         if savedToNote {
-            try? ReaderPersistence.shared.deleteNoteRemovingUnderline(
+            try? BridgeService.shared.deleteNoteRemovingUnderline(
                 id: id,
                 page: request.page,
                 filePath: request.pdfPath
@@ -439,7 +439,7 @@ struct ContentView: View {
             appState.refreshNotes()
             appState.showToast("已从笔记删除")
         } else {
-            try? ReaderPersistence.shared.deleteVocabularyRemovingHighlight(
+            try? BridgeService.shared.deleteVocabularyRemovingHighlight(
                 id: id,
                 page: request.page,
                 filePath: request.pdfPath

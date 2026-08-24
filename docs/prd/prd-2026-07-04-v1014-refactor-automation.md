@@ -2,11 +2,8 @@
 version: v1.0.14
 date: 2026-07-04
 tdd: tdd/tdd-2026-07-04-v1014-refactor-automation.md
-predecessor:
-  - prd/prd-2026-07-03-reading-inspector.md
-successor:
-  - prd/prd-2026-07-10-note-overlay-optimization.md
-  - prd/prd-2026-08-24-codebase-simplification.md
+prev: prd/prd-2026-07-03-reading-inspector.md
+next: prd/prd-2026-07-10-note-overlay-optimization.md
 ---
 
 # LumenPDF — v1.0.14 重构与验证收口 PRD

@@ -2,11 +2,7 @@
 version: v1.0.26
 date: 2026-08-20
 tdd: tdd/tdd-2026-08-20-note-autosave-overlay-stability.md
-predecessor:
-  - prd/prd-2026-07-03-reading-inspector.md
-  - prd/prd-2026-07-10-note-overlay-optimization.md
-  - prd/prd-2026-08-09-selection-overlay-placement.md
-  - prd/prd-2026-08-20-library-cover-translation-retry.md
+prev: prd/prd-2026-08-20-library-cover-translation-retry.md
 ---
 
 # LumenPDF — 笔记自动保存与翻译浮窗位置稳定 PRD

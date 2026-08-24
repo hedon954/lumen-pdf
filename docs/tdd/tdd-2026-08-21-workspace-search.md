@@ -2,10 +2,6 @@
 version: unreleased
 date: 2026-08-21
 prd: prd/prd-2026-08-21-workspace-search.md
-predecessor:
-  - tdd/tdd-2026-03-22.md
-  - tdd/tdd-2026-07-03-reading-inspector.md
-  - tdd/tdd-2026-08-20-note-autosave-overlay-stability.md
 ---
 
 # LumenPDF — 工作区搜索 TDD

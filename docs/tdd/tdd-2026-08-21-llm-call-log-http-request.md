@@ -2,11 +2,6 @@
 version: unreleased
 date: 2026-08-21
 prd: prd/prd-2026-08-21-llm-call-log-http-request.md
-predecessor:
-  - tdd/tdd-2026-08-14-ai-settings-notes.md
-  - tdd/tdd-2026-08-15-settings-usage-overlay.md
-  - tdd/tdd-2026-08-19-markup-diagnostics.md
-  - tdd/tdd-2026-08-21-llm-extra-config.md
 ---
 
 # LumenPDF — 调用日志完整 HTTP 请求 TDD

@@ -143,7 +143,7 @@ Code should stay simple, understandable, maintainable, iterable, and free of avo
 - **Open/closed**: Add new reading panels or workflows through small, explicit components and model state instead of adding more branches to oversized views such as `PDFReaderView` or `TranslationBubble`.
 - **Liskov substitution**: Introduce protocols only when there is a real alternate implementation or test boundary. Do not create empty abstractions just to look architectural.
 - **Interface segregation**: Pass only the data and callbacks a component needs. Avoid handing broad objects like the whole `AppState` or large request structs to narrow UI components.
-- **Dependency inversion**: SwiftUI Views must not call `BridgeService.shared` directly. Inject narrow closures, models, or services for side effects.
+- **Dependency inversion**: SwiftUI Views must not call UniFFI top-level functions. Cross-language I/O goes through `BridgeService`.
 - **KISS**: Prefer native SwiftUI/AppKit controls and layout behavior over custom hit-testing, cursor, or resize machinery unless the native option cannot satisfy the interaction.
 - **No redundancy**: Keep one source of truth for shared logic such as note grouping, Markdown rendering, AI reply saving, selection bounds parsing, and viewport restoration.
 - **Small boundaries**: Treat 300-500 lines as a soft limit for new Swift files. If a file grows beyond that, check whether responsibilities are mixed before adding more code.
@@ -154,17 +154,17 @@ Code should stay simple, understandable, maintainable, iterable, and free of avo
 
 | Layer | Directory | Constraint |
 |-------|-----------|------------|
-| interfaces | `src/interfaces/` | Only `#[uniffi::export]` functions + dependency injection |
-| application | `src/application/` | Use case orchestration; no direct SQL/HTTP |
+| interfaces | `src/interfaces/` | Only `#[uniffi::export]` functions + assembling SQLite / LLM |
 | domain | `src/domain/` | Zero external I/O dependencies (no reqwest/rusqlite) |
 | infrastructure | `src/infrastructure/` | Implements domain traits; no business logic |
+
+There is no `application/` use-case layer. Notes, vocabulary, and library APIs call repositories from `interfaces/api.rs`. Word translation uses `TranslationDomainService`; sentence and explain keep the existing direct `LlmTranslator` calls.
 
 **Critical**: `domain/` must not import `reqwest`, `rusqlite`, or `r2d2`. Domain services only depend on trait definitions from the same layer.
 
 ### Swift Layer Constraints
 
-- **Views**: Only hold `@StateObject`/`@ObservedObject`; never call `BridgeService` directly
-- **Coordinators/Services**: Call `BridgeService`; Views observe via ViewModels
+- **Views**: Hold `@StateObject`/`@ObservedObject`; cross-language calls go through `BridgeService`, never UniFFI top-level functions
 - All UI updates must run on `@MainActor`
 - No direct `URLSession`, `sqlite3` in Views or Coordinators
 
@@ -284,38 +284,37 @@ ALTER TABLE notes_new RENAME TO notes;
 
 ## PRD 与 TDD
 
-产品行为与实现边界写在 `docs/prd/` 和 `docs/tdd/`。配对表与主题演进只写在 [`docs/README.md`](docs/README.md)，不要在每份 PRD/TDD 正文里再链回索引。
+产品行为写在 `docs/prd/`，实现边界写在 `docs/tdd/`。`docs/plan/` 是 agent 调研/执行报告，不进入规格链。配对表与**当前主题头**只写在 [`docs/README.md`](docs/README.md)，不要在每份 PRD/TDD 正文里再链回索引。
 
 ### 何时必须更新
 
-用户可感知的行为变化、交互规则变化、或模块边界/持久化/桥接变化，必须在**同一份 PR** 里更新或新增成对的 PRD 与 TDD。不能只改代码、不改文档。
+用户可感知的行为变化、交互规则变化、或模块边界/持久化/桥接变化，必须在**同一份 PR** 里**新增**成对的 PRD 与 TDD，并把旧主题头的 `next` 指过去。不能只改代码、不改文档。
 
 包括但不限于：阅读浮层定位、笔记/单词编辑与保存、Inspector、LLM 设置、翻译失败与重试、窗口/视口恢复、跨页标注。
 
-纯内部重构且用户行为不变时，可只更新 TDD；若发现现有 PRD 描述已过时，仍要改 PRD，并在旧条款旁标注「后续修订」，同时更新双方 frontmatter 的 `successor` / `predecessor`。
+纯内部重构且用户行为不变时，可只新增 TDD 并接到该主题 TDD 链上。
 
-### 成对与 frontmatter
+### 成对与链表
 
 - 新主题使用相同日期与主题后缀：`docs/prd/prd-YYYY-MM-DD-<topic>.md` 与 `docs/tdd/tdd-YYYY-MM-DD-<topic>.md`。
-- 版本、日期、对应文档、前序、后续一律放在 YAML frontmatter，不要写进正文：
+- 每个主题一条 PRD 链、一条 TDD 链。`prev` / `next`（前置/后置）为**单值**，路径相对 `docs/`。
+- 最新节点没有 `next`。祖先文件**只允许**把 `next` 设为后继；不要改写旧正文，也不要往旧条款里加「后续修订」文章。
+- 沿 `next` 走到无 `next` 的节点 = 当前方案；沿 `prev` 回看演进。主题不同就不要硬接。
+- 版本、日期、配对、前置、后置一律放在 YAML frontmatter，不要写进正文：
 
 ```yaml
 ---
 version: v1.0.21          # 未发版写 unreleased
 date: 2026-08-09
 tdd: tdd/tdd-YYYY-MM-DD-<topic>.md   # PRD 用 tdd:；TDD 用 prd:
-predecessor:
-  - prd/prd-YYYY-MM-DD-<prev>.md
-successor:
-  - prd/prd-YYYY-MM-DD-<next>.md
-related:                  # 可选：并行主题或补丁文档
-  - tdd/tdd-YYYY-MM-DD-<related>.md
+prev: prd/prd-YYYY-MM-DD-<prev>.md   # 链根省略
+next: prd/prd-YYYY-MM-DD-<next>.md   # 主题头省略
+related:                             # 可选：并行主题
+  - prd/prd-YYYY-MM-DD-<related>.md
 ---
 ```
 
-- 路径相对 `docs/`。无前序或后续时省略对应字段。
-- 后一份文档改写了前一份的需求时，不要只在新文档里写新规则。必须在旧文档对应条款旁标注「后续修订」并链到新文档，避免两份 PRD 互相矛盾。
-- 更新 [`docs/README.md`](docs/README.md) 配对表和相关主题演进，不要留下未登记的新文件。
+- 更新 [`docs/README.md`](docs/README.md) 的当前主题头和配对表，不要留下未登记的新文件。
 
 ### 文档写什么
 
@@ -327,7 +326,8 @@ related:                  # 可选：并行主题或补丁文档
 
 - 不把 CHANGELOG 当作 PRD/TDD 的替代。
 - 不新增只在一边存在的 PRD 或 TDD。
-- 不删除旧文档来「整理」；用 frontmatter 的 `predecessor` / `successor` 表达演进。
+- 不删除旧文档来「整理」；用 `prev` / `next` 表达演进。
+- 不把 `docs/plan/` 写进规格链。
 - 不在 PRD/TDD 正文重复版本、日期、对应文档或指向 `docs/README.md` 的索引。
 
 ## Key Files

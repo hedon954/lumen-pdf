@@ -2,11 +2,8 @@
 version: v1.0.13
 date: 2026-07-03
 tdd: tdd/tdd-2026-07-03-reading-inspector.md
-predecessor:
-  - prd/prd-2026-07-02-reading-context-sidebar.md
-successor:
-  - prd/prd-2026-07-04-v1014-refactor-automation.md
-  - prd/prd-2026-08-20-note-autosave-overlay-stability.md
+prev: prd/prd-2026-07-02-reading-context-sidebar.md
+next: prd/prd-2026-07-04-v1014-refactor-automation.md
 ---
 
 # LumenPDF — 阅读 Inspector PRD

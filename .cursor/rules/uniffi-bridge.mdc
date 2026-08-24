@@ -1,45 +1,16 @@
 ---
-description: UniFFI 桥接规范：新增跨语言 API 的完整流程和注意事项
-globs: "**/{*.udl,api.rs}"
+description: UniFFI 桥接：proc-macro 导出，无 UDL
+globs: "**/api.rs"
 alwaysApply: false
 ---
 
-# UniFFI 桥接规范
+# UniFFI
 
-## 新增 API 的完整步骤
+Proc-macro only（`uniffi::setup_scaffolding!()`）。没有 `.udl`。
 
-1. **UDL 定义**（`src/interfaces/lumen_pdf_lib.udl`）：声明函数签名和数据类型
-2. **Rust 实现**（`src/interfaces/api.rs`）：加 `#[uniffi::export]` 并组装依赖
-3. **重新构建**：运行 `./scripts/build-rust.sh` 生成新的 Swift 绑定
-4. **Swift 封装**（`LumenPDF/Services/BridgeService.swift`）：包装新 API
+1. `interfaces/api.rs` 加 `#[uniffi::export]`（async 用 `async_runtime = "tokio"`）
+2. 数据类型 `#[uniffi::Record]`，错误 `#[uniffi::Error]`
+3. `make build-rust` 生成 `LumenPDF/Generated/`（不要手改）
+4. `BridgeService.swift` 包一层
 
-## UDL 类型对照
-
-| UDL                      | Rust                           | Swift              |
-| ------------------------ | ------------------------------ | ------------------ |
-| `string`                 | `String`                       | `String`           |
-| `string?`                | `Option<String>`               | `String?`          |
-| `u32`                    | `u32`                          | `UInt32`           |
-| `f64`                    | `f64`                          | `Double`           |
-| `boolean`                | `bool`                         | `Bool`             |
-| `sequence<T>`            | `Vec<T>`                       | `[T]`              |
-| `dictionary Foo { ... }` | `#[uniffi::Record] struct Foo` | `struct Foo`       |
-| `[Async]`                | `async fn`                     | `async` Swift 函数 |
-| `[Throws=LumenError]`    | `Result<T, LumenError>`        | `throws`           |
-
-## 注意事项
-
-- `dictionary` 中所有字段必须是 UniFFI 支持的类型（不支持裸 `HashMap`）
-- async 函数必须在 UDL 标注 `[Async]`，且 Rust 侧加 `#[uniffi::export(async_runtime = "tokio")]`
-- 错误枚举必须标注 `#[uniffi::Error]` 并在 UDL 声明 `[Error] enum`
-- 重新生成绑定后，`Generated/` 目录下文件**不要手动修改**
-
-## 全局状态（interfaces/api.rs）
-
-```rust
-static RUNTIME: OnceLock<Runtime> = OnceLock::new();
-static POOL:    OnceLock<DbPool>  = OnceLock::new();
-static CONFIG:  OnceLock<RwLock<Config>> = OnceLock::new();
-```
-
-新增 API 从这三个全局量获取运行时和配置，不要另起 Runtime。
+全局：`POOL`、`LLM_CONFIG`。不要另起 Tokio runtime。

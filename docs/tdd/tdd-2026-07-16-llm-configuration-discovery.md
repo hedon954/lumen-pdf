@@ -2,12 +2,7 @@
 version: v1.0.19
 date: 2026-07-16
 prd: prd/prd-2026-07-16-llm-configuration-discovery.md
-successor:
-  - tdd/tdd-2026-08-14-ai-settings-notes.md
-  - tdd/tdd-2026-08-20-llm-settings-persistence.md
-  - tdd/tdd-2026-08-21-llm-disable-thinking.md
-  - tdd/tdd-2026-08-21-llm-extra-config.md
-  - tdd/tdd-2026-08-24-llm-provider-other.md
+next: tdd/tdd-2026-08-20-llm-settings-persistence.md
 related:
   - tdd/tdd-2026-07-16-reading-ai-input-selection.md
 ---

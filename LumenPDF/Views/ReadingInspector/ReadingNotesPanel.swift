@@ -74,7 +74,7 @@ struct ReadingNotesPanel: View {
         var deletedCount = 0
         for noteId in group.sourceIds {
             do {
-                try ReaderPersistence.shared.deleteNoteRemovingUnderline(
+                try BridgeService.shared.deleteNoteRemovingUnderline(
                     id: noteId,
                     page: Int(group.pageIndex),
                     filePath: group.pdfPath

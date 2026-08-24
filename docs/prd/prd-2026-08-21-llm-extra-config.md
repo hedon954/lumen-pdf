@@ -2,13 +2,8 @@
 version: unreleased
 date: 2026-08-21
 tdd: tdd/tdd-2026-08-21-llm-extra-config.md
-predecessor:
-  - prd/prd-2026-07-16-llm-configuration-discovery.md
-  - prd/prd-2026-08-20-llm-settings-persistence.md
-  - prd/prd-2026-08-21-llm-disable-thinking.md
-successor:
-  - prd/prd-2026-08-24-codebase-simplification.md
-  - prd/prd-2026-08-24-llm-provider-other.md
+prev: prd/prd-2026-08-21-llm-disable-thinking.md
+next: prd/prd-2026-08-24-llm-provider-other.md
 related:
   - prd/prd-2026-08-21-llm-call-log-http-request.md
 ---

@@ -2,13 +2,8 @@
 version: unreleased
 date: 2026-08-20
 prd: prd/prd-2026-08-20-llm-settings-persistence.md
-predecessor:
-  - tdd/tdd-2026-07-16-llm-configuration-discovery.md
-  - tdd/tdd-2026-08-14-ai-settings-notes.md
-successor:
-  - tdd/tdd-2026-08-21-selection-settings-feedback.md
-  - tdd/tdd-2026-08-21-llm-disable-thinking.md
-  - tdd/tdd-2026-08-21-llm-extra-config.md
+prev: tdd/tdd-2026-07-16-llm-configuration-discovery.md
+next: tdd/tdd-2026-08-21-llm-disable-thinking.md
 ---
 
 # LumenPDF — LLM 设置跨重启持久化 TDD

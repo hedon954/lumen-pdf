@@ -2,9 +2,7 @@
 version: unreleased
 date: 2026-08-24
 tdd: tdd/tdd-2026-08-24-llm-provider-other.md
-predecessor:
-  - prd/prd-2026-07-16-llm-configuration-discovery.md
-  - prd/prd-2026-08-21-llm-extra-config.md
+prev: prd/prd-2026-08-21-llm-extra-config.md
 related:
   - prd/prd-2026-08-24-codebase-simplification.md
 ---

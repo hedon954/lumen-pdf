@@ -2,12 +2,8 @@
 version: v1.0.23
 date: 2026-08-15
 prd: prd/prd-2026-08-15-settings-usage-overlay.md
-predecessor:
-  - tdd/tdd-2026-08-14-ai-settings-notes.md
-  - tdd/tdd-2026-08-09-selection-overlay-placement.md
-successor:
-  - tdd/tdd-2026-08-19-markup-diagnostics.md
-  - tdd/tdd-2026-08-21-llm-call-log-http-request.md
+prev: tdd/tdd-2026-08-14-ai-settings-notes.md
+next: tdd/tdd-2026-08-19-markup-diagnostics.md
 ---
 
 # LumenPDF — 用量统计、设置打磨与根层浮窗 TDD

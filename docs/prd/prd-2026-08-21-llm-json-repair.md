@@ -2,10 +2,6 @@
 version: unreleased
 date: 2026-08-21
 tdd: tdd/tdd-2026-08-21-llm-json-repair.md
-predecessor:
-  - prd/prd-2026-03-22.md
-  - prd/prd-2026-05-06-v104.md
-  - prd/prd-2026-08-21-llm-disable-thinking.md
 related:
   - prd/prd-2026-08-21-workspace-search.md
 ---

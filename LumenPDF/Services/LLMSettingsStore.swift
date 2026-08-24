@@ -104,7 +104,7 @@ struct LLMSettingsStore {
     func effectiveExtraConfig(for baseURL: String, model: String) -> String {
         let stored = loadExtraConfig(for: baseURL)
         if stored.isEmpty {
-            return LLMThinkingExtraConfig.defaultJSON(baseURL: baseURL, model: model)
+            return LLMExtraConfig.defaultJSON(baseURL: baseURL, model: model)
         }
         return LLMExtraConfig.prettyPrinted(stored)
     }
@@ -116,6 +116,12 @@ struct LLMSettingsStore {
 
 enum LLMExtraConfig {
     static let reservedKeys: Set<String> = ["messages", "stream", "stream_options"]
+
+    /// Settings display copy of the Rust provider default. Pretty-printed only
+    /// for the editor; the compact JSON from UniFFI is what HTTP merge uses.
+    static func defaultJSON(baseURL: String, model: String) -> String {
+        prettyPrinted(BridgeService.defaultExtraConfig(baseURL: baseURL, model: model))
+    }
 
     static func validatedJSON(_ raw: String) throws -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -144,7 +150,7 @@ enum LLMExtraConfig {
     /// Empty Extra Config becomes the provider default used at request time.
     static func resolvedOrDefault(_ validated: String, baseURL: String, model: String) -> String {
         validated.isEmpty
-            ? LLMThinkingExtraConfig.defaultJSON(baseURL: baseURL, model: model)
+            ? LLMExtraConfig.defaultJSON(baseURL: baseURL, model: model)
             : validated
     }
 

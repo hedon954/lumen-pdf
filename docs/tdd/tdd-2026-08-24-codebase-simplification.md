@@ -2,11 +2,6 @@
 version: unreleased
 date: 2026-08-24
 prd: prd/prd-2026-08-24-codebase-simplification.md
-predecessor:
-  - tdd/tdd-2026-03-30-optimization.md
-  - tdd/tdd-2026-05-06-v104.md
-  - tdd/tdd-2026-07-04-v1014-refactor-automation.md
-  - tdd/tdd-2026-08-21-llm-extra-config.md
 related:
   - tdd/tdd-2026-08-24-llm-provider-other.md
 ---

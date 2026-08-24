@@ -139,7 +139,7 @@ struct ReadingWordsPanel: View {
 
     private func delete(_ item: WordItem) {
         do {
-            try ReaderPersistence.shared.deleteVocabularyRemovingHighlight(
+            try BridgeService.shared.deleteVocabularyRemovingHighlight(
                 id: item.id,
                 page: Int(item.pageIndex),
                 filePath: item.pdfPath

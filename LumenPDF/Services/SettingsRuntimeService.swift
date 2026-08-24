@@ -14,10 +14,6 @@ final class SettingsRuntimeService {
         self.settingsStore = settingsStore
     }
 
-    func normalizedLLMBaseURL(_ rawValue: String) -> String {
-        BridgeService.normalizedLLMBaseURL(rawValue)
-    }
-
     func persistAndUpdateConfig(
         baseURL: String,
         apiKey: String,

@@ -2,11 +2,8 @@
 version: v1.0.15
 date: 2026-07-10
 prd: prd/prd-2026-07-10-note-overlay-optimization.md
-predecessor:
-  - tdd/tdd-2026-07-04-v1014-refactor-automation.md
-successor:
-  - tdd/tdd-2026-07-13-v1016-reader-selection-overlays.md
-  - tdd/tdd-2026-08-20-note-autosave-overlay-stability.md
+prev: tdd/tdd-2026-07-04-v1014-refactor-automation.md
+next: tdd/tdd-2026-07-13-v1016-reader-selection-overlays.md
 ---
 
 # LumenPDF — 阅读浮层与划线回顾优化 TDD

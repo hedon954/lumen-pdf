@@ -1,14 +1,36 @@
 # LumenPDF 产品与技术文档
 
-PRD 记录**用户可感知的行为与验收标准**。TDD 记录**如何实现这些行为**、模块边界和自动化验证。两者成对维护；配对与演进只在本文索引，各文件用 YAML frontmatter 记录版本、日期、对应文档、前序和后续。
+PRD 记录**用户可感知的行为与验收标准**。TDD 记录**如何实现这些行为**、模块边界和自动化验证。`docs/plan/` 是 AI 调研/执行报告，不进入规格链。
 
 维护规则见 [`CLAUDE.md`](../CLAUDE.md) 中的「PRD 与 TDD」。
 
 ## 怎么读
 
-1. 先看对应主题最新一份 PRD，再看 frontmatter 里的 `tdd`。
-2. 若行为被后续版本改写，以 frontmatter 的 **`successor`** 为准；前序文档保留当时的产品结论，条款级变化在正文用「后续修订」标注。
+每份 PRD、每份 TDD 各自按主题组成一条双向链表：frontmatter 的 **`next`（后置）** / **`prev`（前置）**。路径相对 `docs/`。
+
+1. 看某个主题的**当前方案**：从任意节点沿 `next` 走到没有 `next` 的节点（主题头）。再看该文件的 `tdd` / `prd` 配对。
+2. 看演进：从主题头沿 `prev` 往回走。旧节点保留当时结论；不要改写祖先正文。
 3. 发布说明在 [`CHANGELOG.md`](../CHANGELOG.md)，不替代 PRD/TDD。
+
+未来变更 = **新增**成对的日期文件，并把旧主题头的 `next` 指过去。不要重写整条链，也不要把互不相关的主题硬接到同一条链上。
+
+## 当前主题头
+
+沿 `next` 走到这里即为该主题现行方案：
+
+| 主题 | PRD 头 | TDD 头 |
+| --- | --- | --- |
+| 阅读工作区（版本主链） | [prd-2026-08-20-note-autosave-overlay-stability.md](prd/prd-2026-08-20-note-autosave-overlay-stability.md) | [tdd-2026-08-20-note-autosave-overlay-stability.md](tdd/tdd-2026-08-20-note-autosave-overlay-stability.md) |
+| LLM 设置 | [prd-2026-08-24-llm-provider-other.md](prd/prd-2026-08-24-llm-provider-other.md) | [tdd-2026-08-24-llm-provider-other.md](tdd/tdd-2026-08-24-llm-provider-other.md) |
+| 阅读 AI 输入与选区 | [prd-2026-07-16-reading-ai-input-selection.md](prd/prd-2026-07-16-reading-ai-input-selection.md) | [tdd-2026-07-16-reading-ai-input-selection.md](tdd/tdd-2026-07-16-reading-ai-input-selection.md) |
+| 工作区搜索 | [prd-2026-08-21-workspace-search.md](prd/prd-2026-08-21-workspace-search.md) | [tdd-2026-08-21-workspace-search.md](tdd/tdd-2026-08-21-workspace-search.md) |
+| 划线按行区间合并 | [prd-2026-08-21-markup-interval-merge.md](prd/prd-2026-08-21-markup-interval-merge.md) | [tdd-2026-08-21-markup-interval-merge.md](tdd/tdd-2026-08-21-markup-interval-merge.md) |
+| 选区标题与设置保存反馈 | [prd-2026-08-21-selection-settings-feedback.md](prd/prd-2026-08-21-selection-settings-feedback.md) | [tdd-2026-08-21-selection-settings-feedback.md](tdd/tdd-2026-08-21-selection-settings-feedback.md) |
+| LLM JSON 修复 | [prd-2026-08-21-llm-json-repair.md](prd/prd-2026-08-21-llm-json-repair.md) | [tdd-2026-08-21-llm-json-repair.md](tdd/tdd-2026-08-21-llm-json-repair.md) |
+| 调用日志 HTTP 请求 | [prd-2026-08-21-llm-call-log-http-request.md](prd/prd-2026-08-21-llm-call-log-http-request.md) | [tdd-2026-08-21-llm-call-log-http-request.md](tdd/tdd-2026-08-21-llm-call-log-http-request.md) |
+| Extra Config 单源与未用 UniFFI 收缩 | [prd-2026-08-24-codebase-simplification.md](prd/prd-2026-08-24-codebase-simplification.md) | [tdd-2026-08-24-codebase-simplification.md](tdd/tdd-2026-08-24-codebase-simplification.md) |
+
+TDD 阅读工作区主链在基线之后多了 03-24～03-27 补丁，再接到 `tdd-2026-03-30-optimization.md`；PRD 主链从 `prd-2026-03-22.md` 直接接到 `prd-2026-03-31.md`。
 
 ## 配对总表
 
@@ -53,6 +75,8 @@ PRD 记录**用户可感知的行为与验收标准**。TDD 记录**如何实现
 - v1.0.18 右侧栏开关/拖拽过渡：延续 [v1.0.16](prd/prd-2026-07-13-v1016-reader-selection-overlays.md) 的视口与分栏恢复。
 
 ## 主题演进
+
+下列叙述只作导读。现行条款以各主题头为准；沿 `prev` 查看被替换的方案。
 
 ### 阅读浮层与定位
 

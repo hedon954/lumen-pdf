@@ -2,9 +2,6 @@
 version: unreleased
 date: 2026-08-21
 tdd: tdd/tdd-2026-08-21-selection-settings-feedback.md
-predecessor:
-  - prd/prd-2026-08-19-markup-diagnostics.md
-  - prd/prd-2026-08-20-llm-settings-persistence.md
 ---
 
 # LumenPDF — 选区标题误入与设置保存反馈 PRD

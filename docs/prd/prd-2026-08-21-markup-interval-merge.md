@@ -2,10 +2,6 @@
 version: unreleased
 date: 2026-08-21
 tdd: tdd/tdd-2026-08-21-markup-interval-merge.md
-predecessor:
-  - prd/prd-2026-03-22.md
-  - prd/prd-2026-07-02-reading-context-sidebar.md
-  - prd/prd-2026-08-19-markup-diagnostics.md
 related:
   - prd/prd-2026-08-21-workspace-search.md
 ---

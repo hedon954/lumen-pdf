@@ -2,15 +2,10 @@
 version: unreleased
 date: 2026-08-21
 tdd: tdd/tdd-2026-08-21-llm-disable-thinking.md
-predecessor:
-  - prd/prd-2026-03-22.md
-  - prd/prd-2026-07-16-llm-configuration-discovery.md
-  - prd/prd-2026-08-20-llm-settings-persistence.md
+prev: prd/prd-2026-08-20-llm-settings-persistence.md
+next: prd/prd-2026-08-21-llm-extra-config.md
 related:
   - prd/prd-2026-08-21-workspace-search.md
-successor:
-  - prd/prd-2026-08-21-llm-json-repair.md
-  - prd/prd-2026-08-21-llm-extra-config.md
 ---
 
 # LumenPDF — LLM 关闭 thinking PRD
