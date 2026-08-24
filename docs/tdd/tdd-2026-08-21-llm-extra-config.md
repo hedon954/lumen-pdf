@@ -6,6 +6,8 @@ predecessor:
   - tdd/tdd-2026-07-16-llm-configuration-discovery.md
   - tdd/tdd-2026-08-20-llm-settings-persistence.md
   - tdd/tdd-2026-08-21-llm-disable-thinking.md
+successor:
+  - tdd/tdd-2026-08-24-llm-provider-other.md
 related:
   - tdd/tdd-2026-08-21-llm-call-log-http-request.md
 ---
@@ -41,7 +43,7 @@ related:
 | 其它 URL + GLM / DeepSeek 模型名 | `{"thinking": {"type": "disabled"}}` |
 | 其它 | 空 |
 
-空字符串 = 未修改 = 用上表。`{}` = 用户关掉默认字段。400 重试只剥 `stream_options`，然后仍合并 Extra Config（含默认或用户值）。
+空字符串 = 未修改 = 用上表。`{}` = 用户关掉默认字段。400 重试只剥 `stream_options`，然后仍合并 Extra Config（含默认或用户值）。后续修订：服务商菜单的「其他」不另写一套 Extra Config；未匹配内置地址时仍走本表，见 [tdd-2026-08-24-llm-provider-other.md](tdd-2026-08-24-llm-provider-other.md)。
 
 ## 4. 验证
 

@@ -6,6 +6,8 @@ predecessor:
   - prd/prd-2026-07-16-llm-configuration-discovery.md
   - prd/prd-2026-08-20-llm-settings-persistence.md
   - prd/prd-2026-08-21-llm-disable-thinking.md
+successor:
+  - prd/prd-2026-08-24-llm-provider-other.md
 related:
   - prd/prd-2026-08-21-llm-call-log-http-request.md
 ---
@@ -47,7 +49,7 @@ related:
 
 - 每个内置服务商都有官方获取 API Key 的 https 链接。
 - 当前 Base URL 匹配内置服务商时，LLM 配置表单外右下角显示「获取 {服务商} API Key」，点击在浏览器打开该链接。不插入表单行之间。
-- 自定义 Base URL 不显示该链接。
+- 自定义 Base URL 不显示该链接。后续修订：当前地址未匹配内置服务商（菜单为「其他」）时同样不显示，见 [prd-2026-08-24-llm-provider-other.md](prd-2026-08-24-llm-provider-other.md)。
 
 ## 4. 非目标
 
