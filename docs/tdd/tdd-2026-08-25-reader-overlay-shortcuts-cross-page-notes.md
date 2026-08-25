@@ -1,5 +1,5 @@
 ---
-version: unreleased
+version: v1.0.29
 date: 2026-08-25
 prd: prd/prd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md
 predecessor:

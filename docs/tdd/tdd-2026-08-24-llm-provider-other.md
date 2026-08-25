@@ -1,5 +1,5 @@
 ---
-version: unreleased
+version: v1.0.29
 date: 2026-08-24
 prd: prd/prd-2026-08-24-llm-provider-other.md
 predecessor:

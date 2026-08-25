@@ -44,9 +44,9 @@ PRD 记录**用户可感知的行为与验收标准**。TDD 记录**如何实现
 | unreleased | 2026-08-21 | LLM JSON 修复 | [prd-2026-08-21-llm-json-repair.md](prd/prd-2026-08-21-llm-json-repair.md) | [tdd-2026-08-21-llm-json-repair.md](tdd/tdd-2026-08-21-llm-json-repair.md) |
 | unreleased | 2026-08-21 | LLM Extra Config 与 API Key 入口 | [prd-2026-08-21-llm-extra-config.md](prd/prd-2026-08-21-llm-extra-config.md) | [tdd-2026-08-21-llm-extra-config.md](tdd/tdd-2026-08-21-llm-extra-config.md) |
 | unreleased | 2026-08-21 | 调用日志完整 HTTP 请求 | [prd-2026-08-21-llm-call-log-http-request.md](prd/prd-2026-08-21-llm-call-log-http-request.md) | [tdd-2026-08-21-llm-call-log-http-request.md](tdd/tdd-2026-08-21-llm-call-log-http-request.md) |
-| unreleased | 2026-08-24 | Extra Config 单源与未用 UniFFI 收缩 | [prd-2026-08-24-codebase-simplification.md](prd/prd-2026-08-24-codebase-simplification.md) | [tdd-2026-08-24-codebase-simplification.md](tdd/tdd-2026-08-24-codebase-simplification.md) |
-| unreleased | 2026-08-24 | LLM 服务商「其他」 | [prd-2026-08-24-llm-provider-other.md](prd/prd-2026-08-24-llm-provider-other.md) | [tdd-2026-08-24-llm-provider-other.md](tdd/tdd-2026-08-24-llm-provider-other.md) |
-| unreleased | 2026-08-25 | 搜索模糊、翻译 AI 快捷入口与跨页笔记划线 | [prd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md](prd/prd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md) | [tdd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md](tdd/tdd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md) |
+| v1.0.29 | 2026-08-24 | Extra Config 单源与未用 UniFFI 收缩 | [prd-2026-08-24-codebase-simplification.md](prd/prd-2026-08-24-codebase-simplification.md) | [tdd-2026-08-24-codebase-simplification.md](tdd/tdd-2026-08-24-codebase-simplification.md) |
+| v1.0.29 | 2026-08-24 | LLM 服务商「其他」 | [prd-2026-08-24-llm-provider-other.md](prd/prd-2026-08-24-llm-provider-other.md) | [tdd-2026-08-24-llm-provider-other.md](tdd/tdd-2026-08-24-llm-provider-other.md) |
+| v1.0.29 | 2026-08-25 | 搜索模糊、翻译 AI 快捷入口与跨页笔记划线 | [prd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md](prd/prd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md) | [tdd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md](tdd/tdd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md) |
 
 未单独成对的发布：
 

@@ -3,6 +3,24 @@
 LumenPDF 的版本记录由人工/AI 维护。每个版本只记录对用户或后续开发有意义的变化，并为具体变更附上对应的 GitHub commit URL。
 
 ---
+## [1.0.29](https://github.com/hedon954/lumen-pdf/compare/v1.0.28..v1.0.29) - 2026-08-25
+
+这一版补齐阅读动作闭环：搜索时更容易聚焦当前入口，翻译后可直接进入 AI 解释，跨页笔记划线会完整保存和恢复；LLM 设置也支持自定义兼容端点，并收缩了 Rust、Swift 与 UniFFI 之间的重复路径。
+
+### 主要变化
+
+- 工作区搜索改用可控的小半径失焦和清晰的实体控件，避免背景毫无区分或被系统材质过度模糊；翻译成功后可从保存按钮左侧直接进入同一选区的「AI 解释」（[f097c1f](https://github.com/hedon954/lumen-pdf/commit/f097c1f4a7825c68cad27e1c067dbf8a2504b672)）。
+- LLM 服务商菜单增加「其他」：自定义 OpenAI 兼容端点不会被内置预设覆盖，并可在切换回来时恢复先前填写的 Base URL、模型和 Extra Config（[9afbb62](https://github.com/hedon954/lumen-pdf/commit/9afbb625042f31b95a8242599b4b56e1c6054b11)）。
+
+### 修复
+
+- 笔记划线与自由划线改为共享同一份逐页选区几何；跨页笔记会在每个正文页落笔，重启后完整恢复，删除、合并、撤销和重做也覆盖全部关联页面，同时兼容历史单页笔记（[f097c1f](https://github.com/hedon954/lumen-pdf/commit/f097c1f4a7825c68cad27e1c067dbf8a2504b672)）。
+
+### 工程与文档
+
+- 删除未使用的非流式翻译、笔记导出和查询桥接，合并重复的标注、设置与日志辅助路径；Extra Config 的默认值改由 Rust 请求侧单源提供，减少 Swift 与 UniFFI 的平行规则（[fdaf6a4](https://github.com/hedon954/lumen-pdf/commit/fdaf6a4575501908e3467c9d4f0423fc2797c299)、[9e48bdb](https://github.com/hedon954/lumen-pdf/commit/9e48bdb10f848ee43491021374e5927cdec24884)）。
+
+---
 ## [1.0.28](https://github.com/hedon954/lumen-pdf/compare/v1.0.27..v1.0.28) - 2026-08-21
 
 这一版让阅读窗口可以用 ⌘F 搜索笔记和划线，LLM 设置里能看见并修改 Extra Config（含关闭 thinking 的默认字段），调用日志可以展开实际发出的完整 HTTP 请求，并修了邻近划线误删、小节标题误入选区等问题。

@@ -1,5 +1,5 @@
 ---
-version: unreleased
+version: v1.0.29
 date: 2026-08-24
 tdd: tdd/tdd-2026-08-24-llm-provider-other.md
 predecessor:
