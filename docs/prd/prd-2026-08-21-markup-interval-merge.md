@@ -8,6 +8,8 @@ predecessor:
   - prd/prd-2026-08-19-markup-diagnostics.md
 related:
   - prd/prd-2026-08-21-workspace-search.md
+successor:
+  - prd/prd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md
 ---
 
 # LumenPDF — 划线区间合并 PRD
@@ -36,7 +38,7 @@ related:
 ### F3 — 高亮与划线同一套规则
 
 - 自由高亮（`__fh`）和自由划线（`__fu`）使用同一套行区间规则，互不影响。
-- 不改变笔记条目的合并产品语义，只统一底层矩形合并。
+- 不改变笔记条目的合并产品语义，只统一底层矩形合并。后续修订：笔记划线也必须消费并持久化同一组逐页正文标记，见 [prd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md](prd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md)。
 
 ## 4. 非目标
 

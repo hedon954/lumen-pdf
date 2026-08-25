@@ -8,6 +8,8 @@ predecessor:
   - tdd/tdd-2026-08-19-markup-diagnostics.md
 related:
   - tdd/tdd-2026-08-21-workspace-search.md
+successor:
+  - tdd/tdd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md
 ---
 
 # LumenPDF — 划线区间合并 TDD
@@ -23,6 +25,8 @@ related:
 | `TextLineMarkupMerge` | 按 `isSameTextLine` 分组，对 `[minX, maxX]` 做 overlap / union / difference。 |
 | `PDFKitView.applyResolvedFreeMarkup` | 读取现有 `__fu` / `__fh` 的逐行矩形，套用 `plan`，再增删 PDFKit 标注。 |
 | `UnderlineNoteMergePolicy` | `overlap` / `areCoveredBy` / `mergeAnnotationRects` 都委托同一套区间运算。 |
+
+后续修订：该委托扩展到按页的 `PDFPageMarkup`，并为笔记持久化完整跨页几何，见 [tdd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md](tdd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md)。
 
 没有采用字符 offset 方案：PDFKit 的 `page.string` 与选区 range 在多栏/断词上不稳定，而行矩形已经是现有持久化格式。
 

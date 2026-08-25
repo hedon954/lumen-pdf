@@ -26,7 +26,8 @@ fn row_to_note(row: &rusqlite::Row<'_>) -> rusqlite::Result<NoteEntry> {
         content: row.get(4)?,
         note: row.get(5)?,
         bounds_str: row.get(6)?,
-        created_at: row.get(7)?,
+        page_markups: row.get(7)?,
+        created_at: row.get(8)?,
     })
 }
 
@@ -43,8 +44,8 @@ impl NoteRepository for SqliteNoteRepo {
             .as_secs() as i64;
 
         conn.execute(
-            "INSERT INTO notes (id, pdf_path, pdf_name, page_index, content, note, bounds_str, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT INTO notes (id, pdf_path, pdf_name, page_index, content, note, bounds_str, page_markups, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 id,
                 req.pdf_path,
@@ -53,6 +54,7 @@ impl NoteRepository for SqliteNoteRepo {
                 req.content,
                 req.note,
                 req.bounds_str,
+                req.page_markups,
                 created_at
             ],
         )?;
@@ -65,6 +67,7 @@ impl NoteRepository for SqliteNoteRepo {
             content: req.content.clone(),
             note: req.note.clone(),
             bounds_str: req.bounds_str.clone(),
+            page_markups: req.page_markups.clone(),
             created_at,
         })
     }
@@ -75,7 +78,7 @@ impl NoteRepository for SqliteNoteRepo {
         })?;
 
         let mut stmt = conn.prepare(
-            "SELECT id, pdf_path, pdf_name, page_index, content, note, bounds_str, created_at
+            "SELECT id, pdf_path, pdf_name, page_index, content, note, bounds_str, page_markups, created_at
              FROM notes ORDER BY created_at DESC",
         )?;
 
@@ -92,7 +95,7 @@ impl NoteRepository for SqliteNoteRepo {
         })?;
 
         let mut stmt = conn.prepare(
-            "SELECT id, pdf_path, pdf_name, page_index, content, note, bounds_str, created_at
+            "SELECT id, pdf_path, pdf_name, page_index, content, note, bounds_str, page_markups, created_at
              FROM notes WHERE pdf_path = ?1 ORDER BY created_at DESC",
         )?;
 
@@ -125,7 +128,7 @@ impl NoteRepository for SqliteNoteRepo {
 
         // Fetch the updated entry
         let mut stmt = conn.prepare(
-            "SELECT id, pdf_path, pdf_name, page_index, content, note, bounds_str, created_at
+            "SELECT id, pdf_path, pdf_name, page_index, content, note, bounds_str, page_markups, created_at
              FROM notes WHERE id = ?1",
         )?;
 

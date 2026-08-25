@@ -355,7 +355,8 @@ final class BridgeService {
     @discardableResult
     func saveNote(
         pdfPath: String, pdfName: String, pageIndex: UInt32,
-        content: String, note: String, boundsStr: String
+        content: String, note: String, boundsStr: String,
+        pageMarkups: String = ""
     ) throws -> NoteEntry {
         let normalizedContent = ContextSentenceFormatting.displayParagraph(content)
         return try _saveNote(SaveNoteRequest(
@@ -364,7 +365,8 @@ final class BridgeService {
             pageIndex: pageIndex,
             content: normalizedContent,
             note: NoteTextList.storageString(from: note),
-            boundsStr: boundsStr
+            boundsStr: boundsStr,
+            pageMarkups: pageMarkups
         ))
     }
 

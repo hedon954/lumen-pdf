@@ -6,6 +6,8 @@ predecessor:
   - tdd/tdd-2026-03-22.md
   - tdd/tdd-2026-07-03-reading-inspector.md
   - tdd/tdd-2026-08-20-note-autosave-overlay-stability.md
+successor:
+  - tdd/tdd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md
 ---
 
 # LumenPDF — 工作区搜索 TDD
@@ -59,7 +61,7 @@ tokens = 空白拆分
 ## 5. 呈现与跳转
 
 - `LumenPDFApp` 在 `.commands` 注册「查找…」⌘F，经 `ReaderEventBus.presentWorkspaceSearch` 通知 `ContentView`。
-- 浮层在窗口正中：独占一行的扁平胶囊搜索条（高度约 52pt、最大宽度约 720pt），下方居中是「笔记 / 划线 / 单词 / 原文 / AI」文字开关；结果列表再叠在开关下方。
+- 浮层在窗口正中：独占一行的扁平胶囊搜索条（高度约 52pt、最大宽度约 720pt），下方居中是「笔记 / 划线 / 单词 / 原文 / AI」文字开关；结果列表再叠在开关下方。后续修订：底层内容使用小半径显式失焦，搜索控件和结果卡片维持清晰实体表面，见 [tdd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md](tdd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md)。
 - 打开结果：`activeTab = .reader`，必要时 `selectedDocument` 切到 `pdfPath`，延迟后 `jumpToSelectionBounds` 或 `jumpToPage`。
 - 单词 / 笔记 / AI 打开对应 Inspector 模式；原文另外 `highlightSearchQuery`。
 - 搜索态是瞬时的，不写入 `ReadingRestorationStore`。

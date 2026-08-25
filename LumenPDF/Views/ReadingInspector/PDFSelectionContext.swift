@@ -10,6 +10,19 @@ struct PDFSelectionContext: Identifiable, Equatable {
     let surroundingText: String
     let bounds: CGRect
     let boundsStr: String
+    let pageMarkups: [PDFPageMarkup]
+
+    var effectivePageMarkups: [PDFPageMarkup] {
+        if pageMarkups.isEmpty {
+            return PDFPageMarkupCodec.decode(
+                "",
+                fallbackPage: pageIndex,
+                fallbackBoundsStr: boundsStr,
+                fallbackText: selectedText
+            )
+        }
+        return pageMarkups
+    }
 
     init(
         id: UUID = UUID(),
@@ -19,7 +32,8 @@ struct PDFSelectionContext: Identifiable, Equatable {
         selectedText: String,
         surroundingText: String,
         bounds: CGRect,
-        boundsStr: String
+        boundsStr: String,
+        pageMarkups: [PDFPageMarkup] = []
     ) {
         self.id = id
         self.pdfPath = pdfPath
@@ -29,5 +43,6 @@ struct PDFSelectionContext: Identifiable, Equatable {
         self.surroundingText = surroundingText
         self.bounds = bounds
         self.boundsStr = boundsStr
+        self.pageMarkups = pageMarkups
     }
 }

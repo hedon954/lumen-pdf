@@ -630,8 +630,14 @@ struct PDFKitView: NSViewRepresentable {
 
         /// Snapshot for undo/redo of note-linked underline annotations.
         private struct NoteAnnotationSnapshot {
+            let page: PDFPage
             let noteId: String
             let bounds: CGRect
+        }
+
+        private struct NoteAnnotationRecord {
+            let page: PDFPage
+            let annotation: PDFAnnotation
         }
 
         @objc func addFreeAnnotation(_ notification: Notification) {
@@ -641,17 +647,7 @@ struct PDFKitView: NSViewRepresentable {
                   let pdfView
             else { return }
 
-            let targets: [(Int, String)]
-            if let pageIndexes = Self.intArray(notification.userInfo?["pageIndexes"]),
-               let boundsStrs = notification.userInfo?["boundsStrs"] as? [String],
-               pageIndexes.count == boundsStrs.count {
-                targets = Array(zip(pageIndexes, boundsStrs))
-            } else if let pageIndex = Self.intValue(notification.userInfo?["pageIndex"]),
-                      let boundsStr = notification.userInfo?["boundsStr"] as? String {
-                targets = [(pageIndex, boundsStr)]
-            } else {
-                return
-            }
+            guard let targets = Self.annotationTargets(from: notification.userInfo) else { return }
 
             pdfView.undoManager?.beginUndoGrouping()
             defer { pdfView.undoManager?.endUndoGrouping() }
@@ -815,17 +811,14 @@ struct PDFKitView: NSViewRepresentable {
 
         /// 添加划线笔记（划线 + 自动保存到笔记，支持撤销）
         @objc func addUnderlineNote(_ notification: Notification) {
-            guard let noteId     = notification.userInfo?["noteId"]     as? String,
-                  let pageIndex  = notification.userInfo?["pageIndex"]  as? Int,
-                  let boundsStr  = notification.userInfo?["boundsStr"]  as? String,
-                  let filePath   = notification.userInfo?["filePath"]   as? String,
+            guard let noteId = notification.userInfo?["noteId"] as? String,
+                  let filePath = notification.userInfo?["filePath"] as? String,
                   filePath == currentFilePath,
                   let pdfView,
-                  let page       = pdfView.document?.page(at: pageIndex)
+                  let document = pdfView.document
             else { return }
 
-            let lineRects = Self.parseAnnotationRects(boundsStr)
-            guard !lineRects.isEmpty else { return }
+            guard let targets = Self.annotationTargets(from: notification.userInfo) else { return }
 
             // Merge payload: partial-overlap saves delete old notes and recreate one expanded note.
             let deletedNoteIds = notification.userInfo?["deletedNoteIds"] as? [String] ?? []
@@ -834,27 +827,34 @@ struct PDFKitView: NSViewRepresentable {
 
             // 移除旧划线标注（合并场景）
             var removedSnapshots: [NoteAnnotationSnapshot] = []
-            for oldNoteId in deletedNoteIds {
-                let oldAnns = page.annotations.filter { $0.userName == oldNoteId }
-                for ann in oldAnns {
-                    removedSnapshots.append(NoteAnnotationSnapshot(
-                        noteId: oldNoteId,
-                        bounds: ann.bounds
-                    ))
-                    page.removeAnnotation(ann)
+            let deletedNoteIdSet = Set(deletedNoteIds)
+            if !deletedNoteIdSet.isEmpty {
+                for pageIndex in 0..<document.pageCount {
+                    guard let page = document.page(at: pageIndex) else { continue }
+                    for annotation in page.annotations where deletedNoteIdSet.contains(annotation.userName ?? "") {
+                        removedSnapshots.append(NoteAnnotationSnapshot(
+                            page: page,
+                            noteId: annotation.userName ?? "",
+                            bounds: annotation.bounds
+                        ))
+                        page.removeAnnotation(annotation)
+                    }
                 }
             }
 
             // 添加新划线标注
-            var addedAnnotations: [PDFAnnotation] = []
-            for rect in lineRects {
-                let ann = PDFMarkupAppearance.makeUnderline(
-                    bounds: rect,
-                    userName: noteId,
-                    contents: "note:\(noteId)"
-                )
-                page.addAnnotation(ann)
-                addedAnnotations.append(ann)
+            var addedAnnotations: [NoteAnnotationRecord] = []
+            for (pageIndex, boundsStr) in targets {
+                guard let page = document.page(at: pageIndex) else { continue }
+                for rect in Self.parseAnnotationRects(boundsStr) {
+                    let annotation = PDFMarkupAppearance.makeUnderline(
+                        bounds: rect,
+                        userName: noteId,
+                        contents: "note:\(noteId)"
+                    )
+                    page.addAnnotation(annotation)
+                    addedAnnotations.append(NoteAnnotationRecord(page: page, annotation: annotation))
+                }
             }
 
             triggerAnnotationSave()
@@ -866,7 +866,6 @@ struct PDFKitView: NSViewRepresentable {
                 let capturedDeletedNotesInfo = deletedNotesInfo
                 undo.registerUndo(withTarget: self) { coordinator in
                     coordinator.undoUnderlineNote(
-                        page: page,
                         addedAnnotations: addedAnnotations,
                         removedSnapshots: capturedRemovedSnapshots,
                         newNoteInfo: newInfo,
@@ -880,8 +879,7 @@ struct PDFKitView: NSViewRepresentable {
 
         /// 撤销划线笔记操作
         private func undoUnderlineNote(
-            page: PDFPage,
-            addedAnnotations: [PDFAnnotation],
+            addedAnnotations: [NoteAnnotationRecord],
             removedSnapshots: [NoteAnnotationSnapshot],
             newNoteInfo: NoteUndoInfo,
             deletedNotesInfo: [NoteUndoInfo],
@@ -890,20 +888,20 @@ struct PDFKitView: NSViewRepresentable {
             guard let undo = pdfView?.undoManager else { return }
 
             // 移除新添加的划线标注
-            for ann in addedAnnotations {
-                page.removeAnnotation(ann)
+            for record in addedAnnotations {
+                record.page.removeAnnotation(record.annotation)
             }
 
             // 恢复旧的划线标注
-            var restoredAnnotations: [PDFAnnotation] = []
+            var restoredAnnotations: [NoteAnnotationRecord] = []
             for snap in removedSnapshots {
                 let ann = PDFMarkupAppearance.makeUnderline(
                     bounds: snap.bounds,
                     userName: snap.noteId,
                     contents: "note:\(snap.noteId)"
                 )
-                page.addAnnotation(ann)
-                restoredAnnotations.append(ann)
+                snap.page.addAnnotation(ann)
+                restoredAnnotations.append(NoteAnnotationRecord(page: snap.page, annotation: ann))
             }
 
             triggerAnnotationSave()
@@ -919,7 +917,8 @@ struct PDFKitView: NSViewRepresentable {
                     pageIndex: info.pageIndex,
                     content: info.content,
                     note: info.note,
-                    boundsStr: info.boundsStr
+                    boundsStr: info.boundsStr,
+                    pageMarkups: info.pageMarkups
                 )
             }
             // 刷新笔记列表
@@ -938,14 +937,15 @@ struct PDFKitView: NSViewRepresentable {
                     pageIndex: newNoteInfo.pageIndex,
                     content: newNoteInfo.content,
                     note: newNoteInfo.note,
-                    boundsStr: newNoteInfo.boundsStr
+                    boundsStr: newNoteInfo.boundsStr,
+                    pageMarkups: newNoteInfo.pageMarkups
                 )
                 // 重新添加/移除标注
-                for ann in restoredAnnotations {
-                    page.removeAnnotation(ann)
+                for record in restoredAnnotations {
+                    record.page.removeAnnotation(record.annotation)
                 }
-                for ann in addedAnnotations {
-                    page.addAnnotation(ann)
+                for record in addedAnnotations {
+                    record.page.addAnnotation(record.annotation)
                 }
                 coordinator.triggerAnnotationSave()
                 // 刷新笔记列表
@@ -956,18 +956,20 @@ struct PDFKitView: NSViewRepresentable {
 
         /// 删除划线笔记时移除对应的划线标注
         @objc func removeUnderlineNote(_ notification: Notification) {
-            guard let noteId     = notification.userInfo?["noteId"]     as? String,
-                  let pageIndex  = notification.userInfo?["pageIndex"]  as? Int,
-                  let filePath   = notification.userInfo?["filePath"]   as? String,
+            guard let noteId = notification.userInfo?["noteId"] as? String,
+                  let filePath = notification.userInfo?["filePath"] as? String,
                   filePath == currentFilePath,
                   let pdfView,
-                  let page       = pdfView.document?.page(at: pageIndex)
+                  let document = pdfView.document
             else { return }
 
             // 移除所有使用该笔记 ID 的划线标注
-            page.annotations
-                .filter { $0.userName == noteId }
-                .forEach { page.removeAnnotation($0) }
+            for pageIndex in 0..<document.pageCount {
+                guard let page = document.page(at: pageIndex) else { continue }
+                page.annotations
+                    .filter { $0.userName == noteId }
+                    .forEach { page.removeAnnotation($0) }
+            }
             triggerAnnotationSave()
             publishNoteAnchors()
         }
@@ -1009,8 +1011,16 @@ struct PDFKitView: NSViewRepresentable {
             // Note-linked underlines — source of truth: database.
             let notes = (try? ReaderPersistence.shared.listNotesByPdf(pdfPath: filePath)) ?? []
             for note in notes {
-                guard let page = doc.page(at: Int(note.pageIndex)) else { continue }
-                restoreNoteUnderline(noteId: note.id, boundsStr: note.boundsStr, on: page)
+                let markups = PDFPageMarkupCodec.decode(
+                    note.pageMarkups,
+                    fallbackPage: Int(note.pageIndex),
+                    fallbackBoundsStr: note.boundsStr,
+                    fallbackText: note.content
+                )
+                for markup in markups {
+                    guard let page = doc.page(at: markup.pageIndex) else { continue }
+                    restoreNoteUnderline(noteId: note.id, boundsStr: markup.boundsStr, on: page)
+                }
             }
 
             // Free highlights / underlines — source of truth: FreeMarkupStore (UserDefaults).
@@ -1720,6 +1730,20 @@ struct PDFKitView: NSViewRepresentable {
             if let values = raw as? NSArray {
                 let mapped = values.compactMap { intValue($0) }
                 return mapped.count == values.count ? mapped : nil
+            }
+            return nil
+        }
+
+        private static func annotationTargets(from userInfo: [AnyHashable: Any]?) -> [(Int, String)]? {
+            if let pageIndexes = intArray(userInfo?["pageIndexes"]),
+               let boundsStrs = userInfo?["boundsStrs"] as? [String],
+               !pageIndexes.isEmpty,
+               pageIndexes.count == boundsStrs.count {
+                return Array(zip(pageIndexes, boundsStrs))
+            }
+            if let pageIndex = intValue(userInfo?["pageIndex"]),
+               let boundsStr = userInfo?["boundsStr"] as? String {
+                return [(pageIndex, boundsStr)]
             }
             return nil
         }

@@ -38,7 +38,7 @@ final class JSONAutoIndenterTests: XCTestCase {
         XCTAssertEqual(edit.replacement, "\n  ")
     }
 
-    func testClosingBraceOnOverIndentedLineOutdents() {
+    func testClosingBraceOnOverIndentedLineOutdents() throws {
         let before = "{\n    "
         let edit = try XCTUnwrap(JSONAutoIndenter.closingBracketEdit(before: before, bracket: "}"))
         XCTAssertEqual(edit.linePrefixLength, 4)

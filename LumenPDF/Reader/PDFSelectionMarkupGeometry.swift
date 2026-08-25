@@ -16,6 +16,72 @@ struct PDFPageMarkup: Equatable {
     }
 }
 
+/// Stable persistence boundary for the same page-by-page geometry used by free markups.
+/// Legacy notes have no payload and fall back to their original `page_index` + `bounds_str`.
+enum PDFPageMarkupCodec {
+    private struct Record: Codable {
+        let pageIndex: Int
+        let boundsStr: String
+    }
+
+    static func encode(_ markups: [PDFPageMarkup]) -> String {
+        let records = normalized(markups).map {
+            Record(pageIndex: $0.pageIndex, boundsStr: $0.boundsStr)
+        }
+        guard !records.isEmpty,
+              let data = try? JSONEncoder().encode(records),
+              let encoded = String(data: data, encoding: .utf8) else {
+            return ""
+        }
+        return encoded
+    }
+
+    static func decode(
+        _ encoded: String,
+        fallbackPage: Int,
+        fallbackBoundsStr: String,
+        fallbackText: String = ""
+    ) -> [PDFPageMarkup] {
+        if let data = encoded.data(using: .utf8),
+           let records = try? JSONDecoder().decode([Record].self, from: data) {
+            let decoded = normalized(records.map {
+                PDFPageMarkup(
+                    pageIndex: $0.pageIndex,
+                    lineRects: AnnotationBoundsCodec.parse($0.boundsStr),
+                    text: ""
+                )
+            })
+            if !decoded.isEmpty {
+                return decoded
+            }
+        }
+
+        let fallbackRects = AnnotationBoundsCodec.parse(fallbackBoundsStr)
+        guard !fallbackRects.isEmpty else { return [] }
+        return [
+            PDFPageMarkup(
+                pageIndex: fallbackPage,
+                lineRects: fallbackRects,
+                text: fallbackText
+            )
+        ]
+    }
+
+    static func normalized(_ markups: [PDFPageMarkup]) -> [PDFPageMarkup] {
+        let grouped = Dictionary(grouping: markups.filter { !$0.lineRects.isEmpty }, by: \.pageIndex)
+        return grouped.keys.sorted().compactMap { pageIndex in
+            guard let pageMarkups = grouped[pageIndex] else { return nil }
+            let lineRects = TextLineMarkupMerge.merge(pageMarkups.flatMap(\.lineRects))
+            guard !lineRects.isEmpty else { return nil }
+            let text = pageMarkups
+                .map(\.text)
+                .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                .joined(separator: "\n")
+            return PDFPageMarkup(pageIndex: pageIndex, lineRects: lineRects, text: text)
+        }
+    }
+}
+
 struct PDFTextLine: Equatable {
     let rect: CGRect
     let text: String

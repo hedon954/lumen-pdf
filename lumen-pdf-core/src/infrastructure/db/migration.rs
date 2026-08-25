@@ -59,6 +59,7 @@ pub fn run(conn: &Connection) -> Result<(), LumenError> {
             content       TEXT NOT NULL,
             note          TEXT NOT NULL DEFAULT '',
             bounds_str    TEXT NOT NULL DEFAULT '',
+            page_markups  TEXT NOT NULL DEFAULT '',
             created_at    INTEGER NOT NULL
         );
     ",
@@ -76,6 +77,12 @@ pub fn run(conn: &Connection) -> Result<(), LumenError> {
         "vocabulary_entries",
         "etymology",
         "ALTER TABLE vocabulary_entries ADD COLUMN etymology TEXT NOT NULL DEFAULT '';",
+    )?;
+    add_column_if_missing(
+        conn,
+        "notes",
+        "page_markups",
+        "ALTER TABLE notes ADD COLUMN page_markups TEXT NOT NULL DEFAULT '';",
     )?;
 
     migrate_translation_cache_language_key(conn)?;
@@ -186,5 +193,42 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    #[test]
+    fn adds_page_markups_to_existing_notes_table_idempotently() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "
+            CREATE TABLE notes (
+                id TEXT PRIMARY KEY,
+                pdf_path TEXT NOT NULL,
+                pdf_name TEXT NOT NULL,
+                page_index INTEGER NOT NULL,
+                content TEXT NOT NULL,
+                note TEXT NOT NULL DEFAULT '',
+                bounds_str TEXT NOT NULL DEFAULT '',
+                created_at INTEGER NOT NULL
+            );
+            INSERT INTO notes
+                (id, pdf_path, pdf_name, page_index, content, note, bounds_str, created_at)
+            VALUES
+                ('legacy', '/tmp/book.pdf', 'book.pdf', 3, 'source', 'note', '{{1, 2}, {3, 4}}', 1);
+            ",
+        )
+        .unwrap();
+
+        run(&conn).unwrap();
+        run(&conn).unwrap();
+
+        let (count, page_markups): (i64, String) = conn
+            .query_row(
+                "SELECT COUNT(*), page_markups FROM notes WHERE id = 'legacy'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+        assert_eq!(page_markups, "");
     }
 }

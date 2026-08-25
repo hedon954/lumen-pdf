@@ -128,7 +128,8 @@ final class ReaderPersistence {
         pageIndex: UInt32,
         content: String,
         note: String,
-        boundsStr: String
+        boundsStr: String,
+        pageMarkups: [PDFPageMarkup] = []
     ) throws -> NoteEntry {
         try bridge.saveNote(
             pdfPath: pdfPath,
@@ -136,7 +137,8 @@ final class ReaderPersistence {
             pageIndex: pageIndex,
             content: content,
             note: note,
-            boundsStr: boundsStr
+            boundsStr: boundsStr,
+            pageMarkups: PDFPageMarkupCodec.encode(pageMarkups)
         )
     }
 
@@ -148,9 +150,9 @@ final class ReaderPersistence {
         try bridge.deleteNote(id: id)
     }
 
-    func deleteNoteRemovingUnderline(id: String, page: Int, filePath: String) throws {
+    func deleteNoteRemovingUnderline(id: String, filePath: String) throws {
         try deleteNote(id: id)
-        ReaderEventBus.shared.postRemoveUnderlineNote(noteId: id, page: page, filePath: filePath)
+        ReaderEventBus.shared.postRemoveUnderlineNote(noteId: id, filePath: filePath)
     }
 
     func deleteVocabularyRemovingHighlight(id: String, page: Int, filePath: String) throws {

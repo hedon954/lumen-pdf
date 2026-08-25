@@ -23,44 +23,51 @@ struct ReaderEventBus {
     var center: NotificationCenter = .default
 
     func postFreeAnnotations(type: String, markups: [PDFPageMarkup], filePath: String) {
-        let bodyMarkups = markups.filter { !$0.lineRects.isEmpty }
-        guard !bodyMarkups.isEmpty else { return }
+        guard var userInfo = pageMarkupUserInfo(markups) else { return }
+        userInfo["annotationType"] = type
+        userInfo["filePath"] = filePath
         center.post(
             name: .addFreeAnnotation,
             object: nil,
-            userInfo: [
-                "annotationType": type,
-                "pageIndexes": bodyMarkups.map(\.pageIndex),
-                "boundsStrs": bodyMarkups.map(\.boundsStr),
-                "pageIndex": bodyMarkups[0].pageIndex,
-                "boundsStr": bodyMarkups[0].boundsStr,
-                "filePath": filePath
-            ]
+            userInfo: userInfo
         )
     }
 
-    func postAddUnderlineNote(noteId: String, page: Int, boundsStr: String, filePath: String, undoInfo: NoteUndoInfo? = nil, deletedNotesInfo: [NoteUndoInfo] = []) {
-        var userInfo: [String: Any] = [
-            "noteId": noteId,
-            "pageIndex": page,
-            "boundsStr": boundsStr,
-            "filePath": filePath,
-            "deletedNoteIds": deletedNotesInfo.map { $0.id },
-            "deletedNotesInfo": deletedNotesInfo
-        ]
+    func postAddUnderlineNote(
+        noteId: String,
+        markups: [PDFPageMarkup],
+        filePath: String,
+        undoInfo: NoteUndoInfo? = nil,
+        deletedNotesInfo: [NoteUndoInfo] = []
+    ) {
+        guard var userInfo = pageMarkupUserInfo(markups) else { return }
+        userInfo["noteId"] = noteId
+        userInfo["filePath"] = filePath
+        userInfo["deletedNoteIds"] = deletedNotesInfo.map { $0.id }
+        userInfo["deletedNotesInfo"] = deletedNotesInfo
         if let undoInfo {
             userInfo["newNoteInfo"] = undoInfo
         }
         center.post(name: .addUnderlineNote, object: nil, userInfo: userInfo)
     }
 
-    func postRemoveUnderlineNote(noteId: String, page: Int, filePath: String) {
+    private func pageMarkupUserInfo(_ markups: [PDFPageMarkup]) -> [String: Any]? {
+        let bodyMarkups = PDFPageMarkupCodec.normalized(markups)
+        guard let first = bodyMarkups.first else { return nil }
+        return [
+            "pageIndexes": bodyMarkups.map(\.pageIndex),
+            "boundsStrs": bodyMarkups.map(\.boundsStr),
+            "pageIndex": first.pageIndex,
+            "boundsStr": first.boundsStr,
+        ]
+    }
+
+    func postRemoveUnderlineNote(noteId: String, filePath: String) {
         center.post(
             name: .removeUnderlineNote,
             object: nil,
             userInfo: [
                 "noteId": noteId,
-                "pageIndex": page,
                 "filePath": filePath
             ]
         )

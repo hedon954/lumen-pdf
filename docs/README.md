@@ -46,6 +46,7 @@ PRD 记录**用户可感知的行为与验收标准**。TDD 记录**如何实现
 | unreleased | 2026-08-21 | 调用日志完整 HTTP 请求 | [prd-2026-08-21-llm-call-log-http-request.md](prd/prd-2026-08-21-llm-call-log-http-request.md) | [tdd-2026-08-21-llm-call-log-http-request.md](tdd/tdd-2026-08-21-llm-call-log-http-request.md) |
 | unreleased | 2026-08-24 | Extra Config 单源与未用 UniFFI 收缩 | [prd-2026-08-24-codebase-simplification.md](prd/prd-2026-08-24-codebase-simplification.md) | [tdd-2026-08-24-codebase-simplification.md](tdd/tdd-2026-08-24-codebase-simplification.md) |
 | unreleased | 2026-08-24 | LLM 服务商「其他」 | [prd-2026-08-24-llm-provider-other.md](prd/prd-2026-08-24-llm-provider-other.md) | [tdd-2026-08-24-llm-provider-other.md](tdd/tdd-2026-08-24-llm-provider-other.md) |
+| unreleased | 2026-08-25 | 搜索模糊、翻译 AI 快捷入口与跨页笔记划线 | [prd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md](prd/prd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md) | [tdd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md](tdd/tdd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md) |
 
 未单独成对的发布：
 
@@ -78,6 +79,7 @@ v1.0.2 笔记 + 划线
   → v1.0.26 Inspector、回顾浮窗、笔记列表可编辑并自动保存
   → unreleased ⌘F 工作区搜索覆盖笔记、单词、划线、原文与 AI 解释
   → unreleased 邻近新划线不再抹掉未选中的旧行
+  → unreleased 笔记保存逐页选区，跨页划线可重启恢复
 ```
 
 ### 划线与高亮
@@ -86,6 +88,7 @@ v1.0.2 笔记 + 划线
 v1.0.0 Toggle：包围盒重叠则合并或整段取消
   → v1.0.24 跨页逐页落笔、页眉页脚
   → unreleased 按文本行一维区间合并，禁止用多行包围盒误删上一行
+  → unreleased 自由标注与笔记标注共用逐页载荷，笔记持久化完整跨页几何
 ```
 
 ### LLM 与 AI 导读
@@ -106,6 +109,7 @@ v1.0.12 / v1.0.13 导读进入 Inspector
   → unreleased Extra Config 默认值只在 Rust 计算，设置页不再复制 host/模型规则
   → unreleased 调用日志可展开实际发出的完整 HTTP 请求（密钥脱敏）
   → unreleased 服务商菜单增加「其他」，未匹配内置地址时不误标厂商，自定义端点不被预设覆盖
+  → unreleased 翻译成功 footer 增加 AI 解释快捷入口，复用当前选区导读
 ```
 
 ## 其他文档

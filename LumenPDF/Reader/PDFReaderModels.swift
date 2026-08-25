@@ -42,10 +42,23 @@ struct UnderlineNoteDraft: Equatable {
     let word: String
     let boundsStr: String
     let page: Int
+    let pageMarkups: [PDFPageMarkup]
     let anchor: CGPoint
     let anchorRect: CGRect
     let appendingNoteId: String?
     let existingNoteText: String
+
+    var effectivePageMarkups: [PDFPageMarkup] {
+        if pageMarkups.isEmpty {
+            return PDFPageMarkupCodec.decode(
+                "",
+                fallbackPage: page,
+                fallbackBoundsStr: boundsStr,
+                fallbackText: word
+            )
+        }
+        return pageMarkups
+    }
 }
 
 struct ReadingOverlayPlacementInput: Equatable {
@@ -452,6 +465,7 @@ struct TranslationBubbleRequest: Identifiable, Equatable {
     let bounds: CGRect
     let boundsStr: String
     let page: Int
+    let pageMarkups: [PDFPageMarkup]
     /// Selection bounds in the main reader-root coordinate space, used to keep
     /// the window-level translation card from covering the selected text by default.
     let selectionAnchorRect: CGRect
@@ -464,6 +478,18 @@ struct TranslationBubbleRequest: Identifiable, Equatable {
     /// instead of a vocabulary entry.
     let isSentenceMode: Bool
 
+    var effectivePageMarkups: [PDFPageMarkup] {
+        if pageMarkups.isEmpty {
+            return PDFPageMarkupCodec.decode(
+                "",
+                fallbackPage: page,
+                fallbackBoundsStr: boundsStr,
+                fallbackText: word
+            )
+        }
+        return pageMarkups
+    }
+
     init(
         id: UUID = UUID(),
         pdfPath: String,
@@ -474,6 +500,7 @@ struct TranslationBubbleRequest: Identifiable, Equatable {
         bounds: CGRect,
         boundsStr: String,
         page: Int,
+        pageMarkups: [PDFPageMarkup] = [],
         selectionAnchorRect: CGRect,
         result: TranslationResult? = nil,
         translationError: String? = nil,
@@ -489,6 +516,7 @@ struct TranslationBubbleRequest: Identifiable, Equatable {
         self.bounds = bounds
         self.boundsStr = boundsStr
         self.page = page
+        self.pageMarkups = pageMarkups
         self.selectionAnchorRect = selectionAnchorRect
         self.result = result
         self.translationError = translationError
@@ -506,6 +534,7 @@ struct TranslationBubbleRequest: Identifiable, Equatable {
         lhs.bounds == rhs.bounds &&
         lhs.boundsStr == rhs.boundsStr &&
         lhs.page == rhs.page &&
+        lhs.pageMarkups == rhs.pageMarkups &&
         lhs.selectionAnchorRect == rhs.selectionAnchorRect &&
         lhs.result == rhs.result &&
         lhs.translationError == rhs.translationError &&
@@ -522,4 +551,5 @@ struct NoteUndoInfo {
     let content: String
     let note: String
     let boundsStr: String
+    let pageMarkups: [PDFPageMarkup]
 }

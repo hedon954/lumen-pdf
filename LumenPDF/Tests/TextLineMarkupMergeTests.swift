@@ -115,4 +115,97 @@ final class TextLineMarkupMergeTests: XCTestCase {
         XCTAssertTrue(plan.interactingGroupIndices.isEmpty)
         XCTAssertEqual(plan.addRects.count, 2)
     }
+
+    func testPageMarkupCodecRoundTripsCrossPageGeometry() {
+        let markups = [
+            PDFPageMarkup(pageIndex: 8, lineRects: [line(0, x: 50, width: 220)], text: "first"),
+            PDFPageMarkup(pageIndex: 9, lineRects: [line(1, x: 60, width: 180)], text: "second"),
+        ]
+
+        let encoded = PDFPageMarkupCodec.encode(markups)
+        let decoded = PDFPageMarkupCodec.decode(encoded, fallbackPage: 0, fallbackBoundsStr: "")
+
+        XCTAssertTrue(UnderlineNoteMergePolicy.sameGeometry(decoded, markups))
+        XCTAssertEqual(decoded.map(\.pageIndex), [8, 9])
+    }
+
+    func testPageMarkupCodecFallsBackForLegacySinglePageNote() {
+        let boundsStr = AnnotationBoundsCodec.string(from: [line(2, x: 70, width: 160)])
+
+        let decoded = PDFPageMarkupCodec.decode(
+            "",
+            fallbackPage: 12,
+            fallbackBoundsStr: boundsStr,
+            fallbackText: "legacy"
+        )
+
+        XCTAssertEqual(decoded.count, 1)
+        XCTAssertEqual(decoded[0].pageIndex, 12)
+        XCTAssertEqual(decoded[0].boundsStr, boundsStr)
+        XCTAssertEqual(decoded[0].text, "legacy")
+    }
+
+    func testCrossPageCoverageRequiresEverySelectedPage() {
+        let selected = [
+            PDFPageMarkup(pageIndex: 3, lineRects: [line(0, x: 80, width: 100)], text: ""),
+            PDFPageMarkup(pageIndex: 4, lineRects: [line(1, x: 80, width: 100)], text: ""),
+        ]
+        let onlyFirstPage = [
+            PDFPageMarkup(pageIndex: 3, lineRects: [line(0, x: 50, width: 300)], text: ""),
+        ]
+
+        XCTAssertFalse(UnderlineNoteMergePolicy.markups(selected, areCoveredBy: onlyFirstPage))
+        XCTAssertTrue(UnderlineNoteMergePolicy.markups(selected, overlap: onlyFirstPage))
+    }
+
+    func testCrossPageMergeKeepsGeometryOnBothPages() {
+        let existing = [
+            PDFPageMarkup(pageIndex: 6, lineRects: [line(0, x: 50, width: 120)], text: ""),
+        ]
+        let selected = [
+            PDFPageMarkup(pageIndex: 6, lineRects: [line(0, x: 160, width: 100)], text: ""),
+            PDFPageMarkup(pageIndex: 7, lineRects: [line(1, x: 50, width: 240)], text: ""),
+        ]
+
+        let merged = UnderlineNoteMergePolicy.mergePageMarkups([existing, selected])
+
+        XCTAssertEqual(merged.map(\.pageIndex), [6, 7])
+        XCTAssertEqual(merged[0].lineRects.count, 1)
+        XCTAssertEqual(merged[0].lineRects[0].minX, 50, accuracy: 0.1)
+        XCTAssertEqual(merged[0].lineRects[0].maxX, 260, accuracy: 0.1)
+    }
+
+    func testFreeAndNoteUnderlinesShareTheSamePageMarkupPayload() throws {
+        let center = NotificationCenter()
+        let bus = ReaderEventBus(center: center)
+        let markups = [
+            PDFPageMarkup(pageIndex: 2, lineRects: [line(0, x: 30, width: 180)], text: "first"),
+            PDFPageMarkup(pageIndex: 3, lineRects: [line(1, x: 40, width: 150)], text: "second"),
+        ]
+        var freeUserInfo: [AnyHashable: Any]?
+        var noteUserInfo: [AnyHashable: Any]?
+        let freeToken = center.addObserver(forName: .addFreeAnnotation, object: nil, queue: nil) {
+            freeUserInfo = $0.userInfo
+        }
+        let noteToken = center.addObserver(forName: .addUnderlineNote, object: nil, queue: nil) {
+            noteUserInfo = $0.userInfo
+        }
+        defer {
+            center.removeObserver(freeToken)
+            center.removeObserver(noteToken)
+        }
+
+        bus.postFreeAnnotations(type: "underline", markups: markups, filePath: "/tmp/book.pdf")
+        bus.postAddUnderlineNote(noteId: "note-1", markups: markups, filePath: "/tmp/book.pdf")
+
+        XCTAssertEqual(try XCTUnwrap(freeUserInfo?["pageIndexes"] as? [Int]), [2, 3])
+        XCTAssertEqual(
+            try XCTUnwrap(freeUserInfo?["pageIndexes"] as? [Int]),
+            try XCTUnwrap(noteUserInfo?["pageIndexes"] as? [Int])
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(freeUserInfo?["boundsStrs"] as? [String]),
+            try XCTUnwrap(noteUserInfo?["boundsStrs"] as? [String])
+        )
+    }
 }

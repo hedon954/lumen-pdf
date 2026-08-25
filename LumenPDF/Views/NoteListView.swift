@@ -93,7 +93,6 @@ struct NoteListView: View {
     private func delete(_ note: NoteEntry) {
         try? ReaderPersistence.shared.deleteNoteRemovingUnderline(
             id: note.id,
-            page: Int(note.pageIndex),
             filePath: note.pdfPath
         )
         appState.refreshNotes()

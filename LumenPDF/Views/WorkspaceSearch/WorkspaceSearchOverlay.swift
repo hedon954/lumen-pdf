@@ -53,7 +53,7 @@ struct WorkspaceSearchOverlay: View {
     }
 
     private var scrim: some View {
-        Color.black.opacity(colorScheme == .dark ? 0.22 : 0.08)
+        Color.black.opacity(colorScheme == .dark ? 0.24 : 0.08)
             .ignoresSafeArea()
             .contentShape(Rectangle())
     }
@@ -219,25 +219,27 @@ struct WorkspaceSearchOverlay: View {
     }
 
     private func capsuleSurface(emphasized: Bool = false) -> some View {
-        let fill = colorScheme == .dark
-            ? Color.white.opacity(emphasized ? 0.16 : 0.10)
-            : Color.white.opacity(emphasized ? 0.98 : 0.94)
-        return Capsule(style: .continuous)
-            .fill(fill)
+        let shape = Capsule(style: .continuous)
+        let tint = colorScheme == .dark
+            ? Color.white.opacity(emphasized ? 0.13 : 0.07)
+            : Color.white.opacity(emphasized ? 0.78 : 0.68)
+        return shape
+            .fill(.thickMaterial)
+            .overlay { shape.fill(tint) }
             .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.28 : 0.10), radius: 6, y: 2)
             .overlay {
-                Capsule(style: .continuous)
-                    .strokeBorder(Color.primary.opacity(emphasized ? 0.20 : 0.12), lineWidth: 0.5)
+                shape.strokeBorder(Color.primary.opacity(emphasized ? 0.20 : 0.12), lineWidth: 0.5)
             }
     }
 
     private func controlSurface(emphasized: Bool = false, cornerRadius: CGFloat = 18) -> some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        let fill = colorScheme == .dark
-            ? Color.white.opacity(emphasized ? 0.16 : 0.10)
-            : Color.white.opacity(emphasized ? 0.98 : 0.94)
+        let tint = colorScheme == .dark
+            ? Color.white.opacity(emphasized ? 0.13 : 0.07)
+            : Color.white.opacity(emphasized ? 0.78 : 0.68)
         return shape
-            .fill(fill)
+            .fill(.thickMaterial)
+            .overlay { shape.fill(tint) }
             .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.35 : 0.12), radius: 8, y: 3)
             .overlay {
                 shape.strokeBorder(

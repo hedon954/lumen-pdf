@@ -43,7 +43,7 @@ struct PDFReaderView: View {
                     )
                     selectionActionBarModel.present(
                         anchorRect: rootSelectionRect,
-                        hasExistingNote: exactUnderlineNote(boundsStr: selection.boundsStr, page: selection.page) != nil,
+                        hasExistingNote: exactUnderlineNote(markups: selection.effectivePageMarkups) != nil,
                         onAction: { action in
                             handleSelectionAction(
                                 action,
@@ -91,8 +91,8 @@ struct PDFReaderView: View {
                             saveUnderlineNote(
                                 word: draft.word,
                                 noteText: trimmedNoteText,
-                                boundsStr: draft.boundsStr,
-                                page: draft.page
+                                pageMarkups: draft.effectivePageMarkups,
+                                preferredPage: draft.page
                             )
                         }
                         underlineDraft = nil
@@ -207,7 +207,6 @@ struct PDFReaderView: View {
             if remainingText.isEmpty {
                 try ReaderPersistence.shared.deleteNoteRemovingUnderline(
                     id: note.id,
-                    page: Int(note.pageIndex),
                     filePath: note.pdfPath
                 )
             } else {
@@ -226,7 +225,6 @@ struct PDFReaderView: View {
             do {
                 try ReaderPersistence.shared.deleteNoteRemovingUnderline(
                     id: note.id,
-                    page: Int(note.pageIndex),
                     filePath: note.pdfPath
                 )
                 deletedCount += 1
@@ -284,6 +282,7 @@ struct PDFReaderView: View {
                 bounds: selection.bounds,
                 boundsStr: selection.boundsStr,
                 page: selection.page,
+                pageMarkups: selection.effectivePageMarkups,
                 selectionAnchorRect: translationAnchorRect
             )
         case .explain:
@@ -295,7 +294,8 @@ struct PDFReaderView: View {
                     selectedText: selection.word,
                     surroundingText: selection.sentence,
                     bounds: selection.bounds,
-                    boundsStr: selection.boundsStr
+                    boundsStr: selection.boundsStr,
+                    pageMarkups: selection.effectivePageMarkups
                 )
             )
         case .highlight:
@@ -304,18 +304,19 @@ struct PDFReaderView: View {
             postFreeAnnotations(type: "underline", selection: selection)
         case .addNote:
             closeOtherReadingOverlays()
-            let existingNote = exactUnderlineNote(boundsStr: selection.boundsStr, page: selection.page)
+            let existingNote = exactUnderlineNote(markups: selection.effectivePageMarkups)
             underlineDraft = UnderlineNoteDraft(
                 word: selection.word,
                 boundsStr: selection.boundsStr,
                 page: selection.page,
+                pageMarkups: selection.effectivePageMarkups,
                 anchor: selection.menuAnchor,
                 anchorRect: selection.selectionAnchorRect,
                 appendingNoteId: existingNote?.id,
                 existingNoteText: existingNote?.note ?? ""
             )
         case .removeNote:
-            if let existingNote = exactUnderlineNote(boundsStr: selection.boundsStr, page: selection.page) {
+            if let existingNote = exactUnderlineNote(markups: selection.effectivePageMarkups) {
                 removeUnderlineNote(existingNote)
             }
         case .close:
@@ -331,13 +332,22 @@ struct PDFReaderView: View {
         )
     }
 
-    private func exactUnderlineNote(boundsStr: String, page: Int) -> NoteEntry? {
+    private func exactUnderlineNote(markups: [PDFPageMarkup]) -> NoteEntry? {
         guard let existingNotes = try? ReaderPersistence.shared.listNotesByPdf(pdfPath: document.filePath) else {
             return nil
         }
         return existingNotes.first { note in
-            note.pageIndex == UInt32(page) && note.boundsStr == boundsStr
+            UnderlineNoteMergePolicy.sameGeometry(notePageMarkups(note), markups)
         }
+    }
+
+    private func notePageMarkups(_ note: NoteEntry) -> [PDFPageMarkup] {
+        PDFPageMarkupCodec.decode(
+            note.pageMarkups,
+            fallbackPage: Int(note.pageIndex),
+            fallbackBoundsStr: note.boundsStr,
+            fallbackText: note.content
+        )
     }
 
     private func appendUnderlineNoteText(noteId: String, existingNoteText: String, noteText: String) {
@@ -357,7 +367,6 @@ struct PDFReaderView: View {
     private func removeUnderlineNote(_ note: NoteEntry) {
         try? ReaderPersistence.shared.deleteNoteRemovingUnderline(
             id: note.id,
-            page: Int(note.pageIndex),
             filePath: document.filePath
         )
         appState.refreshNotes()
@@ -365,7 +374,12 @@ struct PDFReaderView: View {
     }
 
     /// 创建非空笔记并添加关联下划线：子区域不变，部分重叠则扩展/合并。
-    private func saveUnderlineNote(word: String, noteText: String, boundsStr: String, page: Int) {
+    private func saveUnderlineNote(
+        word: String,
+        noteText: String,
+        pageMarkups: [PDFPageMarkup],
+        preferredPage: Int
+    ) {
         let trimmedNoteText = noteText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedNoteText.isEmpty else {
             appState.showToast("请输入笔记内容")
@@ -374,8 +388,8 @@ struct PDFReaderView: View {
 
         ReaderPersistence.shared.initializeIfNeeded()
 
-        let newRects = AnnotationBoundsCodec.parse(boundsStr)
-        guard !newRects.isEmpty else {
+        let newMarkups = PDFPageMarkupCodec.normalized(pageMarkups)
+        guard !newMarkups.isEmpty else {
             appState.showToast("保存笔记失败")
             return
         }
@@ -385,41 +399,43 @@ struct PDFReaderView: View {
             return
         }
 
-        let samePageNotes = existingNotes.filter { $0.pageIndex == UInt32(page) }
-
-        if samePageNotes.contains(where: { $0.boundsStr == boundsStr }) {
+        if existingNotes.contains(where: {
+            UnderlineNoteMergePolicy.sameGeometry(notePageMarkups($0), newMarkups)
+        }) {
             appState.showToast("该选区已有笔记")
             return
         }
 
         // If the new selection is entirely inside an existing note, keep the existing note unchanged.
-        if samePageNotes.contains(where: { note in
-            UnderlineNoteMergePolicy.rects(newRects, areCoveredBy: AnnotationBoundsCodec.parse(note.boundsStr))
+        if existingNotes.contains(where: { note in
+            UnderlineNoteMergePolicy.markups(newMarkups, areCoveredBy: notePageMarkups(note))
         }) {
             appState.showToast("已在现有笔记范围内")
             return
         }
 
-        let overlappingNotes = samePageNotes.filter { note in
-            UnderlineNoteMergePolicy.rects(newRects, overlap: AnnotationBoundsCodec.parse(note.boundsStr))
+        let overlappingNotes = existingNotes.filter { note in
+            UnderlineNoteMergePolicy.markups(newMarkups, overlap: notePageMarkups(note))
         }
 
         if !overlappingNotes.isEmpty {
             mergeUnderlineNote(
                 word: word,
                 noteText: trimmedNoteText,
-                page: page,
-                newRects: newRects,
+                preferredPage: preferredPage,
+                newMarkups: newMarkups,
                 overlappingNotes: overlappingNotes
             )
             return
         }
 
+        let primary = newMarkups.first(where: { $0.pageIndex == preferredPage }) ?? newMarkups[0]
         createUnderlineNote(
             word: word,
             noteText: trimmedNoteText,
-            boundsStr: boundsStr,
-            page: page,
+            boundsStr: primary.boundsStr,
+            page: primary.pageIndex,
+            pageMarkups: newMarkups,
             deletedNotesInfo: []
         )
     }
@@ -427,8 +443,8 @@ struct PDFReaderView: View {
     private func mergeUnderlineNote(
         word: String,
         noteText: String,
-        page: Int,
-        newRects: [CGRect],
+        preferredPage: Int,
+        newMarkups: [PDFPageMarkup],
         overlappingNotes: [NoteEntry]
     ) {
         let deletedNotesInfo = overlappingNotes.map { note in
@@ -439,13 +455,14 @@ struct PDFReaderView: View {
                 pageIndex: note.pageIndex,
                 content: note.content,
                 note: note.note,
-                boundsStr: note.boundsStr
+                boundsStr: note.boundsStr,
+                pageMarkups: notePageMarkups(note)
             )
         }
-        let oldRects = overlappingNotes.flatMap { AnnotationBoundsCodec.parse($0.boundsStr) }
-        let mergedBoundsStr = AnnotationBoundsCodec.string(
-            from: UnderlineNoteMergePolicy.mergeAnnotationRects(oldRects + newRects)
+        let mergedMarkups = UnderlineNoteMergePolicy.mergePageMarkups(
+            overlappingNotes.map { notePageMarkups($0) } + [newMarkups]
         )
+        let primary = mergedMarkups.first(where: { $0.pageIndex == preferredPage }) ?? mergedMarkups[0]
         let mergedContent = UnderlineNoteMergePolicy.mergedNoteContent(
             existing: overlappingNotes.map(\.content),
             new: word
@@ -462,8 +479,9 @@ struct PDFReaderView: View {
         guard createUnderlineNote(
             word: mergedContent,
             noteText: mergedNoteText,
-            boundsStr: mergedBoundsStr,
-            page: page,
+            boundsStr: primary.boundsStr,
+            page: primary.pageIndex,
+            pageMarkups: mergedMarkups,
             deletedNotesInfo: deletedNotesInfo,
             toastMessage: "已扩展笔记"
         ) != nil else {
@@ -474,7 +492,8 @@ struct PDFReaderView: View {
                     pageIndex: info.pageIndex,
                     content: info.content,
                     note: info.note,
-                    boundsStr: info.boundsStr
+                    boundsStr: info.boundsStr,
+                    pageMarkups: info.pageMarkups
                 )
             }
             return
@@ -487,6 +506,7 @@ struct PDFReaderView: View {
         noteText: String,
         boundsStr: String,
         page: Int,
+        pageMarkups: [PDFPageMarkup],
         deletedNotesInfo: [NoteUndoInfo],
         toastMessage: String = "已添加笔记"
     ) -> NoteEntry? {
@@ -496,7 +516,8 @@ struct PDFReaderView: View {
             pageIndex: UInt32(page),
             content: word,
             note: noteText,
-            boundsStr: boundsStr
+            boundsStr: boundsStr,
+            pageMarkups: pageMarkups
         ) else {
             appState.showToast("保存笔记失败")
             return nil
@@ -504,8 +525,7 @@ struct PDFReaderView: View {
 
         ReaderEventBus.shared.postAddUnderlineNote(
             noteId: noteEntry.id,
-            page: page,
-            boundsStr: boundsStr,
+            markups: pageMarkups,
             filePath: document.filePath,
             undoInfo: NoteUndoInfo(
                 id: noteEntry.id,
@@ -514,7 +534,8 @@ struct PDFReaderView: View {
                 pageIndex: UInt32(page),
                 content: word,
                 note: noteText,
-                boundsStr: boundsStr
+                boundsStr: boundsStr,
+                pageMarkups: pageMarkups
             ),
             deletedNotesInfo: deletedNotesInfo
         )
@@ -543,6 +564,7 @@ struct PDFReaderView: View {
 
     private func requestTranslation(word: String, sentence: String,
                                      bounds: CGRect, boundsStr: String, page: Int,
+                                     pageMarkups: [PDFPageMarkup],
                                      selectionAnchorRect: CGRect) {
         underlineDraft = nil
         activeNoteReview = nil
@@ -573,7 +595,8 @@ struct PDFReaderView: View {
             word: word, sentence: sentence,
             sentenceHash: sentenceHash,
             bounds: bounds, boundsStr: boundsStr,
-            page: page, selectionAnchorRect: selectionAnchorRect,
+            page: page, pageMarkups: pageMarkups,
+            selectionAnchorRect: selectionAnchorRect,
             result: nil, translationError: nil,
             existingEntryId: existingEntryId,
             isSentenceMode: isSentenceMode

@@ -7,6 +7,7 @@ struct TranslationBubble: View {
     let availableSize: CGSize
     let onSave: (TranslationResult) -> String?
     let onDelete: (String, Bool) -> Void
+    let onExplain: () -> Void
     let onRetry: () -> Void
     let onDismiss: () -> Void
 
@@ -450,6 +451,12 @@ struct TranslationBubble: View {
     private func footer(result: TranslationResult) -> some View {
         HStack {
             Spacer()
+            Button(action: onExplain) {
+                Label("AI 解释", systemImage: "text.bubble")
+            }
+            .buttonStyle(.bordered)
+            .accessibilityIdentifier("translation.explain")
+
             if let entryId = savedEntryId {
                 HStack(spacing: 10) {
                     Label(savedToNote ? "已保存到笔记" : "已保存", systemImage: "checkmark.circle.fill")

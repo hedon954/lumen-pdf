@@ -6,6 +6,8 @@ predecessor:
   - prd/prd-2026-03-22.md
   - prd/prd-2026-07-03-reading-inspector.md
   - prd/prd-2026-08-20-note-autosave-overlay-stability.md
+successor:
+  - prd/prd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md
 ---
 
 # LumenPDF — 工作区搜索 PRD
@@ -48,7 +50,7 @@ predecessor:
 ### F3 — 外观与类别按钮
 
 - 搜索浮层在阅读窗口水平、垂直居中，不贴在工具栏下方。
-- 搜索条独占一行，胶囊形，高度约 52pt、最大宽度约 720pt；扁平浅底、细描边和轻阴影，不使用明显渐变或凸起材质。左侧放大镜，占位符为「搜索笔记、划线…」。
+- 搜索条独占一行，胶囊形，高度约 52pt、最大宽度约 720pt；扁平浅底、细描边和轻阴影，不使用明显渐变或凸起材质。左侧放大镜，占位符为「搜索笔记、划线…」。后续修订：搜索层背景增加轻微、可控的失焦，在保留正文层级的同时增强浮窗分离，见 [prd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md](prd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md)。
 - 搜索条下方居中排列带文字的胶囊开关：「笔记」「划线」「单词」「原文」「AI」。默认「笔记」「划线」开启。
 - 点击开关切换该类是否参与搜索；至少保留一类开启。未开启的类别不出现在结果里。
 - 结果列表出现在类别开关下方，每条用文字标明类别，并展示标题、匹配摘要、PDF 名与页码。

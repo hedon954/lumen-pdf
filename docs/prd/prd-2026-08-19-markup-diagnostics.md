@@ -10,6 +10,7 @@ successor:
   - prd/prd-2026-08-21-selection-settings-feedback.md
   - prd/prd-2026-08-21-markup-interval-merge.md
   - prd/prd-2026-08-21-llm-call-log-http-request.md
+  - prd/prd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md
 ---
 
 # LumenPDF — 跨页划线与失败诊断 PRD
@@ -23,6 +24,7 @@ v1.0.24 让跨页选区的划线/高亮落在每一页真正的正文上，并�
 ### F1 — 跨页划线
 
 - 跨页选区为选中的每一页分别落笔。
+- 后续修订：逐页落笔同样适用于手写笔记、句子翻译保存和 AI 解释保存，且几何必须随笔记持久化，见 [prd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md](prd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md)。
 - 页眉页脚按相邻页在相近位置重复出现的文字识别，页码允许递增。
 - 不得仅因某行靠近页顶就丢掉正文。后续修订：同页小节标题若未被高亮、且其词组已出现在正文中，也不得进入翻译原文，见 [prd-2026-08-21-selection-settings-feedback.md](prd-2026-08-21-selection-settings-feedback.md)。
 

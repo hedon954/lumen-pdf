@@ -228,15 +228,15 @@ final class ReadingGuideService {
             pageIndex: UInt32(session.selection.pageIndex),
             content: session.selection.selectedText,
             note: noteText,
-            boundsStr: session.selection.boundsStr
+            boundsStr: session.selection.boundsStr,
+            pageMarkups: PDFPageMarkupCodec.encode(session.selection.effectivePageMarkups)
         ) else {
             return nil
         }
 
         ReaderEventBus.shared.postAddUnderlineNote(
             noteId: noteEntry.id,
-            page: session.selection.pageIndex,
-            boundsStr: session.selection.boundsStr,
+            markups: session.selection.effectivePageMarkups,
             filePath: session.selection.pdfPath
         )
         return noteEntry.id
@@ -246,7 +246,6 @@ final class ReadingGuideService {
         for noteId in session.savedNoteIdsByMessageId.values {
             try? ReaderPersistence.shared.deleteNoteRemovingUnderline(
                 id: noteId,
-                page: session.selection.pageIndex,
                 filePath: session.selection.pdfPath
             )
         }

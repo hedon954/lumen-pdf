@@ -76,7 +76,6 @@ struct ReadingNotesPanel: View {
             do {
                 try ReaderPersistence.shared.deleteNoteRemovingUnderline(
                     id: noteId,
-                    page: Int(group.pageIndex),
                     filePath: group.pdfPath
                 )
                 deletedCount += 1

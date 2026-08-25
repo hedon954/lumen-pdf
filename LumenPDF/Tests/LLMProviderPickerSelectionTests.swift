@@ -32,7 +32,7 @@ final class LLMProviderPickerSelectionTests: XCTestCase {
         )
     }
 
-    func testBuiltInBaseURLResolvesToMatchingProviderNotOther() {
+    func testBuiltInBaseURLResolvesToMatchingProviderNotOther() throws {
         let deepseek = try XCTUnwrap(LLMProviderPickerSelection.builtInPreset(id: "deepseek"))
         XCTAssertEqual(
             LLMProviderPickerSelection.resolved(baseURL: deepseek.baseURL),
@@ -48,7 +48,7 @@ final class LLMProviderPickerSelectionTests: XCTestCase {
         )
     }
 
-    func testPreferOtherOverridesBuiltInMatchUntilURLChanges() {
+    func testPreferOtherOverridesBuiltInMatchUntilURLChanges() throws {
         let deepseek = try XCTUnwrap(LLMProviderPickerSelection.builtInPreset(id: "deepseek"))
         XCTAssertEqual(
             LLMProviderPickerSelection.resolved(baseURL: deepseek.baseURL, preferOther: true),
@@ -65,7 +65,7 @@ final class LLMProviderPickerSelectionTests: XCTestCase {
         )
     }
 
-    func testSelectingOtherDoesNotResetFieldsWithoutARememberedCustomURL() {
+    func testSelectingOtherDoesNotResetFieldsWithoutARememberedCustomURL() throws {
         let deepseek = try XCTUnwrap(LLMProviderPickerSelection.builtInPreset(id: "deepseek"))
         XCTAssertNil(
             LLMProviderPickerSelection.restoredCustomBaseURL(
@@ -81,7 +81,7 @@ final class LLMProviderPickerSelectionTests: XCTestCase {
         )
     }
 
-    func testSelectingOtherRestoresLastCustomURLInsteadOfClobbering() {
+    func testSelectingOtherRestoresLastCustomURLInsteadOfClobbering() throws {
         let deepseek = try XCTUnwrap(LLMProviderPickerSelection.builtInPreset(id: "deepseek"))
         XCTAssertEqual(
             LLMProviderPickerSelection.restoredCustomBaseURL(
@@ -92,7 +92,7 @@ final class LLMProviderPickerSelectionTests: XCTestCase {
         )
     }
 
-    func testSelectingBuiltInStillAppliesPresetBaseURL() {
+    func testSelectingBuiltInStillAppliesPresetBaseURL() throws {
         let deepseek = try XCTUnwrap(LLMProviderPickerSelection.builtInPreset(id: "deepseek"))
         let openai = try XCTUnwrap(LLMProviderPickerSelection.builtInPreset(id: "openai"))
 

@@ -114,6 +114,9 @@ struct ContentView: View {
                                 request: request
                             )
                         },
+                        onExplain: {
+                            startGuideFromTranslation(request)
+                        },
                         onRetry: translationOverlayModel.retry,
                         onDismiss: translationOverlayModel.dismiss
                     )
@@ -125,6 +128,7 @@ struct ContentView: View {
                 )
             }
         }
+        .blur(radius: workspaceSearch.isPresented ? 4 : 0)
         .overlay {
             ZStack {
                 if workspaceSearch.isPresented {
@@ -349,6 +353,24 @@ struct ContentView: View {
         }
     }
 
+    private func startGuideFromTranslation(_ request: TranslationBubbleRequest) {
+        let selection = PDFSelectionContext(
+            pdfPath: request.pdfPath,
+            pdfName: request.pdfName,
+            pageIndex: request.page,
+            selectedText: request.word,
+            surroundingText: request.sentence,
+            bounds: request.bounds,
+            boundsStr: request.boundsStr,
+            pageMarkups: request.effectivePageMarkups
+        )
+        translationOverlayModel.dismiss()
+        if !inspectorModel.isVisible {
+            setReadingInspectorVisible(true)
+        }
+        inspectorModel.startGuide(selection: selection)
+    }
+
     @discardableResult
     private func saveTranslation(
         result: TranslationResult,
@@ -408,7 +430,8 @@ struct ContentView: View {
             pageIndex: UInt32(request.page),
             content: request.word,
             note: noteText,
-            boundsStr: request.boundsStr
+            boundsStr: request.boundsStr,
+            pageMarkups: request.effectivePageMarkups
         ) else {
             appState.showToast("保存笔记失败")
             return nil
@@ -416,8 +439,7 @@ struct ContentView: View {
 
         ReaderEventBus.shared.postAddUnderlineNote(
             noteId: note.id,
-            page: request.page,
-            boundsStr: request.boundsStr,
+            markups: request.effectivePageMarkups,
             filePath: request.pdfPath
         )
         appState.refreshNotes()
@@ -433,7 +455,6 @@ struct ContentView: View {
         if savedToNote {
             try? ReaderPersistence.shared.deleteNoteRemovingUnderline(
                 id: id,
-                page: request.page,
                 filePath: request.pdfPath
             )
             appState.refreshNotes()
