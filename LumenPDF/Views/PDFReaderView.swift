@@ -147,6 +147,12 @@ struct PDFReaderView: View {
             .keyboardShortcut("z", modifiers: .command)
             .frame(width: 0, height: 0)
             .opacity(0)
+            Button("") {
+                NSApp.sendAction(Selector(("redo:")), to: nil, from: nil)
+            }
+            .keyboardShortcut("z", modifiers: [.command, .shift])
+            .frame(width: 0, height: 0)
+            .opacity(0)
         }
         }
         .id(document.id)
@@ -447,18 +453,7 @@ struct PDFReaderView: View {
         newMarkups: [PDFPageMarkup],
         overlappingNotes: [NoteEntry]
     ) {
-        let deletedNotesInfo = overlappingNotes.map { note in
-            NoteUndoInfo(
-                id: note.id,
-                pdfPath: note.pdfPath,
-                pdfName: note.pdfName,
-                pageIndex: note.pageIndex,
-                content: note.content,
-                note: note.note,
-                boundsStr: note.boundsStr,
-                pageMarkups: notePageMarkups(note)
-            )
-        }
+        let deletedNotesInfo = overlappingNotes.map(NoteUndoInfo.init)
         let mergedMarkups = UnderlineNoteMergePolicy.mergePageMarkups(
             overlappingNotes.map { notePageMarkups($0) } + [newMarkups]
         )
@@ -472,32 +467,34 @@ struct PDFReaderView: View {
             new: noteText
         )
 
-        for note in overlappingNotes {
-            try? ReaderPersistence.shared.deleteNote(id: note.id)
-        }
-
-        guard createUnderlineNote(
-            word: mergedContent,
-            noteText: mergedNoteText,
+        let mergedNote = ReaderPersistence.shared.makeNoteHistorySnapshot(
+            pdfPath: document.filePath,
+            pdfName: document.fileName,
+            pageIndex: UInt32(primary.pageIndex),
+            content: mergedContent,
+            note: mergedNoteText,
             boundsStr: primary.boundsStr,
-            page: primary.pageIndex,
-            pageMarkups: mergedMarkups,
-            deletedNotesInfo: deletedNotesInfo,
-            toastMessage: "已扩展笔记"
-        ) != nil else {
-            for info in deletedNotesInfo {
-                _ = try? ReaderPersistence.shared.saveNote(
-                    pdfPath: info.pdfPath,
-                    pdfName: info.pdfName,
-                    pageIndex: info.pageIndex,
-                    content: info.content,
-                    note: info.note,
-                    boundsStr: info.boundsStr,
-                    pageMarkups: info.pageMarkups
-                )
-            }
+            pageMarkups: mergedMarkups
+        )
+        do {
+            try ReaderPersistence.shared.applyNoteHistorySnapshot(
+                removing: deletedNotesInfo,
+                restoring: [mergedNote]
+            )
+        } catch {
+            appState.showToast("保存笔记失败")
             return
         }
+
+        ReaderEventBus.shared.postAddUnderlineNote(
+            noteId: mergedNote.id,
+            markups: mergedMarkups,
+            filePath: document.filePath,
+            undoInfo: mergedNote,
+            deletedNotesInfo: deletedNotesInfo
+        )
+        appState.refreshNotes()
+        appState.showToast("已扩展笔记")
     }
 
     @discardableResult
@@ -527,16 +524,7 @@ struct PDFReaderView: View {
             noteId: noteEntry.id,
             markups: pageMarkups,
             filePath: document.filePath,
-            undoInfo: NoteUndoInfo(
-                id: noteEntry.id,
-                pdfPath: document.filePath,
-                pdfName: document.fileName,
-                pageIndex: UInt32(page),
-                content: word,
-                note: noteText,
-                boundsStr: boundsStr,
-                pageMarkups: pageMarkups
-            ),
+            undoInfo: NoteUndoInfo(noteEntry),
             deletedNotesInfo: deletedNotesInfo
         )
 

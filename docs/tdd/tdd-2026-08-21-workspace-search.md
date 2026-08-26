@@ -25,14 +25,14 @@ successor:
 | `WorkspaceSearchMatcher` | 空查询、类别过滤、大小写折叠、多词 AND、打分与摘要。 |
 | `WorkspaceSearchController` | 弹出/关闭、查询、启用类别、当前高亮项。 |
 | `WorkspaceSearchOverlay` | 窗口居中的大胶囊输入，下方是带文字的类别开关。 |
-| `WorkspaceSearchOpener` | 切到阅读页、打开 PDF、跳页/选区、必要时打开 Inspector。 |
-| `PDFKitView` `highlightSearchQuery` | 在目标页用 `page.string` 定位后点亮匹配。 |
+| `WorkspaceSearchOpener` | 切到阅读页、打开 PDF、把笔记的页级几何交给跳转事件、必要时打开 Inspector。 |
+| `PDFKitView` 选区定位 | 从页级矩形重建 `PDFSelection`，设为当前选区并居中；`highlightSearchQuery` 负责原文查询定位。 |
 
 ## 3. 索引
 
 弹出浮层时只为默认类别建索引，不在每次按键时重读 PDF，也不在打开搜索时扫描全文。
 
-- **笔记**（默认）：`content` + `NoteTextList.decode(note)`；`kind = .note`。
+- **笔记**（默认）：`content` + `NoteTextList.decode(note)`；`kind = .note`；同时保留 `pageMarkups`，旧数据继续回退到 `pageIndex + boundsStr`。
 - **划线**（默认）：当前 `kitDocument` 上 `FreeMarkupStore` 各项，按 `boundsStr` 取出 `PDFPage.selection` 文本；没有文本则跳过。
 - **单词**（按需）：词条、音标、翻译、释义为短查询字段；语境解释、词源、例句仅当查询不少于 4 个字符。
 - **原文**（按需）：当前 PDF 每页 `page.string`，按段落合并成不超过约 480 字的块。
@@ -40,7 +40,7 @@ successor:
 
 `WorkspaceSearchController` 按类别缓存已加载记录；点开「原文」才调用 `page.string`。
 
-`WorkspaceSearchRecord` 只含 `String` / `Int` 字段，测试可直接构造。
+`WorkspaceSearchRecord` 只含 `String` / `Int` 字段，跨页几何仍以 JSON 字符串传递，测试可直接构造。
 
 ## 4. 匹配
 
@@ -61,8 +61,10 @@ tokens = 空白拆分
 ## 5. 呈现与跳转
 
 - `LumenPDFApp` 在 `.commands` 注册「查找…」⌘F，经 `ReaderEventBus.presentWorkspaceSearch` 通知 `ContentView`。
+- `WorkspaceSearchController.present` 每次递增 `focusNonce`；浮层用以该值为标识的 SwiftUI `.task` 在挂载后让出一轮主执行器，再写入 `FocusState`。因此首次插入和已显示时重复按 ⌘F 都走同一条聚焦路径，不依赖 AppKit responder 注入。
 - 浮层在窗口正中：独占一行的扁平胶囊搜索条（高度约 52pt、最大宽度约 720pt），下方居中是「笔记 / 划线 / 单词 / 原文 / AI」文字开关；结果列表再叠在开关下方。后续修订：底层内容使用小半径显式失焦，搜索控件和结果卡片维持清晰实体表面，见 [tdd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md](tdd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md)。
-- 打开结果：`activeTab = .reader`，必要时 `selectedDocument` 切到 `pdfPath`，延迟后 `jumpToSelectionBounds` 或 `jumpToPage`。
+- 打开结果：`activeTab = .reader`，必要时 `selectedDocument` 切到 `pdfPath`，延迟后 `jumpToSelectionBounds` 或 `jumpToPage`。笔记跳转把 `pageMarkups` 解码为统一的 `pageIndexes/boundsStrs` 事件负载。
+- `PDFKitView.jumpToSelectionBounds` 先跳到第一个页级几何所在页，再用 `PDFHighlightAnnotationFactory.selection(from:on:)` 重建每页选区并合并为当前 `PDFSelection`；重建失败时仍保留居中与短暂闪烁作为降级，不影响跳页。
 - 单词 / 笔记 / AI 打开对应 Inspector 模式；原文另外 `highlightSearchQuery`。
 - 搜索态是瞬时的，不写入 `ReadingRestorationStore`。
 
@@ -80,5 +82,7 @@ tokens = 空白拆分
 - 标题命中排在正文命中之前
 - 摘要截取匹配附近文本
 - 分页原文切块后仍能命中
+- 笔记记录保留跨页 `pageMarkups`，跳转事件携带全部 `pageIndexes/boundsStrs`
+- 首次打开和重复打开都会产生新的输入框聚焦请求
 
-运行时须在 macOS App 中确认：⌘F 在窗口中央弹出较大的扁平搜索条并可立即输入；类别开关在搜索条下方居中；默认结果不含单词/原文；打开原文后才变慢可接受；Return 跳转；Esc / 点外侧关闭。本环境无法运行 macOS UI，编译不能代替这项验收。
+运行时须在 macOS App 中确认：首次按 ⌘F 后不点击输入框即可直接输入；浮层已打开但输入框失焦时，再按 ⌘F 也能直接继续输入；搜索条位于窗口中央且类别开关在其下方居中；默认结果不含单词/原文；打开原文后才变慢可接受；Return 或点击笔记结果后打开右侧笔记、跳到起始页且关联文本保持为 PDFKit 当前选区；跨页笔记的选区覆盖每一页；Esc / 点外侧关闭。编译不能代替这项验收。

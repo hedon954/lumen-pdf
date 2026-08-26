@@ -7,6 +7,8 @@ predecessor:
   - tdd/tdd-2026-08-19-markup-diagnostics.md
   - tdd/tdd-2026-08-21-workspace-search.md
   - tdd/tdd-2026-08-21-markup-interval-merge.md
+successor:
+  - tdd/tdd-2026-08-26-annotation-undo-history.md
 ---
 
 # LumenPDF — 阅读浮层快捷入口与跨页笔记划线 TDD
@@ -24,7 +26,7 @@ predecessor:
 | `ContentView` | 从 `TranslationBubbleRequest` 还原 `PDFSelectionContext`，关闭翻译浮窗并启动既有导读。 |
 | `PDFSelectionMarkupGeometry` / `PDFPageMarkupCodec` | 生成逐页正文矩形；把页码与 `boundsStr` 编解码为稳定 JSON；旧数据回退到单页字段。 |
 | `ReaderEventBus` | 自由标注与笔记标注共用 `pageMarkupUserInfo`，同时发出 `pageIndexes` / `boundsStrs`。 |
-| `PDFKitView` | 两种标注共用 `annotationTargets`；笔记添加、删除、撤销、重做和恢复遍历全部目标页。 |
+| `PDFKitView` | 两种标注共用 `annotationTargets`；笔记添加、删除、撤销、重做和恢复遍历全部目标页。后续修订：统一前后快照、50 条顶层历史与原子笔记恢复见 [tdd-2026-08-26-annotation-undo-history.md](tdd-2026-08-26-annotation-undo-history.md)。 |
 | `UnderlineNoteMergePolicy` | 在每个页面内继续委托 `TextLineMarkupMerge` 做覆盖、重叠和并集。 |
 | Rust note entity / repository / migration | `notes.page_markups TEXT NOT NULL DEFAULT ''`，UniFFI 暴露 `page_markups`，迁移幂等且保留旧行。 |
 

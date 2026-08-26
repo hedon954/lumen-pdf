@@ -55,6 +55,9 @@ struct WorkspaceSearchRecord: Identifiable, Equatable {
     let pdfName: String
     let pageIndex: Int
     let boundsStr: String
+    /// JSON-encoded page-by-page geometry for cross-page notes.
+    /// Empty for legacy notes and non-note records.
+    let pageMarkups: String
     let normalizedTitle: String
     let normalizedHaystack: String
     let normalizedPrimary: String
@@ -70,7 +73,8 @@ struct WorkspaceSearchRecord: Identifiable, Equatable {
         pdfPath: String,
         pdfName: String,
         pageIndex: Int,
-        boundsStr: String
+        boundsStr: String,
+        pageMarkups: String = ""
     ) {
         let primary = primaryHaystack ?? haystack
         self.id = id
@@ -84,6 +88,7 @@ struct WorkspaceSearchRecord: Identifiable, Equatable {
         self.pdfName = pdfName
         self.pageIndex = pageIndex
         self.boundsStr = boundsStr
+        self.pageMarkups = pageMarkups
         self.normalizedTitle = WorkspaceSearchMatcher.normalize(title)
         self.normalizedHaystack = WorkspaceSearchMatcher.normalize(haystack)
         self.normalizedPrimary = WorkspaceSearchMatcher.normalize(primary)
@@ -104,6 +109,7 @@ struct WorkspaceSearchNoteDraft: Equatable {
     var pdfName: String
     var pageIndex: Int
     var boundsStr: String
+    var pageMarkups: String = ""
     var content: String
     var noteStorage: String
 }
@@ -216,7 +222,8 @@ enum WorkspaceSearchCatalog {
             pdfPath: note.pdfPath,
             pdfName: note.pdfName,
             pageIndex: note.pageIndex,
-            boundsStr: note.boundsStr
+            boundsStr: note.boundsStr,
+            pageMarkups: note.pageMarkups
         )
     }
 

@@ -2,6 +2,20 @@ import XCTest
 @testable import LumenPDF
 
 final class TextLineMarkupMergeTests: XCTestCase {
+    private final class UndoTarget: NSObject {}
+
+    private final class UndoStateTarget: NSObject {
+        var value = 0
+
+        func setValue(_ newValue: Int, using manager: UndoManager) {
+            let previousValue = value
+            manager.registerUndo(withTarget: self) { target in
+                target.setValue(previousValue, using: manager)
+            }
+            value = newValue
+        }
+    }
+
     /// Tight PDFKit line boxes: 18pt tall on 16pt leading, so neighbors overlap by 2pt.
     private func line(_ index: Int, x: CGFloat, width: CGFloat) -> CGRect {
         CGRect(x: x, y: 600 - CGFloat(index) * 16, width: width, height: 18)
@@ -207,5 +221,134 @@ final class TextLineMarkupMergeTests: XCTestCase {
             try XCTUnwrap(freeUserInfo?["boundsStrs"] as? [String]),
             try XCTUnwrap(noteUserInfo?["boundsStrs"] as? [String])
         )
+    }
+
+    func testSelectionJumpCarriesEveryNotePageMarkup() throws {
+        let center = NotificationCenter()
+        let bus = ReaderEventBus(center: center)
+        let markups = [
+            PDFPageMarkup(pageIndex: 4, lineRects: [line(0, x: 30, width: 180)], text: "first"),
+            PDFPageMarkup(pageIndex: 5, lineRects: [line(1, x: 40, width: 150)], text: "second"),
+        ]
+        var userInfo: [AnyHashable: Any]?
+        let token = center.addObserver(forName: .jumpToSelectionBounds, object: nil, queue: nil) {
+            userInfo = $0.userInfo
+        }
+        defer { center.removeObserver(token) }
+
+        bus.postJumpToSelectionBounds(
+            page: 4,
+            filePath: "/tmp/book.pdf",
+            boundsStr: markups[0].boundsStr,
+            markups: markups,
+            itemId: "note:n1",
+            kind: "note"
+        )
+
+        XCTAssertEqual(try XCTUnwrap(userInfo?["pageIndexes"] as? [Int]), [4, 5])
+        XCTAssertEqual(try XCTUnwrap(userInfo?["boundsStrs"] as? [String]), markups.map(\.boundsStr))
+        XCTAssertEqual(userInfo?["pageIndex"] as? Int, 4)
+        XCTAssertEqual(userInfo?["boundsStr"] as? String, markups[0].boundsStr)
+    }
+
+    @MainActor
+    func testReaderUndoHistoryKeepsFiftyTopLevelActions() {
+        let manager = UndoManager()
+        let target = UndoTarget()
+        ReaderUndoHistoryPolicy.configure(manager)
+        manager.groupsByEvent = false
+
+        for index in 0..<(ReaderUndoHistoryPolicy.capacity + 5) {
+            manager.beginUndoGrouping()
+            manager.registerUndo(withTarget: target) { _ in }
+            manager.setActionName("操作 \(index)")
+            manager.endUndoGrouping()
+        }
+
+        XCTAssertGreaterThanOrEqual(
+            ReaderUndoHistoryPolicy.capacity,
+            ReaderUndoHistoryPolicy.minimumRequiredLevels
+        )
+        XCTAssertEqual(manager.undoCount, ReaderUndoHistoryPolicy.capacity)
+    }
+
+    @MainActor
+    func testClearingReaderUndoActionsPreservesOtherWindowHistory() {
+        let manager = UndoManager()
+        let reader = UndoTarget()
+        let textEditor = UndoTarget()
+        ReaderUndoHistoryPolicy.configure(manager)
+        manager.groupsByEvent = false
+
+        manager.beginUndoGrouping()
+        manager.registerUndo(withTarget: reader) { _ in }
+        manager.setActionName("划线")
+        manager.endUndoGrouping()
+
+        manager.beginUndoGrouping()
+        manager.registerUndo(withTarget: textEditor) { _ in }
+        manager.setActionName("输入")
+        manager.endUndoGrouping()
+
+        ReaderUndoHistoryPolicy.clearActions(for: reader, from: manager)
+
+        XCTAssertEqual(manager.undoCount, 1)
+        XCTAssertEqual(manager.undoActionName, "输入")
+    }
+
+    @MainActor
+    func testNewUndoableActionClearsThePreviousRedoBranch() {
+        let manager = UndoManager()
+        let target = UndoStateTarget()
+        ReaderUndoHistoryPolicy.configure(manager)
+        manager.groupsByEvent = false
+
+        manager.beginUndoGrouping()
+        target.setValue(1, using: manager)
+        manager.endUndoGrouping()
+        manager.undo()
+
+        XCTAssertEqual(target.value, 0)
+        XCTAssertTrue(manager.canRedo)
+
+        manager.beginUndoGrouping()
+        target.setValue(2, using: manager)
+        manager.endUndoGrouping()
+
+        XCTAssertEqual(target.value, 2)
+        XCTAssertFalse(manager.canRedo)
+    }
+
+    func testNoteUndoSnapshotPreservesIdentityAndCreationOrder() {
+        let markups = [
+            PDFPageMarkup(pageIndex: 7, lineRects: [line(0, x: 50, width: 220)], text: "selection")
+        ]
+        let entry = NoteEntry(
+            id: "stable-note-id",
+            pdfPath: "/tmp/book.pdf",
+            pdfName: "book.pdf",
+            pageIndex: 7,
+            content: "selection",
+            note: NoteTextList.encode(["memo"]),
+            boundsStr: markups[0].boundsStr,
+            pageMarkups: PDFPageMarkupCodec.encode(markups),
+            createdAt: 123
+        )
+
+        let restored = NoteUndoInfo(entry).entry
+
+        XCTAssertEqual(restored.id, entry.id)
+        XCTAssertEqual(restored.createdAt, entry.createdAt)
+        XCTAssertEqual(restored.pageMarkups, entry.pageMarkups)
+        XCTAssertEqual(restored.note, entry.note)
+    }
+
+    func testMergedNoteTextKeepsItemsSeparate() {
+        let merged = UnderlineNoteMergePolicy.mergedNoteText(
+            existing: [NoteTextList.encode(["第一条", "第二条"])],
+            new: "第三条"
+        )
+
+        XCTAssertEqual(NoteTextList.decode(merged), ["第一条", "第二条", "第三条"])
     }
 }

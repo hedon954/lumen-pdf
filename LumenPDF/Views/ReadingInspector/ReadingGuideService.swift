@@ -237,7 +237,8 @@ final class ReadingGuideService {
         ReaderEventBus.shared.postAddUnderlineNote(
             noteId: noteEntry.id,
             markups: session.selection.effectivePageMarkups,
-            filePath: session.selection.pdfPath
+            filePath: session.selection.pdfPath,
+            undoInfo: NoteUndoInfo(noteEntry)
         )
         return noteEntry.id
     }

@@ -62,14 +62,22 @@ struct ReaderEventBus {
         ]
     }
 
-    func postRemoveUnderlineNote(noteId: String, filePath: String) {
+    func postRemoveUnderlineNote(
+        noteId: String,
+        filePath: String,
+        undoInfo: NoteUndoInfo? = nil
+    ) {
+        var userInfo: [String: Any] = [
+            "noteId": noteId,
+            "filePath": filePath,
+        ]
+        if let undoInfo {
+            userInfo["deletedNoteInfo"] = undoInfo
+        }
         center.post(
             name: .removeUnderlineNote,
             object: nil,
-            userInfo: [
-                "noteId": noteId,
-                "filePath": filePath
-            ]
+            userInfo: userInfo
         )
     }
 
@@ -110,10 +118,14 @@ struct ReaderEventBus {
         page: Int,
         filePath: String,
         boundsStr: String,
+        markups: [PDFPageMarkup] = [],
         itemId: String? = nil,
         kind: String? = nil
     ) {
         var userInfo = ["pageIndex": page, "filePath": filePath, "boundsStr": boundsStr] as [String: Any]
+        if let markupUserInfo = pageMarkupUserInfo(markups) {
+            userInfo.merge(markupUserInfo) { _, markupValue in markupValue }
+        }
         if let itemId {
             userInfo["itemId"] = itemId
         }

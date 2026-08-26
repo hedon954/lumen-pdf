@@ -12,6 +12,25 @@ protocol ReaderViewportTransitionHandling: AnyObject {
     func endReadingViewportTransition()
 }
 
+enum ReaderUndoHistoryPolicy {
+    /// Apple counts top-level undo groups, so one grouped cross-page edit is one history entry.
+    static let minimumRequiredLevels = 20
+    static let capacity = 50
+
+    static func configure(_ undoManager: UndoManager) {
+        MainActor.assumeIsolated {
+            undoManager.levelsOfUndo = capacity
+            undoManager.groupsByEvent = true
+        }
+    }
+
+    static func clearActions(for target: AnyObject, from undoManager: UndoManager?) {
+        MainActor.assumeIsolated {
+            undoManager?.removeAllActions(withTarget: target)
+        }
+    }
+}
+
 @MainActor
 final class ReaderViewportTransitionController: ObservableObject {
     weak var handler: ReaderViewportTransitionHandling?
@@ -88,6 +107,9 @@ struct PDFKitView: NSViewRepresentable {
 
         context.coordinator.pdfView = pdfView
         viewportTransitionController.handler = context.coordinator
+        DispatchQueue.main.async { [weak coordinator = context.coordinator] in
+            coordinator?.configureUndoHistory()
+        }
         return pdfView
     }
 
@@ -97,11 +119,13 @@ struct PDFKitView: NSViewRepresentable {
         context.coordinator.parent = self
         viewportTransitionController.handler = context.coordinator
         context.coordinator.attachViewportObserverIfNeeded()
+        context.coordinator.configureUndoHistory()
         guard context.coordinator.currentFilePath != filePath else {
             context.coordinator.publishNoteAnchors()
             return
         }
         guard let doc = Self.loadDocument(filePath: filePath) else { return }
+        context.coordinator.prepareForDocumentChange()
         context.coordinator.persistViewportState()
         context.coordinator.currentFilePath = filePath
         let storedViewport = ReadingRestorationStore.shared.viewport(for: filePath)
@@ -125,6 +149,10 @@ struct PDFKitView: NSViewRepresentable {
             coordinator?.publishNoteAnchors()
         }
         context.coordinator.publishNoteAnchors()
+    }
+
+    static func dismantleNSView(_ nsView: PDFView, coordinator: Coordinator) {
+        coordinator.tearDown()
     }
 
     /// Load a PDFDocument, with security-scoped bookmark fallback for sandboxed apps.
@@ -159,6 +187,8 @@ struct PDFKitView: NSViewRepresentable {
         private var annotationSaveDebounce: Timer?
         private weak var observedViewport: NSClipView?
         private weak var observedScrollView: NSScrollView?
+        private weak var managedUndoManager: UndoManager?
+        private var didTearDown = false
         var isJumping = false
         /// The file path of the currently loaded document.
         /// Stored explicitly so we never rely on `documentURL?.path`,
@@ -200,6 +230,42 @@ struct PDFKitView: NSViewRepresentable {
             scrollDebounce?.invalidate()
             annotationSaveDebounce?.invalidate()
             pendingRestoreTimeoutWorkItem?.cancel()
+        }
+
+        @discardableResult
+        func configureUndoHistory() -> UndoManager? {
+            guard let undoManager = pdfView?.undoManager else { return nil }
+            if managedUndoManager !== undoManager {
+                ReaderUndoHistoryPolicy.clearActions(for: self, from: managedUndoManager)
+                managedUndoManager = undoManager
+            }
+            ReaderUndoHistoryPolicy.configure(undoManager)
+            return undoManager
+        }
+
+        func prepareForDocumentChange() {
+            annotationSaveDebounce?.invalidate()
+            annotationSaveDebounce = nil
+            persistFreeMarkups()
+            ReaderUndoHistoryPolicy.clearActions(for: self, from: configureUndoHistory())
+        }
+
+        func tearDown() {
+            guard !didTearDown else { return }
+            didTearDown = true
+            annotationSaveDebounce?.invalidate()
+            annotationSaveDebounce = nil
+            persistFreeMarkups()
+            ReaderUndoHistoryPolicy.clearActions(for: self, from: managedUndoManager)
+            NotificationCenter.default.removeObserver(self)
+            selectionDebounce?.invalidate()
+            scrollDebounce?.invalidate()
+            pendingRestoreTimeoutWorkItem?.cancel()
+            MainActor.assumeIsolated {
+                if parent.viewportTransitionController.handler === self {
+                    parent.viewportTransitionController.handler = nil
+                }
+            }
         }
 
         func attachViewportObserverIfNeeded() {
@@ -628,18 +694,6 @@ struct PDFKitView: NSViewRepresentable {
             }
         }
 
-        /// Snapshot for undo/redo of note-linked underline annotations.
-        private struct NoteAnnotationSnapshot {
-            let page: PDFPage
-            let noteId: String
-            let bounds: CGRect
-        }
-
-        private struct NoteAnnotationRecord {
-            let page: PDFPage
-            let annotation: PDFAnnotation
-        }
-
         @objc func addFreeAnnotation(_ notification: Notification) {
             guard let typeStr = notification.userInfo?["annotationType"] as? String,
                   let filePath = notification.userInfo?["filePath"] as? String,
@@ -649,8 +703,9 @@ struct PDFKitView: NSViewRepresentable {
 
             guard let targets = Self.annotationTargets(from: notification.userInfo) else { return }
 
-            pdfView.undoManager?.beginUndoGrouping()
-            defer { pdfView.undoManager?.endUndoGrouping() }
+            let undoManager = configureUndoHistory()
+            undoManager?.beginUndoGrouping()
+            defer { undoManager?.endUndoGrouping() }
             for (pageIndex, boundsStr) in targets {
                 guard let page = pdfView.document?.page(at: pageIndex) else { continue }
                 let lineRects = Self.parseAnnotationRects(boundsStr)
@@ -736,7 +791,7 @@ struct PDFKitView: NSViewRepresentable {
             removedSnapshots: [FreeAnnotationSnapshot],
             label: String
         ) {
-            guard let undo = pdfView?.undoManager else { return }
+            guard let undo = configureUndoHistory() else { return }
             let addedSnaps = added.map { FreeAnnotationSnapshot(ann: $0) }
 
             undo.registerUndo(withTarget: self) { [weak self] _ in
@@ -754,10 +809,9 @@ struct PDFKitView: NSViewRepresentable {
                     readdSnapshots: addedSnaps,
                     label: label
                 )
+                self.triggerAnnotationSave(immediate: true)
             }
-            if !undo.isUndoing {
-                undo.setActionName(label)
-            }
+            undo.setActionName(label)
         }
 
         private func registerRedoAnnotationMutation(
@@ -766,7 +820,7 @@ struct PDFKitView: NSViewRepresentable {
             readdSnapshots: [FreeAnnotationSnapshot],
             label: String
         ) {
-            guard let undo = pdfView?.undoManager else { return }
+            guard let undo = configureUndoHistory() else { return }
             let snapshotsOfRestored = restoredRemoved.map { FreeAnnotationSnapshot(ann: $0) }
 
             undo.registerUndo(withTarget: self) { [weak self] _ in
@@ -784,10 +838,9 @@ struct PDFKitView: NSViewRepresentable {
                     removedSnapshots: snapshotsOfRestored,
                     label: label
                 )
+                self.triggerAnnotationSave(immediate: true)
             }
-            if !undo.isUndoing {
-                undo.setActionName(label)
-            }
+            undo.setActionName(label)
         }
 
         private static func makeAnnotation(from snap: FreeAnnotationSnapshot, page: PDFPage) -> PDFAnnotation {
@@ -825,133 +878,106 @@ struct PDFKitView: NSViewRepresentable {
             let deletedNotesInfo = notification.userInfo?["deletedNotesInfo"] as? [NoteUndoInfo] ?? []
             let newNoteInfo = notification.userInfo?["newNoteInfo"] as? NoteUndoInfo
 
-            // 移除旧划线标注（合并场景）
-            var removedSnapshots: [NoteAnnotationSnapshot] = []
-            let deletedNoteIdSet = Set(deletedNoteIds)
-            if !deletedNoteIdSet.isEmpty {
-                for pageIndex in 0..<document.pageCount {
-                    guard let page = document.page(at: pageIndex) else { continue }
-                    for annotation in page.annotations where deletedNoteIdSet.contains(annotation.userName ?? "") {
-                        removedSnapshots.append(NoteAnnotationSnapshot(
-                            page: page,
-                            noteId: annotation.userName ?? "",
-                            bounds: annotation.bounds
-                        ))
-                        page.removeAnnotation(annotation)
-                    }
-                }
-            }
-
-            // 添加新划线标注
-            var addedAnnotations: [NoteAnnotationRecord] = []
-            for (pageIndex, boundsStr) in targets {
-                guard let page = document.page(at: pageIndex) else { continue }
-                for rect in Self.parseAnnotationRects(boundsStr) {
-                    let annotation = PDFMarkupAppearance.makeUnderline(
-                        bounds: rect,
-                        userName: noteId,
-                        contents: "note:\(noteId)"
-                    )
-                    page.addAnnotation(annotation)
-                    addedAnnotations.append(NoteAnnotationRecord(page: page, annotation: annotation))
-                }
-            }
-
-            triggerAnnotationSave()
+            removeNoteAnnotations(ids: Set(deletedNoteIds), from: document)
+            addNoteAnnotations(noteId: noteId, targets: targets, to: document)
             publishNoteAnchors()
 
-            // 注册撤销操作
-            if let undo = pdfView.undoManager, let newInfo = newNoteInfo {
-                let capturedRemovedSnapshots = removedSnapshots
-                let capturedDeletedNotesInfo = deletedNotesInfo
-                undo.registerUndo(withTarget: self) { coordinator in
-                    coordinator.undoUnderlineNote(
-                        addedAnnotations: addedAnnotations,
-                        removedSnapshots: capturedRemovedSnapshots,
-                        newNoteInfo: newInfo,
-                        deletedNotesInfo: capturedDeletedNotesInfo,
-                        filePath: filePath
-                    )
-                }
-                undo.setActionName("划线笔记")
+            if let newNoteInfo {
+                registerNoteHistoryTransition(
+                    current: [newNoteInfo],
+                    previous: deletedNotesInfo,
+                    label: "划线笔记"
+                )
             }
         }
 
-        /// 撤销划线笔记操作
-        private func undoUnderlineNote(
-            addedAnnotations: [NoteAnnotationRecord],
-            removedSnapshots: [NoteAnnotationSnapshot],
-            newNoteInfo: NoteUndoInfo,
-            deletedNotesInfo: [NoteUndoInfo],
-            filePath: String
+        private func registerNoteHistoryTransition(
+            current: [NoteUndoInfo],
+            previous: [NoteUndoInfo],
+            label: String
         ) {
-            guard let undo = pdfView?.undoManager else { return }
-
-            // 移除新添加的划线标注
-            for record in addedAnnotations {
-                record.page.removeAnnotation(record.annotation)
-            }
-
-            // 恢复旧的划线标注
-            var restoredAnnotations: [NoteAnnotationRecord] = []
-            for snap in removedSnapshots {
-                let ann = PDFMarkupAppearance.makeUnderline(
-                    bounds: snap.bounds,
-                    userName: snap.noteId,
-                    contents: "note:\(snap.noteId)"
-                )
-                snap.page.addAnnotation(ann)
-                restoredAnnotations.append(NoteAnnotationRecord(page: snap.page, annotation: ann))
-            }
-
-            triggerAnnotationSave()
-
-            // 通知 Swift 层恢复/删除笔记
-            // 删除新笔记
-            try? ReaderPersistence.shared.deleteNote(id: newNoteInfo.id)
-            // 恢复旧笔记
-            for info in deletedNotesInfo {
-                _ = try? ReaderPersistence.shared.saveNote(
-                    pdfPath: info.pdfPath,
-                    pdfName: info.pdfName,
-                    pageIndex: info.pageIndex,
-                    content: info.content,
-                    note: info.note,
-                    boundsStr: info.boundsStr,
-                    pageMarkups: info.pageMarkups
+            guard let undo = configureUndoHistory() else { return }
+            undo.registerUndo(withTarget: self) { coordinator in
+                coordinator.applyNoteHistoryTransition(
+                    removing: current,
+                    restoring: previous,
+                    label: label
                 )
             }
-            // 刷新笔记列表
+            undo.setActionName(label)
+        }
+
+        private func applyNoteHistoryTransition(
+            removing: [NoteUndoInfo],
+            restoring: [NoteUndoInfo],
+            label: String
+        ) {
+            guard let pdfView,
+                  let document = pdfView.document,
+                  (removing + restoring).allSatisfy({ $0.pdfPath == currentFilePath })
+            else { return }
+
+            do {
+                try ReaderPersistence.shared.applyNoteHistorySnapshot(
+                    removing: removing,
+                    restoring: restoring
+                )
+            } catch {
+                _ = pdfView.presentError(error)
+                return
+            }
+
+            removeNoteAnnotations(ids: Set(removing.map(\.id)), from: document)
+            for info in restoring {
+                addNoteAnnotations(
+                    noteId: info.id,
+                    targets: noteTargets(for: info),
+                    to: document
+                )
+            }
+            publishNoteAnchors()
             ReaderEventBus.shared.postRefreshNotesList()
 
-            // 注册重做操作
-            let capturedDeletedNotesInfo = deletedNotesInfo
-            undo.registerUndo(withTarget: self) { coordinator in
-                // 重做：重新删除旧笔记，创建新笔记
-                for info in capturedDeletedNotesInfo {
-                    try? ReaderPersistence.shared.deleteNote(id: info.id)
-                }
-                _ = try? ReaderPersistence.shared.saveNote(
-                    pdfPath: newNoteInfo.pdfPath,
-                    pdfName: newNoteInfo.pdfName,
-                    pageIndex: newNoteInfo.pageIndex,
-                    content: newNoteInfo.content,
-                    note: newNoteInfo.note,
-                    boundsStr: newNoteInfo.boundsStr,
-                    pageMarkups: newNoteInfo.pageMarkups
-                )
-                // 重新添加/移除标注
-                for record in restoredAnnotations {
-                    record.page.removeAnnotation(record.annotation)
-                }
-                for record in addedAnnotations {
-                    record.page.addAnnotation(record.annotation)
-                }
-                coordinator.triggerAnnotationSave()
-                // 刷新笔记列表
-                ReaderEventBus.shared.postRefreshNotesList()
+            registerNoteHistoryTransition(
+                current: restoring,
+                previous: removing,
+                label: label
+            )
+        }
+
+        private func noteTargets(for info: NoteUndoInfo) -> [(Int, String)] {
+            let markups = PDFPageMarkupCodec.normalized(info.pageMarkups)
+            if !markups.isEmpty {
+                return markups.map { ($0.pageIndex, $0.boundsStr) }
             }
-            undo.setActionName("划线笔记")
+            return [(Int(info.pageIndex), info.boundsStr)]
+        }
+
+        private func addNoteAnnotations(
+            noteId: String,
+            targets: [(Int, String)],
+            to document: PDFDocument
+        ) {
+            for (pageIndex, boundsStr) in targets {
+                guard let page = document.page(at: pageIndex) else { continue }
+                for rect in Self.parseAnnotationRects(boundsStr) {
+                    page.addAnnotation(PDFMarkupAppearance.makeUnderline(
+                        bounds: rect,
+                        userName: noteId,
+                        contents: "note:\(noteId)"
+                    ))
+                }
+            }
+        }
+
+        private func removeNoteAnnotations(ids: Set<String>, from document: PDFDocument) {
+            guard !ids.isEmpty else { return }
+            for pageIndex in 0..<document.pageCount {
+                guard let page = document.page(at: pageIndex) else { continue }
+                page.annotations
+                    .filter { ids.contains($0.userName ?? "") }
+                    .forEach { page.removeAnnotation($0) }
+            }
         }
 
         /// 删除划线笔记时移除对应的划线标注
@@ -963,15 +989,16 @@ struct PDFKitView: NSViewRepresentable {
                   let document = pdfView.document
             else { return }
 
-            // 移除所有使用该笔记 ID 的划线标注
-            for pageIndex in 0..<document.pageCount {
-                guard let page = document.page(at: pageIndex) else { continue }
-                page.annotations
-                    .filter { $0.userName == noteId }
-                    .forEach { page.removeAnnotation($0) }
-            }
-            triggerAnnotationSave()
+            removeNoteAnnotations(ids: [noteId], from: document)
             publishNoteAnchors()
+
+            if let deletedNoteInfo = notification.userInfo?["deletedNoteInfo"] as? NoteUndoInfo {
+                registerNoteHistoryTransition(
+                    current: [],
+                    previous: [deletedNoteInfo],
+                    label: "删除笔记"
+                )
+            }
         }
 
         // MARK: Apply saved highlights on document load
@@ -1267,21 +1294,21 @@ struct PDFKitView: NSViewRepresentable {
         }
 
         @objc func jumpToSelectionBounds(_ notification: Notification) {
-            guard let pageIndex = notification.userInfo?["pageIndex"] as? Int,
-                  let filePath = notification.userInfo?["filePath"] as? String,
+            guard let filePath = notification.userInfo?["filePath"] as? String,
                   filePath == currentFilePath,
+                  let targets = Self.annotationTargets(from: notification.userInfo),
+                  let primaryTarget = targets.first,
                   let pdfView,
-                  let page = pdfView.document?.page(at: pageIndex)
+                  let page = pdfView.document?.page(at: primaryTarget.0)
             else { return }
 
-            let boundsStr = notification.userInfo?["boundsStr"] as? String ?? ""
             cancelPendingViewportRestore()
             isJumping = true
             pdfView.go(to: page)
 
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self, weak pdfView, weak page] in
-                guard let self, let pdfView, let page else { return }
-                self.focusSelection(boundsStr: boundsStr, on: page, in: pdfView)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self, weak pdfView] in
+                guard let self, let pdfView else { return }
+                self.focusSelection(targets: targets, in: pdfView)
             }
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
@@ -1289,16 +1316,42 @@ struct PDFKitView: NSViewRepresentable {
             }
         }
 
-        private func focusSelection(boundsStr: String, on page: PDFPage, in pdfView: PDFView) {
-            let rects = Self.parseAnnotationRects(boundsStr)
-            guard !rects.isEmpty else { return }
-            let union = rects.reduce(CGRect.null) { partial, rect in
+        private func focusSelection(targets: [(Int, String)], in pdfView: PDFView) {
+            guard let document = pdfView.document else { return }
+            let resolved = targets.compactMap { pageIndex, boundsStr -> (PDFPage, [CGRect])? in
+                let rects = Self.parseAnnotationRects(boundsStr)
+                guard !rects.isEmpty, let page = document.page(at: pageIndex) else { return nil }
+                return (page, rects)
+            }
+            guard let primary = resolved.first else { return }
+
+            let selections = resolved.compactMap { page, rects in
+                PDFHighlightAnnotationFactory.selection(from: rects, on: page)
+            }
+            if let selection = Self.combinedSelection(selections, in: document) {
+                pdfView.setCurrentSelection(selection, animate: true)
+            }
+
+            let union = primary.1.reduce(CGRect.null) { partial, rect in
                 partial.isNull ? rect : partial.union(rect)
             }
             guard !union.isNull, !union.isEmpty else { return }
 
-            center(rect: union, on: page, in: pdfView)
-            flashFocus(rects: rects, on: page)
+            center(rect: union, on: primary.0, in: pdfView)
+            resolved.forEach { page, rects in
+                flashFocus(rects: rects, on: page)
+            }
+        }
+
+        private static func combinedSelection(
+            _ selections: [PDFSelection],
+            in document: PDFDocument
+        ) -> PDFSelection? {
+            guard let first = selections.first else { return nil }
+            guard selections.count > 1 else { return first }
+            let combined = PDFSelection(document: document)
+            combined.add(selections)
+            return combined
         }
 
         private func center(rect: CGRect, on page: PDFPage, in pdfView: PDFView) {

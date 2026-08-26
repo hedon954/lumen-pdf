@@ -72,6 +72,53 @@ impl NoteRepository for SqliteNoteRepo {
         })
     }
 
+    fn apply_history_snapshot(
+        &self,
+        remove_ids: &[String],
+        restore_notes: &[NoteEntry],
+    ) -> Result<(), LumenError> {
+        let mut conn = self.pool.get().map_err(|e| LumenError::DatabaseError {
+            message: e.to_string(),
+        })?;
+        let transaction = conn.transaction()?;
+
+        for id in remove_ids {
+            transaction.execute("DELETE FROM notes WHERE id = ?1", params![id])?;
+        }
+
+        for note in restore_notes {
+            transaction.execute(
+                "INSERT INTO notes (
+                    id, pdf_path, pdf_name, page_index, content, note,
+                    bounds_str, page_markups, created_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                 ON CONFLICT(id) DO UPDATE SET
+                    pdf_path = excluded.pdf_path,
+                    pdf_name = excluded.pdf_name,
+                    page_index = excluded.page_index,
+                    content = excluded.content,
+                    note = excluded.note,
+                    bounds_str = excluded.bounds_str,
+                    page_markups = excluded.page_markups,
+                    created_at = excluded.created_at",
+                params![
+                    note.id,
+                    note.pdf_path,
+                    note.pdf_name,
+                    note.page_index as i32,
+                    note.content,
+                    note.note,
+                    note.bounds_str,
+                    note.page_markups,
+                    note.created_at,
+                ],
+            )?;
+        }
+
+        transaction.commit()?;
+        Ok(())
+    }
+
     fn list(&self) -> Result<Vec<NoteEntry>, LumenError> {
         let conn = self.pool.get().map_err(|e| LumenError::DatabaseError {
             message: e.to_string(),
@@ -135,5 +182,71 @@ impl NoteRepository for SqliteNoteRepo {
         let entry = stmt.query_row(params![req.id], row_to_note)?;
 
         Ok(entry)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use r2d2::Pool;
+    use r2d2_sqlite::SqliteConnectionManager;
+
+    fn repo() -> SqliteNoteRepo {
+        let manager = SqliteConnectionManager::memory();
+        let pool = Pool::builder().max_size(1).build(manager).unwrap();
+        pool.get()
+            .unwrap()
+            .execute_batch(
+                "CREATE TABLE notes (
+                    id TEXT PRIMARY KEY,
+                    pdf_path TEXT NOT NULL,
+                    pdf_name TEXT NOT NULL,
+                    page_index INTEGER NOT NULL,
+                    content TEXT NOT NULL,
+                    note TEXT NOT NULL,
+                    bounds_str TEXT NOT NULL,
+                    page_markups TEXT NOT NULL DEFAULT '',
+                    created_at INTEGER NOT NULL
+                );",
+            )
+            .unwrap();
+        SqliteNoteRepo::new(pool)
+    }
+
+    fn note(id: &str, content: &str, created_at: i64) -> NoteEntry {
+        NoteEntry {
+            id: id.to_string(),
+            pdf_path: "/tmp/book.pdf".to_string(),
+            pdf_name: "book.pdf".to_string(),
+            page_index: 3,
+            content: content.to_string(),
+            note: "memo".to_string(),
+            bounds_str: "{{1, 2}, {3, 4}}".to_string(),
+            page_markups: "[]".to_string(),
+            created_at,
+        }
+    }
+
+    #[test]
+    fn history_snapshot_restores_exact_identity_and_is_idempotent() {
+        let repo = repo();
+        let original = note("original-id", "before", 123);
+        let replacement = note("replacement-id", "after", 456);
+
+        repo.apply_history_snapshot(&[], std::slice::from_ref(&replacement))
+            .unwrap();
+        repo.apply_history_snapshot(
+            std::slice::from_ref(&replacement.id),
+            std::slice::from_ref(&original),
+        )
+        .unwrap();
+        repo.apply_history_snapshot(&[], std::slice::from_ref(&original))
+            .unwrap();
+
+        let restored = repo.list_by_pdf("/tmp/book.pdf").unwrap();
+        assert_eq!(restored.len(), 1);
+        assert_eq!(restored[0].id, "original-id");
+        assert_eq!(restored[0].content, "before");
+        assert_eq!(restored[0].created_at, 123);
     }
 }

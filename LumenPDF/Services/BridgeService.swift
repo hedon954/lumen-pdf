@@ -17,6 +17,7 @@ private let _savePosition: (String, UInt32, Double) throws -> Void       = saveR
 private let _listPdfDocuments: () throws -> [PdfDocument]                = listPdfDocuments
 private let _deletePdfDocument: (String) throws -> Void                  = deletePdfDocument(filePath:)
 private let _saveNote: (SaveNoteRequest) throws -> NoteEntry             = saveNote(req:)
+private let _applyNoteHistorySnapshot: ([String], [NoteEntry]) throws -> Void = applyNoteHistorySnapshot(removeIds:restoreNotes:)
 private let _listNotes: () throws -> [NoteEntry]                         = listNotes
 private let _listNotesByPdf: (String) throws -> [NoteEntry]              = listNotesByPdf(pdfPath:)
 private let _deleteNote: (String) throws -> Void                         = deleteNote(id:)
@@ -368,6 +369,10 @@ final class BridgeService {
             boundsStr: boundsStr,
             pageMarkups: pageMarkups
         ))
+    }
+
+    func applyNoteHistorySnapshot(removeIds: [String], restoreNotes: [NoteEntry]) throws {
+        try _applyNoteHistorySnapshot(removeIds, restoreNotes)
     }
 
     func listNotes() throws -> [NoteEntry] {

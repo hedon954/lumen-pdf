@@ -552,4 +552,36 @@ struct NoteUndoInfo {
     let note: String
     let boundsStr: String
     let pageMarkups: [PDFPageMarkup]
+    let createdAt: Int64
+
+    init(_ entry: NoteEntry) {
+        id = entry.id
+        pdfPath = entry.pdfPath
+        pdfName = entry.pdfName
+        pageIndex = entry.pageIndex
+        content = entry.content
+        note = entry.note
+        boundsStr = entry.boundsStr
+        pageMarkups = PDFPageMarkupCodec.decode(
+            entry.pageMarkups,
+            fallbackPage: Int(entry.pageIndex),
+            fallbackBoundsStr: entry.boundsStr,
+            fallbackText: entry.content
+        )
+        createdAt = entry.createdAt
+    }
+
+    var entry: NoteEntry {
+        NoteEntry(
+            id: id,
+            pdfPath: pdfPath,
+            pdfName: pdfName,
+            pageIndex: pageIndex,
+            content: content,
+            note: note,
+            boundsStr: boundsStr,
+            pageMarkups: PDFPageMarkupCodec.encode(pageMarkups),
+            createdAt: createdAt
+        )
+    }
 }

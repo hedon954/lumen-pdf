@@ -313,6 +313,14 @@ pub fn save_note(req: SaveNoteRequest) -> Result<NoteEntry, LumenError> {
 }
 
 #[uniffi::export]
+pub fn apply_note_history_snapshot(
+    remove_ids: Vec<String>,
+    restore_notes: Vec<NoteEntry>,
+) -> Result<(), LumenError> {
+    note_use_case()?.apply_history_snapshot(remove_ids, restore_notes)
+}
+
+#[uniffi::export]
 pub fn list_notes() -> Result<Vec<NoteEntry>, LumenError> {
     note_use_case()?.list()
 }

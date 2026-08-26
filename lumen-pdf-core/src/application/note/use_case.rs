@@ -18,6 +18,15 @@ impl NoteUseCase {
         self.repo.save(&req)
     }
 
+    pub fn apply_history_snapshot(
+        &self,
+        remove_ids: Vec<String>,
+        restore_notes: Vec<NoteEntry>,
+    ) -> Result<(), LumenError> {
+        self.repo
+            .apply_history_snapshot(&remove_ids, &restore_notes)
+    }
+
     pub fn list(&self) -> Result<Vec<NoteEntry>, LumenError> {
         self.repo.list()
     }

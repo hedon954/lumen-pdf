@@ -150,9 +150,48 @@ final class ReaderPersistence {
         try bridge.deleteNote(id: id)
     }
 
+    func applyNoteHistorySnapshot(
+        removing: [NoteUndoInfo],
+        restoring: [NoteUndoInfo]
+    ) throws {
+        try bridge.applyNoteHistorySnapshot(
+            removeIds: removing.map(\.id),
+            restoreNotes: restoring.map(\.entry)
+        )
+    }
+
+    func makeNoteHistorySnapshot(
+        pdfPath: String,
+        pdfName: String,
+        pageIndex: UInt32,
+        content: String,
+        note: String,
+        boundsStr: String,
+        pageMarkups: [PDFPageMarkup]
+    ) -> NoteUndoInfo {
+        NoteUndoInfo(NoteEntry(
+            id: UUID().uuidString,
+            pdfPath: pdfPath,
+            pdfName: pdfName,
+            pageIndex: pageIndex,
+            content: ContextSentenceFormatting.displayParagraph(content),
+            note: NoteTextList.storageString(from: note),
+            boundsStr: boundsStr,
+            pageMarkups: PDFPageMarkupCodec.encode(pageMarkups),
+            createdAt: Int64(Date().timeIntervalSince1970)
+        ))
+    }
+
     func deleteNoteRemovingUnderline(id: String, filePath: String) throws {
+        let undoInfo = try listNotesByPdf(pdfPath: filePath)
+            .first(where: { $0.id == id })
+            .map(NoteUndoInfo.init)
         try deleteNote(id: id)
-        ReaderEventBus.shared.postRemoveUnderlineNote(noteId: id, filePath: filePath)
+        ReaderEventBus.shared.postRemoveUnderlineNote(
+            noteId: id,
+            filePath: filePath,
+            undoInfo: undoInfo
+        )
     }
 
     func deleteVocabularyRemovingHighlight(id: String, page: Int, filePath: String) throws {

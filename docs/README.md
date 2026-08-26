@@ -47,6 +47,7 @@ PRD 记录**用户可感知的行为与验收标准**。TDD 记录**如何实现
 | v1.0.29 | 2026-08-24 | Extra Config 单源与未用 UniFFI 收缩 | [prd-2026-08-24-codebase-simplification.md](prd/prd-2026-08-24-codebase-simplification.md) | [tdd-2026-08-24-codebase-simplification.md](tdd/tdd-2026-08-24-codebase-simplification.md) |
 | v1.0.29 | 2026-08-24 | LLM 服务商「其他」 | [prd-2026-08-24-llm-provider-other.md](prd/prd-2026-08-24-llm-provider-other.md) | [tdd-2026-08-24-llm-provider-other.md](tdd/tdd-2026-08-24-llm-provider-other.md) |
 | v1.0.29 | 2026-08-25 | 搜索模糊、翻译 AI 快捷入口与跨页笔记划线 | [prd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md](prd/prd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md) | [tdd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md](tdd/tdd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md) |
+| unreleased | 2026-08-26 | 标注撤回与重做历史 | [prd-2026-08-26-annotation-undo-history.md](prd/prd-2026-08-26-annotation-undo-history.md) | [tdd-2026-08-26-annotation-undo-history.md](tdd/tdd-2026-08-26-annotation-undo-history.md) |
 
 未单独成对的发布：
 
@@ -89,6 +90,7 @@ v1.0.0 Toggle：包围盒重叠则合并或整段取消
   → v1.0.24 跨页逐页落笔、页眉页脚
   → unreleased 按文本行一维区间合并，禁止用多行包围盒误删上一行
   → unreleased 自由标注与笔记标注共用逐页载荷，笔记持久化完整跨页几何
+  → unreleased 标注保留 50 个顶层 Undo/Redo 操作，笔记用原子前后快照恢复
 ```
 
 ### LLM 与 AI 导读

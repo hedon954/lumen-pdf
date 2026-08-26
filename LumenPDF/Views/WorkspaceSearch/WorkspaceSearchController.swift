@@ -140,11 +140,17 @@ enum WorkspaceSearchOpener {
 
         let delay: TimeInterval = needsDocumentSwitch ? 0.35 : 0.08
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-            if !record.boundsStr.isEmpty {
+            if !record.boundsStr.isEmpty || !record.pageMarkups.isEmpty {
+                let markups = PDFPageMarkupCodec.decode(
+                    record.pageMarkups,
+                    fallbackPage: record.pageIndex,
+                    fallbackBoundsStr: record.boundsStr
+                )
                 ReaderEventBus.shared.postJumpToSelectionBounds(
                     page: record.pageIndex,
                     filePath: record.pdfPath,
                     boundsStr: record.boundsStr,
+                    markups: markups,
                     itemId: record.id,
                     kind: record.kind.rawValue
                 )

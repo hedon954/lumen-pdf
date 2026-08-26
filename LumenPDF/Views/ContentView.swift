@@ -440,7 +440,8 @@ struct ContentView: View {
         ReaderEventBus.shared.postAddUnderlineNote(
             noteId: note.id,
             markups: request.effectivePageMarkups,
-            filePath: request.pdfPath
+            filePath: request.pdfPath,
+            undoInfo: NoteUndoInfo(note)
         )
         appState.refreshNotes()
         appState.showToast("已保存到笔记")

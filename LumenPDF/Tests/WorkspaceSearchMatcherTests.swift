@@ -40,6 +40,45 @@ final class WorkspaceSearchMatcherTests: XCTestCase {
         XCTAssertEqual(noteHits.map(\.record.id), ["note:n1"])
     }
 
+    func testNoteRecordKeepsCrossPageGeometryForOpening() {
+        let firstBounds = "{{10, 20}, {100, 12}}"
+        let secondBounds = "{{12, 700}, {120, 12}}"
+        let encoded = PDFPageMarkupCodec.encode([
+            PDFPageMarkup(
+                pageIndex: 1,
+                lineRects: AnnotationBoundsCodec.parse(firstBounds),
+                text: "first"
+            ),
+            PDFPageMarkup(
+                pageIndex: 2,
+                lineRects: AnnotationBoundsCodec.parse(secondBounds),
+                text: "second"
+            ),
+        ])
+        let record = WorkspaceSearchCatalog.records(notes: [
+            WorkspaceSearchNoteDraft(
+                id: "n1",
+                pdfPath: "/tmp/a.pdf",
+                pdfName: "a.pdf",
+                pageIndex: 1,
+                boundsStr: firstBounds,
+                pageMarkups: encoded,
+                content: "cross page",
+                noteStorage: "memo"
+            )
+        ]).first
+
+        XCTAssertEqual(record?.pageMarkups, encoded)
+        XCTAssertEqual(
+            PDFPageMarkupCodec.decode(
+                record?.pageMarkups ?? "",
+                fallbackPage: record?.pageIndex ?? 0,
+                fallbackBoundsStr: record?.boundsStr ?? ""
+            ).map(\.pageIndex),
+            [1, 2]
+        )
+    }
+
     func testWordMatchesDefinitionAndEtymology() {
         let records = WorkspaceSearchCatalog.records(
             words: [
@@ -302,6 +341,22 @@ final class WorkspaceSearchMatcherTests: XCTestCase {
 
     func testDefaultKindsAreNotesAndUnderlines() {
         XCTAssertEqual(WorkspaceSearchKind.defaultEnabled, [.note, .underline])
+    }
+
+    @MainActor
+    func testPresentAlwaysRequestsSearchFieldFocus() {
+        let controller = WorkspaceSearchController()
+
+        controller.present { _ in [] }
+        let firstFocusRequest = controller.focusNonce
+
+        XCTAssertTrue(controller.isPresented)
+        XCTAssertEqual(firstFocusRequest, 1)
+
+        controller.present { _ in [] }
+
+        XCTAssertTrue(controller.isPresented)
+        XCTAssertEqual(controller.focusNonce, firstFocusRequest + 1)
     }
 
     private static func note(

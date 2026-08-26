@@ -25,10 +25,9 @@ enum UnderlineNoteMergePolicy {
     }
 
     static func mergedNoteText(existing: [String], new: String) -> String {
-        (existing + [new])
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-            .joined(separator: "\n\n")
+        NoteTextList.encode(
+            existing.flatMap(NoteTextList.decode) + NoteTextList.decode(new)
+        )
     }
 
     static func mergeAnnotationRects(_ rects: [CGRect]) -> [CGRect] {

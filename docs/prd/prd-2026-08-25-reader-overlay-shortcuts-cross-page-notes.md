@@ -7,6 +7,8 @@ predecessor:
   - prd/prd-2026-08-19-markup-diagnostics.md
   - prd/prd-2026-08-21-workspace-search.md
   - prd/prd-2026-08-21-markup-interval-merge.md
+successor:
+  - prd/prd-2026-08-26-annotation-undo-history.md
 ---
 
 # LumenPDF — 阅读浮层快捷入口与跨页笔记划线 PRD
@@ -35,7 +37,7 @@ predecessor:
 - 自由高亮、自由划线、手写笔记、句子翻译保存到笔记、AI 解释保存到笔记，都使用选区生成的同一组逐页正文标记。
 - 跨页选区创建笔记后，每个包含正文的页面都显示红色笔记划线；已过滤的重复页眉页脚不得重新出现。
 - 跨页几何随笔记持久化；关闭并重新打开 PDF 后，各页划线仍完整恢复。
-- 删除笔记时移除该笔记在所有页面上的划线。合并、撤销和重做不能只处理主页面。
+- 删除笔记时移除该笔记在所有页面上的划线。合并、撤销和重做不能只处理主页面。后续修订：撤回历史容量、Redo、文档生命周期与笔记快照事务见 [prd-2026-08-26-annotation-undo-history.md](prd-2026-08-26-annotation-undo-history.md)。
 - 历史单页笔记无需迁移用户内容，仍按原页码和矩形恢复。
 
 ## 3. 非目标

@@ -74,6 +74,7 @@ enum WorkspaceSearchSourceMapper {
                 pdfName: note.pdfName,
                 pageIndex: Int(note.pageIndex),
                 boundsStr: note.boundsStr,
+                pageMarkups: note.pageMarkups,
                 content: note.content,
                 noteStorage: note.note
             )

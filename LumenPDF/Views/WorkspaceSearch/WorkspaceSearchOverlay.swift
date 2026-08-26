@@ -36,10 +36,9 @@ struct WorkspaceSearchOverlay: View {
             controller.moveSelection(1)
             return .handled
         }
-        .onAppear {
-            isSearchFocused = true
-        }
-        .onChange(of: controller.focusNonce) { _, _ in
+        .task(id: controller.focusNonce) {
+            await Task.yield()
+            guard !Task.isCancelled else { return }
             isSearchFocused = true
         }
         .accessibilityElement(children: .contain)
