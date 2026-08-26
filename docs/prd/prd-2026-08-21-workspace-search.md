@@ -1,5 +1,5 @@
 ---
-version: unreleased
+version: v1.0.30
 date: 2026-08-21
 tdd: tdd/tdd-2026-08-21-workspace-search.md
 predecessor:

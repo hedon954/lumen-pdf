@@ -3,6 +3,24 @@
 LumenPDF 的版本记录由人工/AI 维护。每个版本只记录对用户或后续开发有意义的变化，并为具体变更附上对应的 GitHub commit URL。
 
 ---
+## [1.0.30](https://github.com/hedon954/lumen-pdf/compare/v1.0.29..v1.0.30) - 2026-08-26
+
+这一版完善了 ⌘F 搜索和阅读标注的系统交互：搜索框打开即聚焦，笔记结果会跳到对应页并恢复完整选区；标注撤回采用系统 UndoManager，保留最近 50 个操作，并让笔记撤回 / 重做与数据库原子同步。
+
+### 主要变化
+
+- ⌘F 搜索浮层首次打开或重复唤起时都会自动聚焦输入框；点击笔记结果会打开右侧笔记、跳到起始页，并把单页或跨页关联文本恢复为 PDFKit 当前选区（[8572711](https://github.com/hedon954/lumen-pdf/commit/8572711aafaee2616286bd47822f46e8fbde7e3e)）。
+- 阅读标注接入窗口级标准 UndoManager：保留最近 50 个顶层操作，支持 ⌘Z / ⇧⌘Z，跨页标注或合并多条笔记只占一个历史项；文本框有焦点时仍优先撤回文字（[8572711](https://github.com/hedon954/lumen-pdf/commit/8572711aafaee2616286bd47822f46e8fbde7e3e)）。
+
+### 修复
+
+- 笔记撤回 / 重做改用 SQLite 原子前后快照，原样保留 ID、创建时间、正文、笔记和跨页几何，避免重做后出现重复笔记或顺序变化；自由高亮和划线撤回后也会立即同步本地存储（[8572711](https://github.com/hedon954/lumen-pdf/commit/8572711aafaee2616286bd47822f46e8fbde7e3e)）。
+
+### 工程与文档
+
+- 精简 release-tag 默认流程，仅保留版本、中文变更记录、提交、annotated tag 与远端确认，耗时打包和产物审计改为按需执行（[3a4e267](https://github.com/hedon954/lumen-pdf/commit/3a4e26797a75588aa0093bef783c5a9ebf2896c6)）。
+
+---
 ## [1.0.29](https://github.com/hedon954/lumen-pdf/compare/v1.0.28..v1.0.29) - 2026-08-25
 
 这一版补齐阅读动作闭环：搜索时更容易聚焦当前入口，翻译后可直接进入 AI 解释，跨页笔记划线会完整保存和恢复；LLM 设置也支持自定义兼容端点，并收缩了 Rust、Swift 与 UniFFI 之间的重复路径。
