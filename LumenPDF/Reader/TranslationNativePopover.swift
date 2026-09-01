@@ -14,6 +14,6 @@ enum TranslationPopoverGeometry {
         let usable = max(availableWidth, 420)
         let cap = min(max(minWidth, usable - 96), maxWidth)
         let base: CGFloat = isSentenceMode ? 560 : 320
-        return min(max(base, CGFloat(text.count) * 4.2), cap)
+        return min(max(base, CGFloat(textCount) * 4.2), cap)
     }
 }
