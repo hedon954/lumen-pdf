@@ -255,6 +255,9 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
     /// chose — assuming `.leading` while the card sits on the right put the
     /// triangle on the far edge, away from the word.
     private var pointingSide: ReadingOverlayPlacement {
+        if customCenter != nil {
+            return nearestPointerSide()
+        }
         if let lockedPlacement {
             return lockedPlacement == .leastOverlap ? nearestPointerSide() : lockedPlacement
         }
@@ -290,7 +293,18 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
         } else {
             size = CGSize(width: configuration.width, height: 240)
         }
-        let overlay = CGRect(origin: lockedOrigin ?? .zero, size: size)
+        let origin: CGPoint
+        if let customCenter {
+            let center = clampedCenter(
+                customCenter,
+                windowSize: size,
+                verticalSafeInset: horizontalSafeInset
+            )
+            origin = CGPoint(x: center.x - size.width / 2, y: center.y - size.height / 2)
+        } else {
+            origin = lockedOrigin ?? .zero
+        }
+        let overlay = CGRect(origin: origin, size: size)
         let dx = anchorRect.midX - overlay.midX
         let dy = anchorRect.midY - overlay.midY
         if abs(dx) >= abs(dy) {
@@ -616,20 +630,42 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
 /// pressing and dragging it repositions the host `ReadingOverlayWindow`.
 struct ReadingOverlayMoveHandle: View {
     @Environment(\.readingOverlayMove) private var move
+    let size: CGFloat
+    let iconFont: Font
+    let foregroundColor: Color?
+
+    init(
+        size: CGFloat = 28,
+        iconFont: Font = .caption,
+        foregroundColor: Color? = nil
+    ) {
+        self.size = size
+        self.iconFont = iconFont
+        self.foregroundColor = foregroundColor
+    }
 
     var body: some View {
         ReadingOverlayDragCapture { delta in
             move?(delta)
         }
-        .frame(width: 28, height: 28)
+        .frame(width: size, height: size)
         .overlay {
-            Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-                .allowsHitTesting(false)
+            if let foregroundColor {
+                moveIcon
+                    .foregroundStyle(foregroundColor)
+            } else {
+                moveIcon
+                    .foregroundStyle(.tertiary)
+            }
         }
         .help("拖动以移动窗口")
         .accessibilityLabel("移动窗口")
+    }
+
+    private var moveIcon: some View {
+        Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
+            .font(iconFont)
+            .allowsHitTesting(false)
     }
 }
 

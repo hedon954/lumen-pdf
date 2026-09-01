@@ -46,7 +46,7 @@ successor:
 
 ### F4 — 翻译浮窗位置固定
 
-- 浮窗首次测量后锁定左上角原点。后续修订：翻译仍锁定 overlay 原点，并用不透明三角对准选区，见 [prd-2026-09-01-native-translation-popover.md](prd-2026-09-01-native-translation-popover.md)。
+- 浮窗首次测量后锁定左上角原点。后续修订：翻译继续使用 `ReadingOverlayWindow` 锁定自动放置原点；用户拖动后改由 `customCenter` 控制，见 [prd-2026-09-01-native-translation-popover.md](prd-2026-09-01-native-translation-popover.md)。
 - 之后内容变高只向下增高，并用容器边界做最小钳制。
 - 不得因为可能挡住选区就改到上方、左侧或右侧。
 - 用户拖动后仍以拖动位置为准；新的翻译会话重新定位。

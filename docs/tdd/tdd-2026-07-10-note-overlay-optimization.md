@@ -7,6 +7,7 @@ predecessor:
 successor:
   - tdd/tdd-2026-07-13-v1016-reader-selection-overlays.md
   - tdd/tdd-2026-08-20-note-autosave-overlay-stability.md
+  - tdd/tdd-2026-09-01-native-translation-popover.md
 ---
 
 # LumenPDF — 阅读浮层与划线回顾优化 TDD
@@ -15,7 +16,7 @@ successor:
 
 本迭代仅调整 SwiftUI / PDFKit 阅读层，不修改 Rust、UniFFI、数据库 schema 或持久化格式。
 
-外围窗口逻辑集中到泛型组件 `ReadingOverlayWindow`。翻译、添加/追加笔记、笔记回顾只提供各自的 header、content、footer；内容测量、自适应高度、80% 高度上限、滚动、避让、拖动、缩放、窗口边界和样式全部由公共外壳处理。
+外围窗口逻辑集中到泛型组件 `ReadingOverlayWindow`。翻译、添加/追加笔记、笔记回顾只提供各自的 header、content、footer；内容测量、自适应高度、80% 高度上限、滚动、避让、拖动、缩放、窗口边界和样式全部由公共外壳处理。后续修订：翻译把宽高参数集中到 `TranslationPopoverGeometry`，继续由 `ReadingOverlayWindow` 承载拖动、实测高度和边界约束，并配置为不可缩放的 Look Up 式实色锚定浮窗，见 [tdd-2026-09-01-native-translation-popover.md](tdd-2026-09-01-native-translation-popover.md)。
 
 这次收敛替代了原先分散在 `TranslationBubble`、`UnderlineNoteDraftView` 和 `PDFReaderView` 中的多套窗口状态，避免后续只修复某一种浮层。
 
@@ -26,7 +27,7 @@ successor:
 | `LumenPDF/Reader/ReadingOverlayWindow.swift` | 公共窗口外壳：测量、自适应高度、滚动、定位、拖动、可选缩放、样式和关闭。 |
 | `LumenPDF/Reader/PDFReaderModels.swift` | 选区/笔记锚点模型与纯定位策略；支持独立的水平、垂直安全边距。 |
 | `LumenPDF/Reader/UnderlineNoteDraftView.swift` | 只提供笔记编辑 header/content/footer，不持有外围拖动和滚动实现。 |
-| `LumenPDF/Views/TranslationBubble.swift` | 保留翻译内容、发音与保存动作；移除本地窗口、测量、拖动和缩放代码。 |
+| `LumenPDF/Views/TranslationBubble.swift` | 保留翻译内容、发音与保存动作；移除本地窗口、测量、拖动和缩放代码。后续修订：为系统 popover 恢复仅限内容 viewport 的实测高度与滚动，不恢复自定义窗口状态。 |
 | `LumenPDF/Views/PDFReaderView.swift` | 组合三类浮层，传入阅读区域尺寸和锚点；管理笔记图标及回顾业务状态。 |
 | `LumenPDF/Views/ReadingInspector/ReadingWorkspaceView.swift` | 实现“打开右侧笔记”：刷新数据、切换 `.notes`、显示 Inspector。 |
 | `LumenPDF/LumenPDF.xcodeproj/project.pbxproj` | 将新公共窗口源文件加入 LumenPDF target。 |

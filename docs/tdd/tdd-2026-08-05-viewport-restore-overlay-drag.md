@@ -6,6 +6,7 @@ predecessor:
   - tdd/tdd-2026-07-13-v1016-reader-selection-overlays.md
 successor:
   - tdd/tdd-2026-08-09-selection-overlay-placement.md
+  - tdd/tdd-2026-09-01-native-translation-popover.md
 ---
 
 # LumenPDF — 阅读位置恢复与浮窗拖动 TDD
@@ -16,7 +17,7 @@ successor:
 
 阅读位置的权威富状态仍在 `ReadingRestorationStore`（UserDefaults `reading_restoration_state_v1`）。本次在 `PDFViewport` 中增加可选页坐标锚点，并把滚动换算抽成纯几何类型 `ReaderViewportGeometry`，避免把“相对文档高度的比例”当作跨布局稳定的坐标。
 
-窗口型浮层继续复用 `ReadingOverlayWindow`。本次修正其放置与命中测试模型，并新增 `ReadingOverlayMoveHandle` 作为唯一显式拖动手柄，修复关闭按钮与点外关闭被吞掉的问题。
+窗口型浮层继续复用 `ReadingOverlayWindow`。本次修正其放置与命中测试模型，并新增 `ReadingOverlayMoveHandle` 作为唯一显式拖动手柄，修复关闭按钮与点外关闭被吞掉的问题。后续修订：翻译继续使用该拖动手柄，并把它与播放、刷新、关闭统一成四个等大紧凑控件；笔记浮层保持不变，见 [tdd-2026-09-01-native-translation-popover.md](tdd-2026-09-01-native-translation-popover.md)。
 
 ## 2. 影响范围
 
@@ -26,7 +27,7 @@ successor:
 | `LumenPDF/Reader/PDFReaderModels.swift` | `ReaderViewportGeometry`：可视左上角 ↔ clip view 原点。 |
 | `LumenPDF/Reader/PDFKitView.swift` | 采集/恢复锚点；布局稳定前重试；主动滚动与显式导航结束恢复。 |
 | `LumenPDF/Reader/ReadingOverlayWindow.swift` | `offset` 放置、点外关闭、移动手柄环境值、缩放热区避开标题栏。 |
-| `LumenPDF/Views/TranslationBubble.swift` | 四向箭头改为 `ReadingOverlayMoveHandle`。 |
+| `LumenPDF/Views/TranslationBubble.swift` | 四向箭头改为 `ReadingOverlayMoveHandle`。后续修订：系统 popover 取消该手柄。 |
 | `LumenPDF/Reader/UnderlineNoteDraftView.swift` | 笔记草稿标题栏加入移动手柄。 |
 | `LumenPDF/Views/PDFReaderView.swift` | 笔记回顾浮层标题栏加入移动手柄。 |
 | `LumenPDF/Tests/ReaderViewportGeometryTests.swift` | 纯几何与 `PDFViewport` Codable 兼容测试。 |

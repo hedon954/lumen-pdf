@@ -6,9 +6,6 @@ struct TranslationBubble: View {
     let request: TranslationBubbleRequest
     let isLoading: Bool
     let availableSize: CGSize
-    /// Selection in this overlay's local space. Root-space rects must already
-    /// have the overlay frame origin subtracted, or the pointer misses the word
-    /// by the unified-toolbar offset.
     let overlayAnchorRect: CGRect
     let onSave: (TranslationResult) -> String?
     let onDelete: (String, Bool) -> Void
@@ -32,9 +29,7 @@ struct TranslationBubble: View {
                 width: cardWidth,
                 initialContentHeight: initialContentHeight,
                 minimumContentHeight: 80,
-                isResizable: true,
-                minimumSize: CGSize(width: 280, height: 180),
-                maximumSize: CGSize(width: 920, height: CGFloat.greatestFiniteMagnitude),
+                isResizable: false,
                 dismissesOnBackgroundTap: true,
                 showsFooter: showsFooter,
                 showsAnchorPointer: true,
@@ -90,19 +85,16 @@ struct TranslationBubble: View {
     }
 
     private var initialContentHeight: CGFloat {
-        if request.translationError != nil || request.result?.isCompleteFailure == true {
-            return 248
-        }
-        return request.isSentenceMode ? 200 : 168
+        TranslationPopoverGeometry.initialContentHeight(
+            isSentenceMode: request.isSentenceMode,
+            showsFailure: request.translationError != nil
+                || request.result?.isCompleteFailure == true
+        )
     }
 
     private var showsFooter: Bool {
         guard let result = request.result else { return false }
         return !isLoading && !result.isCompleteFailure && Self.hasAnyContent(result)
-    }
-
-    private var showsRefreshButton: Bool {
-        !isLoading && (request.result != nil || request.translationError != nil)
     }
 
     private var refreshHelp: String {
@@ -113,60 +105,109 @@ struct TranslationBubble: View {
     }
 
     private var header: some View {
-        HStack(spacing: 8) {
-            ReadingOverlayMoveHandle()
-            Spacer(minLength: 8)
-            if showsRefreshButton {
-                Button(action: onRetry) {
-                    Image(systemName: "arrow.clockwise")
+        HStack(alignment: .top, spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(sourceText)
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let phonetic = request.result?.phonetic, !phonetic.isEmpty {
+                    Text("[\(phonetic)]")
+                        .font(.callout)
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                 }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("translation.retry")
-                .help(refreshHelp)
             }
-            Button(action: onDismiss) {
-                Image(systemName: "xmark")
-                    .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .layoutPriority(1)
+
+            HStack(spacing: TranslationHeaderControlMetrics.spacing) {
+                ReadingOverlayMoveHandle(
+                    size: TranslationHeaderControlMetrics.size,
+                    iconFont: .system(size: 15, weight: .medium),
+                    foregroundColor: .secondary
+                )
+                .accessibilityIdentifier("translation.move")
+
+                headerControlButton(
+                    systemName: "play.circle",
+                    help: "朗读",
+                    accessibilityLabel: "朗读原文",
+                    accessibilityIdentifier: "translation.source",
+                    isDisabled: sourceText.isEmpty || isLoading
+                ) {
+                    audio.speak(sourceText, languageCode: languageStyle.sourceSpeechCode)
+                }
+
+                headerControlButton(
+                    systemName: "arrow.clockwise",
+                    help: refreshHelp,
+                    accessibilityLabel: refreshHelp,
+                    accessibilityIdentifier: "translation.retry",
+                    isDisabled: isLoading,
+                    action: onRetry
+                )
+
+                headerControlButton(
+                    systemName: "xmark",
+                    help: "关闭",
+                    accessibilityLabel: "关闭翻译",
+                    accessibilityIdentifier: "translation.close",
+                    action: onDismiss
+                )
             }
-            .buttonStyle(.plain)
-            .help("关闭")
+            .fixedSize(horizontal: true, vertical: false)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 4)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .accessibilityElement(children: .contain)
+    }
+
+    private func headerControlButton(
+        systemName: String,
+        help: String,
+        accessibilityLabel: String,
+        accessibilityIdentifier: String,
+        isDisabled: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(
+                    width: TranslationHeaderControlMetrics.size,
+                    height: TranslationHeaderControlMetrics.size
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .help(help)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityIdentifier(accessibilityIdentifier)
     }
 
     @ViewBuilder
     private var content: some View {
         if let result = request.result, Self.hasAnyContent(result) {
             if result.isCompleteFailure {
-                VStack(alignment: .leading, spacing: 0) {
-                    sourcePair(phonetic: result.phonetic)
-                    Divider()
-                    completeFailureView(result: result)
-                }
+                completeFailureView(result: result)
             } else {
                 resultContent(result: result)
             }
         } else if isLoading {
-            VStack(alignment: .leading, spacing: 0) {
-                sourcePair(phonetic: "")
-                Divider()
-                targetPair(text: "", isLoading: true, isFallback: false)
-            }
+            targetPair(text: "", isLoading: true, isFallback: false)
         } else {
-            VStack(alignment: .leading, spacing: 0) {
-                sourcePair(phonetic: "")
-                Divider()
-                incompleteView
-            }
+            incompleteView
         }
     }
 
     private func resultContent(result: TranslationResult) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            sourcePair(phonetic: result.phonetic)
-            Divider()
             targetPair(
                 text: primaryTranslation(from: result),
                 isLoading: TranslationPopoverPresentation.showsStreamingProgress(
@@ -211,21 +252,6 @@ struct TranslationBubble: View {
             || !result.contextSentenceTranslation.isEmpty
             || !result.sentenceBreakdown.isEmpty
             || result.isCompleteFailure
-    }
-
-    private func sourcePair(phonetic: String) -> some View {
-        TranslationPopoverLanguagePair(
-            languageLabel: languageStyle.sourceLabel,
-            text: sourceText,
-            phonetic: phonetic,
-            isResult: false,
-            isLoading: false,
-            speakEnabled: !sourceText.isEmpty && !isLoading,
-            onSpeak: {
-                audio.speak(sourceText, languageCode: languageStyle.sourceSpeechCode)
-            }
-        )
-        .accessibilityIdentifier("translation.source")
     }
 
     private func targetPair(text: String, isLoading: Bool, isFallback: Bool) -> some View {

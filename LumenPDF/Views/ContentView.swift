@@ -100,16 +100,19 @@ struct ContentView: View {
                let request = translationOverlayModel.request
             {
                 GeometryReader { proxy in
-                    TranslationBubble(
-                        request: request,
-                        isLoading: translationOverlayModel.isLoading,
-                        availableSize: proxy.size,
-                        overlayAnchorRect: ReaderRootCoordinateSpace.localRect(
+                    let anchor = TranslationPopoverGeometry.selectionFrame(
+                        ReaderRootCoordinateSpace.localRect(
                             request.selectionAnchorRect,
                             overlayFrameInRoot: proxy.frame(
                                 in: .named(ReaderRootCoordinateSpace.name)
                             )
-                        ),
+                        )
+                    )
+                    TranslationBubble(
+                        request: request,
+                        isLoading: translationOverlayModel.isLoading,
+                        availableSize: proxy.size,
+                        overlayAnchorRect: anchor,
                         onSave: { result in
                             saveTranslation(result: result, request: request)
                         },

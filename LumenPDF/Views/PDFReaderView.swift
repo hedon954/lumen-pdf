@@ -59,6 +59,10 @@ struct PDFReaderView: View {
                 onDocumentLoaded: { total in
                     handleDocumentLoaded(totalPages: total)
                 },
+                translationSelection: translationSelectionEmphasis,
+                onTranslationViewportChanged: {
+                    translationOverlayModel.dismiss()
+                },
                 noteAnchorRequests: noteAnchorRequests,
                 onNoteAnchorsChanged: { anchors in
                     if noteAnchorPositions != anchors {
@@ -177,6 +181,16 @@ struct PDFReaderView: View {
         }
     }
 
+    private var translationSelectionEmphasis: TranslationSelectionEmphasis? {
+        guard let request = translationOverlayModel.request,
+              request.pdfPath == document.filePath else { return nil }
+        return TranslationSelectionEmphasis(
+            id: request.id,
+            filePath: request.pdfPath,
+            pageMarkups: request.effectivePageMarkups
+        )
+    }
+
     private func openNoteReview(_ anchor: NoteAnchorPosition) {
         let anchorBounds = appState.notes.first(where: { $0.id == anchor.noteId })?.boundsStr
         let notes = appState.notes.filter { note in
@@ -282,6 +296,7 @@ struct PDFReaderView: View {
     ) {
         switch action {
         case .translate:
+            selectionActionBarModel.dismiss()
             requestTranslation(
                 word: selection.word,
                 sentence: selection.sentence,

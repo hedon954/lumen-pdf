@@ -16,7 +16,7 @@ successor:
 
 ## 1. 产品结论
 
-v1.0.23 打磨设置可用性，并把翻译浮窗提升到阅读窗口根层，使其可以跨越 PDF、目录和 Inspector 拖动，而不被分栏裁切。Token 与费用页增加按天、按模型的用量热点图。
+v1.0.23 打磨设置可用性，并把翻译浮窗提升到阅读窗口根层，使其可以跨越 PDF、目录和 Inspector 拖动，而不被分栏裁切。Token 与费用页增加按天、按模型的用量热点图。后续修订：翻译继续在根层锚定选区并允许手动拖动，外观改为 Look Up 式实色浮窗，见 [prd-2026-09-01-native-translation-popover.md](prd-2026-09-01-native-translation-popover.md)。
 
 ## 2. 功能需求
 
@@ -34,7 +34,7 @@ v1.0.23 打磨设置可用性，并把翻译浮窗提升到阅读窗口根层，
 
 ### F3 — 翻译浮窗根层
 
-- 翻译浮窗从 PDF 列提升到阅读窗口根层，可跨越侧栏拖动。后续修订：翻译仍在根层，改为不透明卡片加指向三角，拖动保留，见 [prd-2026-09-01-native-translation-popover.md](prd-2026-09-01-native-translation-popover.md)。
+- 翻译浮窗从 PDF 列提升到阅读窗口根层，可跨越侧栏拖动。后续修订：根层继续直接承载翻译浮层，以实色箭头锚定黄色选区并保留自定义拖动，见 [prd-2026-09-01-native-translation-popover.md](prd-2026-09-01-native-translation-popover.md)。
 - 保存到单词本/笔记、删除、关闭的既有联动保持不变。
 - 手动拖动可到达窗口四周，不受自动避让安全边距限制。
 

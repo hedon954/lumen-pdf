@@ -23,13 +23,13 @@ successor:
 | --- | --- |
 | `LLMUsageHeatmap.swift` / `LLMCallLogStore.swift` | 26 周日聚合、模型筛选、探测记录过滤。 |
 | `LLMConfigurationSection.swift` / `SettingsPages.swift` | 申请入口、验证状态动画、版式压缩。 |
-| `ContentView.swift` + `TranslationOverlayModel` | 根层承载 `TranslationBubble`。后续修订：翻译仍在根层 `ReadingOverlayWindow`，实心填充并画出指向选区的三角，见 [tdd-2026-09-01-native-translation-popover.md](tdd-2026-09-01-native-translation-popover.md)。 |
+| `ContentView.swift` + `TranslationOverlayModel` | 根层承载 `TranslationBubble`。后续修订：根层 GeometryReader 把选区坐标交给 `TranslationBubble` 内部的 `ReadingOverlayWindow`，继续直接承载可拖动的 Look Up 式浮层，见 [tdd-2026-09-01-native-translation-popover.md](tdd-2026-09-01-native-translation-popover.md)。 |
 | `ReadingOverlayWindow` | 手动拖动使用较小安全边距，可到达容器边缘。 |
 | `PDFMarkupAppearance` | 下划线颜色固定为 sRGB 红。 |
 
 ## 3. 关键行为
 
-- 根层浮窗的 `availableSize` 是阅读窗口，不是 PDF 列；锚点需从 reader 局部转换到根坐标，规则与操作栏相同。后续修订：只转到根坐标不够。根层 GeometryReader 的原点通常低于命名坐标空间（统一工具栏），翻译必须再减去 overlay frame 原点，否则三角上下错开，见 [tdd-2026-09-01-native-translation-popover.md](tdd-2026-09-01-native-translation-popover.md)。
+- 根层浮窗的 `availableSize` 是阅读窗口，不是 PDF 列；锚点需从 reader 局部转换到根坐标，规则与操作栏相同。后续修订：根层 GeometryReader 还需减去自身 frame 原点，得到系统 popover positioning view 的局部矩形，见 [tdd-2026-09-01-native-translation-popover.md](tdd-2026-09-01-native-translation-popover.md)。
 - 调用日志写入时标记请求来源；图片能力探测使用独立来源，列表查询时排除。
 - 下划线 appearance 不依赖系统 accent，避免 Dark Mode 或主题变化改成黑色。
 

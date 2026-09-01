@@ -7,6 +7,81 @@ enum ReaderViewportTransitionMode {
     case interactiveResize
 }
 
+enum TranslationSelectionEmphasisGeometry {
+    static let horizontalLift: CGFloat = 1.5
+    static let verticalLift: CGFloat = 0.75
+
+    static func highlightRect(for textRect: CGRect) -> CGRect {
+        textRect.insetBy(dx: -horizontalLift, dy: -verticalLift)
+    }
+}
+
+/// Draws a transient Look Up-style selection above PDFKit without creating a
+/// persisted PDF annotation. Its owner is `PDFKitView.Coordinator`.
+private final class TranslationSelectionEmphasisView: NSView {
+    private weak var pdfView: PDFView?
+    private var markups: [PDFPageMarkup] = []
+
+    init(pdfView: PDFView) {
+        self.pdfView = pdfView
+        super.init(frame: pdfView.bounds)
+        setAccessibilityElement(false)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override var isOpaque: Bool { false }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    func update(markups: [PDFPageMarkup]) {
+        if self.markups != markups {
+            self.markups = markups
+        }
+        needsDisplay = true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let pdfView,
+              let document = pdfView.document,
+              let context = NSGraphicsContext.current?.cgContext else { return }
+
+        let fillColor = NSColor.systemYellow.withAlphaComponent(0.82).cgColor
+        let shadowColor = NSColor.black.withAlphaComponent(0.24).cgColor
+
+        for markup in markups {
+            guard let page = document.page(at: markup.pageIndex) else { continue }
+            for lineRect in markup.lineRects where !lineRect.isEmpty && lineRect != .zero {
+                let rectInPDFView = pdfView.convert(lineRect, from: page)
+                let rect = TranslationSelectionEmphasisGeometry.highlightRect(
+                    for: convert(rectInPDFView, from: pdfView)
+                )
+                guard rect.intersects(bounds), rect.intersects(dirtyRect) else { continue }
+
+                context.saveGState()
+                context.setBlendMode(.normal)
+                context.setShadow(
+                    offset: CGSize(width: 0, height: -1),
+                    blur: 2.5,
+                    color: shadowColor
+                )
+                context.setFillColor(fillColor)
+                context.addPath(
+                    CGPath(
+                        roundedRect: rect,
+                        cornerWidth: 1.5,
+                        cornerHeight: 1.5,
+                        transform: nil
+                    )
+                )
+                context.fillPath()
+                context.restoreGState()
+            }
+        }
+    }
+}
+
 protocol ReaderViewportTransitionHandling: AnyObject {
     func beginReadingViewportTransition(mode: ReaderViewportTransitionMode)
     func endReadingViewportTransition()
@@ -54,6 +129,8 @@ struct PDFKitView: NSViewRepresentable {
     let onTextSelected: (SelectionInfo) -> Void
     let onClearSelection: () -> Void
     let onDocumentLoaded: (Int) -> Void
+    let translationSelection: TranslationSelectionEmphasis?
+    let onTranslationViewportChanged: () -> Void
     let noteAnchorRequests: [NoteAnchorRequest]
     let onNoteAnchorsChanged: ([NoteAnchorPosition]) -> Void
     let viewportTransitionController: ReaderViewportTransitionController
@@ -121,6 +198,7 @@ struct PDFKitView: NSViewRepresentable {
         context.coordinator.attachViewportObserverIfNeeded()
         context.coordinator.configureUndoHistory()
         guard context.coordinator.currentFilePath != filePath else {
+            context.coordinator.syncTranslationSelection(translationSelection, in: pdfView)
             context.coordinator.publishNoteAnchors()
             return
         }
@@ -137,6 +215,7 @@ struct PDFKitView: NSViewRepresentable {
         pdfView.document = doc
         onDocumentLoaded(doc.pageCount)
         context.coordinator.applyHighlights(to: doc, filePath: filePath)
+        context.coordinator.syncTranslationSelection(translationSelection, in: pdfView)
         DispatchQueue.main.async { [weak coordinator = context.coordinator] in
             coordinator?.applyInitialViewportRestore(to: pdfView)
         }
@@ -185,6 +264,8 @@ struct PDFKitView: NSViewRepresentable {
         private var selectionDebounce: Timer?
         private var scrollDebounce: Timer?
         private var annotationSaveDebounce: Timer?
+        private var activeTranslationSelectionID: UUID?
+        private weak var translationSelectionView: TranslationSelectionEmphasisView?
         private weak var observedViewport: NSClipView?
         private weak var observedScrollView: NSScrollView?
         private weak var managedUndoManager: UndoManager?
@@ -244,6 +325,7 @@ struct PDFKitView: NSViewRepresentable {
         }
 
         func prepareForDocumentChange() {
+            clearTranslationSelection()
             annotationSaveDebounce?.invalidate()
             annotationSaveDebounce = nil
             persistFreeMarkups()
@@ -253,6 +335,7 @@ struct PDFKitView: NSViewRepresentable {
         func tearDown() {
             guard !didTearDown else { return }
             didTearDown = true
+            clearTranslationSelection()
             annotationSaveDebounce?.invalidate()
             annotationSaveDebounce = nil
             persistFreeMarkups()
@@ -1133,6 +1216,65 @@ struct PDFKitView: NSViewRepresentable {
             }
         }
 
+        // MARK: Translation selection emphasis
+
+        func syncTranslationSelection(
+            _ emphasis: TranslationSelectionEmphasis?,
+            in pdfView: PDFView
+        ) {
+            guard let emphasis,
+                  emphasis.filePath == currentFilePath,
+                  let document = pdfView.document else {
+                clearTranslationSelection()
+                return
+            }
+
+            if activeTranslationSelectionID != emphasis.id {
+                activeTranslationSelectionID = emphasis.id
+                let selections = emphasis.pageMarkups.compactMap { markup -> PDFSelection? in
+                    guard let page = document.page(at: markup.pageIndex) else { return nil }
+                    return PDFHighlightAnnotationFactory.selection(
+                        from: markup.lineRects,
+                        on: page
+                    )
+                }
+                if let selection = Self.combinedSelection(selections, in: document) {
+                    // The custom emphasis view supplies the native yellow lift. Keep
+                    // PDFKit's real currentSelection for semantics without drawing a
+                    // second blue/gray selection underneath it.
+                    selection.color = .clear
+                    pdfView.setCurrentSelection(selection, animate: false)
+                }
+            }
+
+            let emphasisView: TranslationSelectionEmphasisView
+            if let current = translationSelectionView {
+                emphasisView = current
+            } else {
+                let created = TranslationSelectionEmphasisView(pdfView: pdfView)
+                created.frame = pdfView.bounds
+                created.autoresizingMask = [.width, .height]
+                pdfView.addSubview(created, positioned: .above, relativeTo: nil)
+                translationSelectionView = created
+                emphasisView = created
+            }
+            emphasisView.update(markups: emphasis.pageMarkups)
+        }
+
+        private func clearTranslationSelection() {
+            guard activeTranslationSelectionID != nil || translationSelectionView != nil else {
+                return
+            }
+            activeTranslationSelectionID = nil
+            translationSelectionView?.removeFromSuperview()
+            translationSelectionView = nil
+            pdfView?.clearSelection()
+        }
+
+        private func refreshTranslationSelectionEmphasis() {
+            translationSelectionView?.needsDisplay = true
+        }
+
         // MARK: Page jump
 
         @objc func jumpToPage(_ notification: Notification) {
@@ -1391,6 +1533,7 @@ struct PDFKitView: NSViewRepresentable {
             guard let pdfView = notification.object as? PDFView,
                   let currentPage = pdfView.currentPage,
                   let doc = pdfView.document else { return }
+            refreshTranslationSelectionEmphasis()
             let pageIndex = doc.index(for: currentPage)
 
             if let layoutTransitionMode {
@@ -1417,6 +1560,8 @@ struct PDFKitView: NSViewRepresentable {
         /// The PDFKit clip view is the authoritative viewport signal. Unlike
         /// `didLiveScroll`, this also covers momentum and programmatic scrolling.
         @objc func viewportBoundsChanged(_ notification: Notification) {
+            dismissTranslationForViewportChange()
+            refreshTranslationSelectionEmphasis()
             if let layoutTransitionMode {
                 if layoutTransitionMode == .animatedChrome, let pdfView {
                     maintainLayoutTransitionViewport(in: pdfView)
@@ -1430,6 +1575,8 @@ struct PDFKitView: NSViewRepresentable {
 
         @objc func viewportGeometryChanged(_ notification: Notification) {
             attachViewportObserverIfNeeded()
+            dismissTranslationForViewportChange()
+            refreshTranslationSelectionEmphasis()
             if let layoutTransitionMode {
                 if layoutTransitionMode == .animatedChrome, let pdfView {
                     maintainLayoutTransitionViewport(in: pdfView)
@@ -1444,6 +1591,14 @@ struct PDFKitView: NSViewRepresentable {
                 return
             }
             scheduleViewportPersistence()
+        }
+
+        private func dismissTranslationForViewportChange() {
+            guard activeTranslationSelectionID != nil else { return }
+            clearTranslationSelection()
+            DispatchQueue.main.async { [weak self] in
+                self?.parent.onTranslationViewportChanged()
+            }
         }
 
         /// The reader belongs to the user as soon as they scroll: stop re-applying the saved
@@ -1547,6 +1702,7 @@ struct PDFKitView: NSViewRepresentable {
         @objc func selectionChanged(_ notification: Notification) {
             guard !isJumping else { return }
             guard let pdfView = notification.object as? PDFView else { return }
+            guard activeTranslationSelectionID == nil else { return }
 
             guard let selection = pdfView.currentSelection,
                   let selectedStr = selection.string, !selectedStr.isEmpty else {

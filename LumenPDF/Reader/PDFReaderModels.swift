@@ -567,6 +567,15 @@ struct ActiveNoteReview: Identifiable {
     let notes: [NoteEntry]
 }
 
+/// Ephemeral PDF selection styling while the translation popover is visible.
+/// It is deliberately narrower than `TranslationBubbleRequest`: PDFKit only
+/// receives the identity, document, and page geometry it needs to draw.
+struct TranslationSelectionEmphasis: Equatable {
+    let id: UUID
+    let filePath: String
+    let pageMarkups: [PDFPageMarkup]
+}
+
 struct TranslationBubbleRequest: Identifiable, Equatable {
     let id: UUID
     let pdfPath: String
