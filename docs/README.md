@@ -48,7 +48,7 @@ PRD 记录**用户可感知的行为与验收标准**。TDD 记录**如何实现
 | v1.0.29 | 2026-08-24 | LLM 服务商「其他」 | [prd-2026-08-24-llm-provider-other.md](prd/prd-2026-08-24-llm-provider-other.md) | [tdd-2026-08-24-llm-provider-other.md](tdd/tdd-2026-08-24-llm-provider-other.md) |
 | v1.0.29 | 2026-08-25 | 搜索模糊、翻译 AI 快捷入口与跨页笔记划线 | [prd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md](prd/prd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md) | [tdd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md](tdd/tdd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md) |
 | v1.0.30 | 2026-08-26 | 标注撤回与重做历史 | [prd-2026-08-26-annotation-undo-history.md](prd/prd-2026-08-26-annotation-undo-history.md) | [tdd-2026-08-26-annotation-undo-history.md](tdd/tdd-2026-08-26-annotation-undo-history.md) |
-| unreleased | 2026-09-01 | 原生翻译预览样式 | [prd-2026-09-01-native-translation-popover.md](prd/prd-2026-09-01-native-translation-popover.md) | [tdd-2026-09-01-native-translation-popover.md](tdd/tdd-2026-09-01-native-translation-popover.md) |
+| v1.0.31 | 2026-09-01 | Look Up 式翻译浮窗 | [prd-2026-09-01-native-translation-popover.md](prd/prd-2026-09-01-native-translation-popover.md) | [tdd-2026-09-01-native-translation-popover.md](tdd/tdd-2026-09-01-native-translation-popover.md) |
 
 未单独成对的发布：
 
@@ -67,7 +67,7 @@ v1.0.15 公共窗口外壳
   → v1.0.23 翻译浮窗提升到阅读窗口根层
   → v1.0.26 首次定位后锁定原点，内容变高不再换边跳位
   → unreleased 小节标题不因正文复述而进入翻译原文
-  → unreleased 单词 / 句子翻译采用 Look Up 式实色锚定浮窗，黄色轻阴影选区并恢复拖拽手柄
+  → v1.0.31 单词 / 句子翻译采用 Look Up 式实色锚定浮窗，黄色轻阴影选区并恢复拖拽手柄
 ```
 
 v1.0.21 曾要求内容变高后重新换边避让；2026-08-20 修订为「首次位置固定」，以 v1.0.15 的稳定方向为优先体验。
@@ -114,7 +114,7 @@ v1.0.12 / v1.0.13 导读进入 Inspector
   → unreleased 调用日志可展开实际发出的完整 HTTP 请求（密钥脱敏）
   → unreleased 服务商菜单增加「其他」，未匹配内置地址时不误标厂商，自定义端点不被预设覆盖
   → unreleased 翻译成功 footer 增加 AI 解释快捷入口，复用当前选区导读
-  → unreleased 译文 JSON 闭合或 finish_reason / [DONE] 后结束流式，词典音标最多等 1.5 秒
+  → v1.0.31 译文 JSON 闭合或 finish_reason / [DONE] 后结束流式，词典音标最多等 1.5 秒
 ```
 
 ## 其他文档

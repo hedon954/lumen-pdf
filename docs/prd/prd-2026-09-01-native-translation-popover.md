@@ -1,5 +1,5 @@
 ---
-version: unreleased
+version: v1.0.31
 date: 2026-09-01
 tdd: tdd/tdd-2026-09-01-native-translation-popover.md
 predecessor:
