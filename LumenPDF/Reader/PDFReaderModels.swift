@@ -298,6 +298,15 @@ enum ReadingOverlayPlacementPolicy {
     }
 }
 
+struct ReadingOverlayEdgeInsets: Equatable {
+    var top: CGFloat
+    var leading: CGFloat
+    var bottom: CGFloat
+    var trailing: CGFloat
+
+    static let zero = ReadingOverlayEdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
+}
+
 enum ReadingOverlayPointerGeometry {
     /// Matches the visual weight of macOS Preview / Look Up popover arrows.
     static let arrowBase: CGFloat = 28
@@ -305,16 +314,16 @@ enum ReadingOverlayPointerGeometry {
     static let cornerRadius: CGFloat = 16
     static let edgeInset: CGFloat = 32
 
-    static func contentInsets(for placement: ReadingOverlayPlacement) -> EdgeInsets {
+    static func contentInsets(for placement: ReadingOverlayPlacement) -> ReadingOverlayEdgeInsets {
         switch placement {
         case .leading:
-            return EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: arrowDepth)
+            return ReadingOverlayEdgeInsets(top: 0, leading: 0, bottom: 0, trailing: arrowDepth)
         case .trailing:
-            return EdgeInsets(top: 0, leading: arrowDepth, bottom: 0, trailing: 0)
+            return ReadingOverlayEdgeInsets(top: 0, leading: arrowDepth, bottom: 0, trailing: 0)
         case .above:
-            return EdgeInsets(top: 0, leading: 0, bottom: arrowDepth, trailing: 0)
+            return ReadingOverlayEdgeInsets(top: 0, leading: 0, bottom: arrowDepth, trailing: 0)
         case .below, .leastOverlap:
-            return EdgeInsets(top: arrowDepth, leading: 0, bottom: 0, trailing: 0)
+            return ReadingOverlayEdgeInsets(top: arrowDepth, leading: 0, bottom: 0, trailing: 0)
         }
     }
 

@@ -185,8 +185,16 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
         along: CGFloat
     ) -> some View {
         let shape = ReadingOverlayPopoverShape(placement: pointing, along: along)
+        let insets = ReadingOverlayPointerGeometry.contentInsets(for: pointing)
         return card
-            .padding(ReadingOverlayPointerGeometry.contentInsets(for: pointing))
+            .padding(
+                EdgeInsets(
+                    top: insets.top,
+                    leading: insets.leading,
+                    bottom: insets.bottom,
+                    trailing: insets.trailing
+                )
+            )
             .background(shape.fill(.regularMaterial))
             .overlay(shape.stroke(Color.primary.opacity(0.14), lineWidth: 0.6))
             .clipShape(shape)
