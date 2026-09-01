@@ -6,6 +6,10 @@ struct TranslationBubble: View {
     let request: TranslationBubbleRequest
     let isLoading: Bool
     let availableSize: CGSize
+    /// Selection in this overlay's local space. Root-space rects must already
+    /// have the overlay frame origin subtracted, or the pointer misses the word
+    /// by the unified-toolbar offset.
+    let overlayAnchorRect: CGRect
     let onSave: (TranslationResult) -> String?
     let onDelete: (String, Bool) -> Void
     let onExplain: () -> Void
@@ -21,7 +25,7 @@ struct TranslationBubble: View {
 
     var body: some View {
         ReadingOverlayWindow(
-            anchorRect: request.selectionAnchorRect,
+            anchorRect: overlayAnchorRect,
             availableSize: availableSize,
             resetID: AnyHashable(request.id),
             configuration: ReadingOverlayWindowConfiguration(

@@ -29,7 +29,7 @@ successor:
 
 ## 3. 关键行为
 
-- 根层浮窗的 `availableSize` 是阅读窗口，不是 PDF 列；锚点需从 reader 局部转换到根坐标，规则与操作栏相同。
+- 根层浮窗的 `availableSize` 是阅读窗口，不是 PDF 列；锚点需从 reader 局部转换到根坐标，规则与操作栏相同。后续修订：只转到根坐标不够。根层 GeometryReader 的原点通常低于命名坐标空间（统一工具栏），翻译必须再减去 overlay frame 原点，否则三角上下错开，见 [tdd-2026-09-01-native-translation-popover.md](tdd-2026-09-01-native-translation-popover.md)。
 - 调用日志写入时标记请求来源；图片能力探测使用独立来源，列表查询时排除。
 - 下划线 appearance 不依赖系统 accent，避免 Dark Mode 或主题变化改成黑色。
 

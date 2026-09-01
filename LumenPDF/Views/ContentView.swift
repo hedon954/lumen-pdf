@@ -104,6 +104,12 @@ struct ContentView: View {
                         request: request,
                         isLoading: translationOverlayModel.isLoading,
                         availableSize: proxy.size,
+                        overlayAnchorRect: ReaderRootCoordinateSpace.localRect(
+                            request.selectionAnchorRect,
+                            overlayFrameInRoot: proxy.frame(
+                                in: .named(ReaderRootCoordinateSpace.name)
+                            )
+                        ),
                         onSave: { result in
                             saveTranslation(result: result, request: request)
                         },

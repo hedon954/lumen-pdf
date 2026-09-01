@@ -119,6 +119,11 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
         )
         .onChange(of: resetID) { _, _ in resetWindowState() }
         .onChange(of: availableSize) { _, _ in handleAvailableSizeChange() }
+        .onChange(of: anchorRect) { oldRect, newRect in
+            let moved = hypot(newRect.midX - oldRect.midX, newRect.midY - oldRect.midY)
+            guard moved > 0.5 else { return }
+            relockOriginForAnchorChange()
+        }
     }
 
     private var window: some View {
@@ -440,6 +445,16 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
         let result = ReadingOverlayPlacementPolicy.place(placementInput(for: size))
         lockedOrigin = result.origin
         lockedPlacement = result.placement
+    }
+
+    /// Overlay-local conversion can land one frame after the first measure.
+    /// Re-place against the updated selection so the pointer is not stuck on
+    /// a toolbar-shifted origin. Keep a user drag (`customCenter`) as-is.
+    private func relockOriginForAnchorChange() {
+        guard customCenter == nil else { return }
+        lockedOrigin = nil
+        lockedPlacement = nil
+        lockOriginIfNeeded(for: measuredWindowSize)
     }
 
     private func clampedCenter(

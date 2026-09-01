@@ -3,6 +3,20 @@ import SwiftUI
 
 enum ReaderRootCoordinateSpace {
     static let name = "LumenPDF.ReaderRoot"
+
+    /// Convert a reader-root selection into the overlay GeometryReader's local
+    /// space. The named root origin is not always the overlay's `(0, 0)`: the
+    /// unified toolbar typically shifts the overlay down, so using root `Y`
+    /// directly places the pointer a toolbar-height away from the highlight.
+    static func localRect(
+        _ rootRect: CGRect,
+        overlayFrameInRoot: CGRect
+    ) -> CGRect {
+        rootRect.offsetBy(
+            dx: -overlayFrameInRoot.minX,
+            dy: -overlayFrameInRoot.minY
+        )
+    }
 }
 
 enum SelectionActionBarAction {
@@ -26,9 +40,9 @@ enum SelectionActionBarPlacement {
         _ anchorRect: CGRect,
         overlayFrameInRoot: CGRect
     ) -> CGRect {
-        anchorRect.offsetBy(
-            dx: -overlayFrameInRoot.minX,
-            dy: -overlayFrameInRoot.minY
+        ReaderRootCoordinateSpace.localRect(
+            anchorRect,
+            overlayFrameInRoot: overlayFrameInRoot
         )
     }
 }

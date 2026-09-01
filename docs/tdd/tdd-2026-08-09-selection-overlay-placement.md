@@ -33,7 +33,7 @@ SelectionActionBarOverlay + ReadingOverlayPlacementPolicy
 
 根层 overlay 的局部原点不一定等于命名坐标空间的 `(0, 0)`，macOS 统一工具栏会让两者产生纵向偏移。`PDFReaderView` 先把选区转换到命名根坐标；`SelectionActionBarOverlay` 定位前再减去自身在根坐标中的 frame 原点，得到真正的 overlay 局部矩形。若直接把根坐标交给 `.position`，工具栏高度会被重复计入，表现为操作栏与选区隔开一整行以上。
 
-翻译、笔记编辑和笔记回顾继续传递阅读区局部 `anchorRect` 与 `availableSize`，不增加平行状态源。
+后续修订：翻译浮窗同样在根层 overlay 中展示，必须做同一次 overlay 局部转换，见 [tdd-2026-09-01-native-translation-popover.md](tdd-2026-09-01-native-translation-popover.md)。笔记编辑和笔记回顾仍传递阅读区局部 `anchorRect` 与 `availableSize`。
 
 `ReadingOverlayWindow` 的根 frame 使用 `availableSize` 明确建立阅读区大小，并指定 `.topLeading` alignment。不能依赖 `dismissesOnBackgroundTap` 对应的 `Color.clear` 去间接撑满 `ZStack`：笔记编辑窗没有该背景，如果根容器保持卡片固有尺寸，外层无限 frame 会先把卡片居中，再应用 origin offset，产生额外的半屏偏移。
 
@@ -74,7 +74,7 @@ v1.0.21 要求窗口尺寸变化时调用 `place(_:keeping:)`：原方向仍无�
 
 `ReadingOverlayPlacementTests` 覆盖：
 
-- 根坐标选区转换到 overlay 局部坐标时会扣除浮层原点。
+- 根坐标选区转换到 overlay 局部坐标时会扣除浮层原点。后续修订：翻译根层浮窗必须使用同一转换，否则指针偏移一个工具栏高度，见 [tdd-2026-09-01-native-translation-popover.md](tdd-2026-09-01-native-translation-popover.md)。
 - 空间充足时默认位于下方；翻译浮窗 Look Up 顺序在左侧有空位时优先左侧，指针沿边缘对准选区。
 - 靠近底部时改用上方且不相交。
 - 内容增高后保持首次方向与原点，见 [浮窗稳定 TDD](tdd-2026-08-20-note-autosave-overlay-stability.md)

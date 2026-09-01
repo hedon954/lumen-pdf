@@ -14,6 +14,59 @@ final class ReadingOverlayPlacementTests: XCTestCase {
         )
 
         XCTAssertEqual(local, CGRect(x: 480, y: 480, width: 80, height: 24))
+        XCTAssertEqual(
+            ReaderRootCoordinateSpace.localRect(anchor, overlayFrameInRoot: overlayFrame),
+            local
+        )
+    }
+
+    func testPointerMissesTheWordIfRootAnchorSkipsOverlayOrigin() {
+        let toolbarOffset: CGFloat = 40
+        let visualWord = CGRect(x: 620, y: 120, width: 50, height: 16)
+        let rootAnchor = visualWord.offsetBy(dx: 0, dy: toolbarOffset)
+        let overlayFrame = CGRect(x: 0, y: toolbarOffset, width: 1_000, height: 760)
+        let overlaySize = CGSize(width: 334, height: 400)
+
+        let local = ReaderRootCoordinateSpace.localRect(
+            rootAnchor,
+            overlayFrameInRoot: overlayFrame
+        )
+        XCTAssertEqual(local, visualWord)
+
+        let converted = ReadingOverlayPlacementPolicy.place(
+            input(
+                anchorRect: local,
+                overlaySize: overlaySize,
+                placementOrder: ReadingOverlayPlacement.lookUpOrder
+            )
+        )
+        let alongConverted = ReadingOverlayPointerGeometry.alongEdge(
+            anchorRect: local,
+            overlayOrigin: converted.origin,
+            overlaySize: overlaySize,
+            placement: converted.placement
+        )
+        XCTAssertEqual(converted.origin.y + alongConverted, visualWord.midY, accuracy: 0.5)
+
+        let skipped = ReadingOverlayPlacementPolicy.place(
+            input(
+                anchorRect: rootAnchor,
+                overlaySize: overlaySize,
+                placementOrder: ReadingOverlayPlacement.lookUpOrder
+            )
+        )
+        let alongSkipped = ReadingOverlayPointerGeometry.alongEdge(
+            anchorRect: rootAnchor,
+            overlayOrigin: skipped.origin,
+            overlaySize: overlaySize,
+            placement: skipped.placement
+        )
+        XCTAssertEqual(skipped.origin.y + alongSkipped, rootAnchor.midY, accuracy: 0.5)
+        XCTAssertEqual(
+            abs((skipped.origin.y + alongSkipped) - visualWord.midY),
+            toolbarOffset,
+            accuracy: 0.5
+        )
     }
 
     func testPlacesOverlayBelowSelectionByDefault() {

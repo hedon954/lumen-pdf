@@ -578,8 +578,8 @@ struct TranslationBubbleRequest: Identifiable, Equatable {
     let boundsStr: String
     let page: Int
     let pageMarkups: [PDFPageMarkup]
-    /// Selection bounds in the main reader-root coordinate space. The system
-    /// translation popover points at this rect.
+    /// Selection bounds in the reader-root coordinate space. The root overlay
+    /// converts this to its local space before placing the pointer.
     let selectionAnchorRect: CGRect
     var result: TranslationResult?
     var translationError: String?
