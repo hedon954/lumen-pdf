@@ -56,4 +56,4 @@ predecessor:
 
 - Swift：`TranslationPopoverPresentationTests` 覆盖语言标签、单词 / 句子强调色译文选择、拷贝载荷和转圈消失条件；`ReadingOverlayPlacementTests` 覆盖 Look Up 左侧优先、箭头占位和沿边缘对准选区。
 - Rust：`json_root_object_closed` / `stream_has_terminal_payload`；词典音标超时后保留 LLM 音标。`cargo test`。
-- 运行时（需 macOS app）：单词浮窗以一体气泡箭头指向选区；译文写出后不再转圈；保存与 AI 解释仍可用。本环境无法启动 macOS 应用，视觉与交互验收未在运行中的 app 完成。
+- 运行时（需 macOS app）：单词浮窗保持完整圆角，三角箭头对准选区；译文写出后不再转圈；保存与 AI 解释仍可用。本环境无法启动 macOS 应用，视觉与交互验收未在运行中的 app 完成。

@@ -173,7 +173,13 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
                     arrowOverlay(placement: pointing, along: along)
                 }
         } else {
-            roundedCard(card)
+            card
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
     }
 
