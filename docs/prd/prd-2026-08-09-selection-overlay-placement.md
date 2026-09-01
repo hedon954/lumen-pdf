@@ -7,6 +7,7 @@ predecessor:
   - prd/prd-2026-07-10-note-overlay-optimization.md
 successor:
   - prd/prd-2026-08-20-note-autosave-overlay-stability.md
+  - prd/prd-2026-09-01-native-translation-popover.md
 ---
 
 # LumenPDF — 选区浮层统一定位 PRD
@@ -29,7 +30,7 @@ successor:
 
 ### F1 — 统一优先级
 
-- 所有选区浮层默认位于选区下方，并与选区保留小间距。
+- 所有选区浮层默认位于选区下方，并与选区保留小间距。后续修订：翻译浮窗改为优先左侧、再用右侧，并用三角指针指向选区，见 [prd-2026-09-01-native-translation-popover.md](prd-2026-09-01-native-translation-popover.md)。操作栏和笔记浮窗仍默认下方。
 - 下方无法完整容纳时，按上方、右侧、左侧顺序寻找不遮挡位置。
 - 横向只做保证浮层完整可见所需的最小移动，避免无理由贴到窗口左侧或右侧。
 

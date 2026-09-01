@@ -28,6 +28,46 @@ final class ReadingOverlayPlacementTests: XCTestCase {
         XCTAssertEqual(result.origin, CGPoint(x: 310, y: 216))
     }
 
+    func testLookUpOrderPrefersLeadingWhenThereIsRoom() {
+        let result = ReadingOverlayPlacementPolicy.place(
+            input(
+                anchorRect: CGRect(x: 620, y: 300, width: 80, height: 18),
+                overlaySize: CGSize(width: 320, height: 240),
+                placementOrder: ReadingOverlayPlacement.lookUpOrder
+            )
+        )
+
+        XCTAssertEqual(result.placement, .leading)
+        XCTAssertEqual(result.origin, CGPoint(x: 288, y: 189))
+        XCTAssertEqual(result.origin.x + 320 + 12, 620, accuracy: 0.5)
+    }
+
+    func testPointerAlongEdgeTracksTheAnchorOnTheCard() {
+        let along = ReadingOverlayPointerGeometry.alongEdge(
+            anchorRect: CGRect(x: 430, y: 280, width: 80, height: 16),
+            overlayOrigin: CGPoint(x: 100, y: 100),
+            overlaySize: CGSize(width: 320, height: 400),
+            placement: .leading
+        )
+
+        XCTAssertEqual(along, 188)
+        let origin = ReadingOverlayPointerGeometry.origin(
+            overlaySize: CGSize(width: 320, height: 400),
+            alongEdge: along,
+            placement: .leading
+        )
+        XCTAssertEqual(origin.x, 319)
+        XCTAssertEqual(origin.y, 180)
+
+        let trailing = ReadingOverlayPointerGeometry.origin(
+            overlaySize: CGSize(width: 320, height: 400),
+            alongEdge: along,
+            placement: .trailing
+        )
+        XCTAssertEqual(trailing.x, -10)
+        XCTAssertEqual(trailing.y, 180)
+    }
+
     func testUsesAboveWhenBelowWouldBeClampedAcrossSelection() {
         let anchor = CGRect(x: 450, y: 620, width: 100, height: 24)
         let overlaySize = CGSize(width: 380, height: 300)
@@ -135,14 +175,16 @@ final class ReadingOverlayPlacementTests: XCTestCase {
 
     private func input(
         anchorRect: CGRect,
-        overlaySize: CGSize
+        overlaySize: CGSize,
+        placementOrder: [ReadingOverlayPlacement] = ReadingOverlayPlacement.defaultOrder
     ) -> ReadingOverlayPlacementInput {
         ReadingOverlayPlacementInput(
             anchorRect: anchorRect,
             overlaySize: overlaySize,
             containerSize: containerSize,
             preferredGap: 12,
-            safeInset: 12
+            safeInset: 12,
+            placementOrder: placementOrder
         )
     }
 }

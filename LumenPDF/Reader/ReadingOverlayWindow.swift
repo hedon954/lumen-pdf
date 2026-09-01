@@ -10,6 +10,10 @@ struct ReadingOverlayWindowConfiguration {
     let maximumSize: CGSize
     let dismissesOnBackgroundTap: Bool
     let showsFooter: Bool
+    let showsAnchorPointer: Bool
+    let placementOrder: [ReadingOverlayPlacement]
+    let preferredGap: CGFloat
+    let compactVerticalInset: Bool
 
     init(
         width: CGFloat,
@@ -19,7 +23,11 @@ struct ReadingOverlayWindowConfiguration {
         minimumSize: CGSize = CGSize(width: 340, height: 240),
         maximumSize: CGSize = CGSize(width: 920, height: 820),
         dismissesOnBackgroundTap: Bool = false,
-        showsFooter: Bool = true
+        showsFooter: Bool = true,
+        showsAnchorPointer: Bool = false,
+        placementOrder: [ReadingOverlayPlacement] = ReadingOverlayPlacement.defaultOrder,
+        preferredGap: CGFloat = 12,
+        compactVerticalInset: Bool = false
     ) {
         self.width = width
         self.initialContentHeight = initialContentHeight
@@ -29,6 +37,10 @@ struct ReadingOverlayWindowConfiguration {
         self.maximumSize = maximumSize
         self.dismissesOnBackgroundTap = dismissesOnBackgroundTap
         self.showsFooter = showsFooter
+        self.showsAnchorPointer = showsAnchorPointer
+        self.placementOrder = placementOrder
+        self.preferredGap = preferredGap
+        self.compactVerticalInset = compactVerticalInset
     }
 }
 
@@ -50,8 +62,9 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
     @State private var customSize: CGSize?
     @State private var customCenter: CGPoint?
     @State private var lockedOrigin: CGPoint?
+    @State private var lockedPlacement: ReadingOverlayPlacement?
 
-    private let preferredGap: CGFloat = 12
+    private var preferredGap: CGFloat { configuration.preferredGap }
     private let horizontalSafeInset: CGFloat = 12
 
     init(
@@ -106,7 +119,7 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
     }
 
     private var window: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        let card = VStack(alignment: .leading, spacing: 0) {
             header()
                 .readingOverlayMeasureHeight { measuredHeaderHeight = $0 }
 
@@ -126,15 +139,71 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
         }
-        // Keep resize handles below the header so they cannot cover the close / move controls.
         .overlay {
             resizeOverlay
                 .padding(.top, max(0, measuredHeaderHeight - resizeHitThickness))
         }
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: .black.opacity(0.12), radius: 18, x: 0, y: 8)
-        .environment(\.readingOverlayMove, moveWindow)
-        .readingOverlayMeasureSize(recordMeasuredWindowSize)
+
+        return card
+            .overlay(alignment: .topLeading) { pointerOverlay }
+            .shadow(color: .black.opacity(0.12), radius: 18, x: 0, y: 8)
+            .environment(\.readingOverlayMove, moveWindow)
+            .readingOverlayMeasureSize(recordMeasuredWindowSize)
+    }
+
+    @ViewBuilder
+    private var pointerOverlay: some View {
+        if configuration.showsAnchorPointer, let placement = pointerPlacement {
+            pointerView(placement)
+        }
+    }
+
+    private func pointerView(_ placement: ReadingOverlayPlacement) -> some View {
+        let along = ReadingOverlayPointerGeometry.alongEdge(
+            anchorRect: anchorRect,
+            overlayOrigin: displayedOrigin,
+            overlaySize: renderedSize,
+            placement: placement
+        )
+        let origin = ReadingOverlayPointerGeometry.origin(
+            overlaySize: renderedSize,
+            alongEdge: along,
+            placement: placement
+        )
+        let size = ReadingOverlayPointerGeometry.size(for: placement)
+        return ReadingOverlayPointerShape(placement: placement)
+            .fill(.thinMaterial)
+            .overlay {
+                ReadingOverlayPointerShape(placement: placement)
+                    .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
+            }
+            .frame(width: size.width, height: size.height)
+            .offset(x: origin.x, y: origin.y)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+
+    private var pointerPlacement: ReadingOverlayPlacement? {
+        guard configuration.showsAnchorPointer else { return nil }
+        let placement = lockedPlacement
+            ?? ReadingOverlayPlacementPolicy.place(placementInput(for: renderedSize)).placement
+        switch placement {
+        case .leastOverlap:
+            return nearestPointerSide()
+        case .above, .below, .leading, .trailing:
+            return placement
+        }
+    }
+
+    private func nearestPointerSide() -> ReadingOverlayPlacement {
+        let overlay = CGRect(origin: displayedOrigin, size: renderedSize)
+        let dx = anchorRect.midX - overlay.midX
+        let dy = anchorRect.midY - overlay.midY
+        if abs(dx) >= abs(dy) {
+            return dx >= 0 ? .leading : .trailing
+        }
+        return dy >= 0 ? .above : .below
     }
 
     private var contentViewport: some View {
@@ -173,7 +242,10 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
     }
 
     private var verticalSafeInset: CGFloat {
-        availableSize.height * 0.1
+        if configuration.compactVerticalInset {
+            return horizontalSafeInset
+        }
+        return availableSize.height * 0.1
     }
 
     private var maximumWindowHeight: CGFloat {
@@ -246,7 +318,8 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
             containerSize: availableSize,
             preferredGap: preferredGap,
             horizontalSafeInset: horizontalSafeInset,
-            verticalSafeInset: verticalSafeInset
+            verticalSafeInset: verticalSafeInset,
+            placementOrder: configuration.placementOrder
         )
     }
 
@@ -264,7 +337,9 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
               customCenter == nil,
               size.width > 1,
               size.height > 1 else { return }
-        lockedOrigin = automaticOrigin(for: size)
+        let result = ReadingOverlayPlacementPolicy.place(placementInput(for: size))
+        lockedOrigin = result.origin
+        lockedPlacement = result.placement
     }
 
     private func clampedCenter(
@@ -418,6 +493,7 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
         customSize = nil
         customCenter = nil
         lockedOrigin = nil
+        lockedPlacement = nil
     }
 }
 
@@ -568,6 +644,34 @@ private struct ReadingOverlayResizeEdges: OptionSet {
     static let bottom = ReadingOverlayResizeEdges(rawValue: 1 << 1)
     static let leading = ReadingOverlayResizeEdges(rawValue: 1 << 2)
     static let trailing = ReadingOverlayResizeEdges(rawValue: 1 << 3)
+}
+
+private struct ReadingOverlayPointerShape: Shape {
+    var placement: ReadingOverlayPlacement
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        switch placement {
+        case .leading:
+            path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+            path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        case .trailing:
+            path.move(to: CGPoint(x: rect.maxX, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.minX, y: rect.midY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        case .above:
+            path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        case .below, .leastOverlap:
+            path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
+            path.addLine(to: CGPoint(x: rect.midX, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        }
+        path.closeSubpath()
+        return path
+    }
 }
 
 private extension View {

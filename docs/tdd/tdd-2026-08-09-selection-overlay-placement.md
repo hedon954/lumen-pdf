@@ -6,6 +6,7 @@ predecessor:
   - tdd/tdd-2026-08-05-viewport-restore-overlay-drag.md
 successor:
   - tdd/tdd-2026-08-20-note-autosave-overlay-stability.md
+  - tdd/tdd-2026-09-01-native-translation-popover.md
 ---
 
 # LumenPDF — 选区浮层统一定位 TDD
@@ -54,7 +55,9 @@ v1.0.21 要求窗口尺寸变化时调用 `place(_:keeping:)`：原方向仍无�
 
 **后续修订（2026-08-20）**：翻译完成导致内容变高时，换边比挡住选区更突兀。`ReadingOverlayWindow` 改为锁定首次 origin；`place(_:keeping:)` 保持原方向，即使增高后与选区重叠。详见 [浮窗稳定 TDD](tdd-2026-08-20-note-autosave-overlay-stability.md)。
 
-首次打开时的方向选择（下、上、右、左、最小遮挡）仍然有效。
+**后续修订（2026-09-01）**：翻译浮窗改用 Look Up 顺序（左、右、上、下）并画出对准选区的三角指针，见 [原生翻译预览 TDD](tdd-2026-09-01-native-translation-popover.md)。操作栏和笔记仍用默认下、上、右、左。
+
+首次打开时的方向选择（下、上、右、左、最小遮挡）仍然有效。操作栏和笔记仍按此顺序；翻译浮窗除外。
 
 ## 5. 最小遮挡兜底
 
@@ -72,7 +75,7 @@ v1.0.21 要求窗口尺寸变化时调用 `place(_:keeping:)`：原方向仍无�
 `ReadingOverlayPlacementTests` 覆盖：
 
 - 根坐标选区转换到 overlay 局部坐标时会扣除浮层原点。
-- 空间充足时默认位于下方。
+- 空间充足时默认位于下方；翻译浮窗 Look Up 顺序在左侧有空位时优先左侧，指针沿边缘对准选区。
 - 靠近底部时改用上方且不相交。
 - 内容增高后保持首次方向与原点，见 [浮窗稳定 TDD](tdd-2026-08-20-note-autosave-overlay-stability.md)
 - 大选区无法避让时进入最小遮挡兜底，并保持完整可见。

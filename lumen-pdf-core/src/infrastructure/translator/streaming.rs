@@ -430,6 +430,66 @@ pub fn extract_streaming_string_value(buf: &str, key: &str) -> Option<String> {
     Some(read_json_string_partial(buf, i + 1))
 }
 
+/// True when `raw` already contains a fully closed top-level JSON object.
+/// Used to stop waiting on SSE after the model has finished the payload even
+/// if the gateway never sends `[DONE]` or keeps streaming reasoning tokens.
+pub fn json_root_object_closed(raw: &str) -> bool {
+    let bytes = match raw.find('{') {
+        Some(start) => &raw.as_bytes()[start..],
+        None => return false,
+    };
+    let mut depth = 0i32;
+    let mut in_string = false;
+    let mut escape = false;
+    for &b in bytes {
+        if in_string {
+            if escape {
+                escape = false;
+            } else if b == b'\\' {
+                escape = true;
+            } else if b == b'"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match b {
+            b'"' => in_string = true,
+            b'{' => depth += 1,
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
+/// End the HTTP SSE read once the payload is usable. `[DONE]`, a non-empty
+/// `finish_reason`, or a closed translation JSON object are all sufficient —
+/// waiting for extra reasoning frames after that is what left the UI spinner
+/// running.
+pub fn stream_has_terminal_payload(done: bool, finish_reason: Option<&str>, content: &str) -> bool {
+    if done {
+        return true;
+    }
+    if finish_reason.is_some_and(|reason| !reason.is_empty()) {
+        return true;
+    }
+    json_root_object_closed(content) && looks_like_translation_json(content)
+}
+
+fn looks_like_translation_json(raw: &str) -> bool {
+    const MARKERS: [&str; 3] = [
+        "\"context_translation\"",
+        "\"context_sentence_translation\"",
+        "\"translation\"",
+    ];
+    MARKERS.iter().any(|marker| raw.contains(marker))
+}
+
 /// Read a JSON string starting at `start` (byte AFTER the opening quote)
 /// and return whatever has been received so far — the closing quote may or
 /// may not have arrived yet.
@@ -761,5 +821,48 @@ mod tests {
         assert!(description.contains("Token 用量为 0"));
         assert!(description.contains("qwen3.6-flash"));
         assert!(description.contains("原始响应完全为空"));
+    }
+
+    #[test]
+    fn json_root_object_closed_when_braces_balance() {
+        assert!(!json_root_object_closed(
+            r#"{"word": "Many", "context_translation": "许多"#
+        ));
+        assert!(json_root_object_closed(
+            r#"{"word": "Many", "context_translation": "许多"} extra reasoning"#
+        ));
+        assert!(json_root_object_closed("```json\n{\"word\":\"Many\"}\n```"));
+        assert!(!json_root_object_closed("no object here"));
+        assert!(json_root_object_closed(r#"{"a":{"b":"}"},"c":"ok"}"#));
+    }
+
+    #[test]
+    fn stream_ends_on_done_finish_reason_or_closed_json() {
+        assert!(stream_has_terminal_payload(true, None, r#"{"word":"#));
+        assert!(stream_has_terminal_payload(
+            false,
+            Some("stop"),
+            r#"{"word":"#
+        ));
+        assert!(stream_has_terminal_payload(
+            false,
+            None,
+            r#"{"word":"Many","context_translation":"许多"}"#
+        ));
+        assert!(!stream_has_terminal_payload(
+            false,
+            None,
+            r#"{"word":"Many"}"#
+        ));
+        assert!(!stream_has_terminal_payload(
+            false,
+            None,
+            r#"{"thought":"still reasoning {a}"}"#
+        ));
+        assert!(!stream_has_terminal_payload(
+            false,
+            None,
+            r#"{"word":"Many","context_translation":"许多""#
+        ));
     }
 }

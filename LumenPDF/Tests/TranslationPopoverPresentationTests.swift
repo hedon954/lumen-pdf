@@ -75,4 +75,25 @@ final class TranslationPopoverPresentationTests: XCTestCase {
         XCTAssertEqual(wordCopy, "那里")
         XCTAssertEqual(sentenceCopy, "那里有一本书。")
     }
+
+    func testSpinnerHidesOncePrimaryTranslationArrives() {
+        XCTAssertTrue(
+            TranslationPopoverPresentation.showsStreamingProgress(
+                isLoading: true,
+                primaryTranslation: ""
+            )
+        )
+        XCTAssertFalse(
+            TranslationPopoverPresentation.showsStreamingProgress(
+                isLoading: true,
+                primaryTranslation: "许多；大量"
+            )
+        )
+        XCTAssertFalse(
+            TranslationPopoverPresentation.showsStreamingProgress(
+                isLoading: false,
+                primaryTranslation: ""
+            )
+        )
+    }
 }

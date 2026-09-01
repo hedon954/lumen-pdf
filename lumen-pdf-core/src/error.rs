@@ -92,11 +92,11 @@ impl LumenError {
             LumenError::ConfigNotInitialized => {
                 "LLM 未就绪：请先在「设置」中填写 API Base URL、API Key 与模型并保存。".to_string()
             }
-            LumenError::DatabaseError { message } => format!("数据库错误：{}", message),
-            LumenError::LlmApiError { message, .. } => format!("LLM 接口失败：{}", message),
-            LumenError::FallbackApiError { message } => format!("兜底翻译接口失败：{}", message),
-            LumenError::SerializationError { message, .. } => format!("译文解析失败：{}", message),
-            LumenError::NotFound { message } => format!("未找到：{}", message),
+            LumenError::DatabaseError { message } => format!("数据库错误：{message}"),
+            LumenError::LlmApiError { message, .. } => format!("LLM 接口失败：{message}"),
+            LumenError::FallbackApiError { message } => format!("兜底翻译接口失败：{message}"),
+            LumenError::SerializationError { message, .. } => format!("译文解析失败：{message}"),
+            LumenError::NotFound { message } => format!("未找到：{message}"),
         }
     }
 }

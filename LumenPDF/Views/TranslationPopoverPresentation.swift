@@ -68,6 +68,10 @@ enum TranslationPopoverPresentation {
         }
     }
 
+    static func showsStreamingProgress(isLoading: Bool, primaryTranslation: String) -> Bool {
+        isLoading && primaryTranslation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     static func targetSpeechCode(for language: String) -> String {
         switch language {
         case "简体中文":

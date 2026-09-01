@@ -9,7 +9,8 @@ use crate::infrastructure::translator::http_request_log::format_http_request;
 use crate::infrastructure::translator::model_json::{parse_model_json, streaming_json_view};
 use crate::infrastructure::translator::streaming::{
     describe_empty_model_output, extract_complete_string_fields, extract_message_content_from_json,
-    extract_streaming_string_value, preview_text, SseAccumulator, SseChunkOutcome, TokenUsage,
+    extract_streaming_string_value, preview_text, stream_has_terminal_payload, SseAccumulator,
+    SseChunkOutcome, TokenUsage,
 };
 use crate::infrastructure::translator::thinking_control::resolve_extra_config;
 use futures_util::StreamExt;
@@ -740,7 +741,9 @@ impl LlmTranslator {
                 &mut on_chunk,
                 &mut scratch,
             );
-            if sse.gateway_error.is_some() || done {
+            if sse.gateway_error.is_some()
+                || stream_has_terminal_payload(done, sse.finish_reason.as_deref(), &content_buf)
+            {
                 break;
             }
         }

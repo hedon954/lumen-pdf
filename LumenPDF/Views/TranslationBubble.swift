@@ -32,7 +32,11 @@ struct TranslationBubble: View {
                 minimumSize: CGSize(width: 280, height: 180),
                 maximumSize: CGSize(width: 920, height: CGFloat.greatestFiniteMagnitude),
                 dismissesOnBackgroundTap: true,
-                showsFooter: showsFooter
+                showsFooter: showsFooter,
+                showsAnchorPointer: true,
+                placementOrder: ReadingOverlayPlacement.lookUpOrder,
+                preferredGap: 10,
+                compactVerticalInset: true
             ),
             onDismiss: onDismiss,
             header: { header },
@@ -159,7 +163,10 @@ struct TranslationBubble: View {
             Divider()
             targetPair(
                 text: primaryTranslation(from: result),
-                isLoading: isLoading,
+                isLoading: TranslationPopoverPresentation.showsStreamingProgress(
+                    isLoading: isLoading,
+                    primaryTranslation: primaryTranslation(from: result)
+                ),
                 isFallback: result.source == "fallback"
             )
             extraSections(result: result)

@@ -5,6 +5,7 @@ use super::{
 use crate::error::LumenError;
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
+use std::time::Duration;
 
 pub struct TranslationDomainService {
     cache: Arc<dyn TranslationCacheRepository>,
@@ -17,6 +18,8 @@ pub struct TranslationDomainService {
     /// untouched.
     phonetic: Option<Arc<dyn PhoneticProvider>>,
 }
+
+const PHONETIC_LOOKUP_TIMEOUT: Duration = Duration::from_millis(1_500);
 
 /// A selection is eligible for dictionary-based phonetic enrichment only when
 /// it is a single English word. The dictionary API takes one word at a time and
@@ -72,9 +75,11 @@ impl TranslationDomainService {
         if !is_single_word(word) {
             return None;
         }
-        provider
-            .fetch_phonetic(word.trim())
-            .await
+        let lookup = provider.fetch_phonetic(word.trim());
+        let timed = tokio::time::timeout(PHONETIC_LOOKUP_TIMEOUT, lookup).await;
+        timed
+            .ok()
+            .flatten()
             .map(|p| p.trim().to_string())
             .filter(|p| !p.is_empty())
     }
@@ -389,6 +394,16 @@ mod tests {
         async fn fetch_phonetic(&self, word: &str) -> Option<String> {
             self.queried.lock().unwrap().push(word.to_string());
             self.value.clone()
+        }
+    }
+
+    struct SlowPhonetic;
+
+    #[async_trait::async_trait]
+    impl PhoneticProvider for SlowPhonetic {
+        async fn fetch_phonetic(&self, _word: &str) -> Option<String> {
+            tokio::time::sleep(Duration::from_secs(30)).await;
+            Some("should-not-win".to_string())
         }
     }
 
@@ -918,6 +933,31 @@ mod tests {
 
         assert_eq!(phonetic.queried.lock().unwrap().len(), 1);
         assert_eq!(result.phonetic, "llm-phonetic");
+    }
+
+    #[tokio::test]
+    async fn phonetic_lookup_timeout_keeps_llm_value() {
+        let cache = FakeCache::new();
+        let svc = TranslationDomainService::new(
+            cache,
+            Arc::new(PhoneticLlm {
+                phonetic: "llm-phonetic",
+            }),
+            Arc::new(FailingLlm),
+        )
+        .with_phonetic(Arc::new(SlowPhonetic));
+
+        let started = std::time::Instant::now();
+        let result = svc
+            .translate(TranslationRequest {
+                word: "hello".to_string(),
+                sentence: "hello world".to_string(),
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(result.phonetic, "llm-phonetic");
+        assert!(started.elapsed() < Duration::from_secs(5));
     }
 
     #[tokio::test]

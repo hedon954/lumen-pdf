@@ -68,13 +68,15 @@ struct ReadingOverlayPlacementInput: Equatable {
     let preferredGap: CGFloat
     let horizontalSafeInset: CGFloat
     let verticalSafeInset: CGFloat
+    let placementOrder: [ReadingOverlayPlacement]
 
     init(
         anchorRect: CGRect,
         overlaySize: CGSize,
         containerSize: CGSize,
         preferredGap: CGFloat,
-        safeInset: CGFloat
+        safeInset: CGFloat,
+        placementOrder: [ReadingOverlayPlacement] = ReadingOverlayPlacement.defaultOrder
     ) {
         self.init(
             anchorRect: anchorRect,
@@ -82,7 +84,8 @@ struct ReadingOverlayPlacementInput: Equatable {
             containerSize: containerSize,
             preferredGap: preferredGap,
             horizontalSafeInset: safeInset,
-            verticalSafeInset: safeInset
+            verticalSafeInset: safeInset,
+            placementOrder: placementOrder
         )
     }
 
@@ -92,7 +95,8 @@ struct ReadingOverlayPlacementInput: Equatable {
         containerSize: CGSize,
         preferredGap: CGFloat,
         horizontalSafeInset: CGFloat,
-        verticalSafeInset: CGFloat
+        verticalSafeInset: CGFloat,
+        placementOrder: [ReadingOverlayPlacement] = ReadingOverlayPlacement.defaultOrder
     ) {
         self.anchorRect = anchorRect
         self.overlaySize = overlaySize
@@ -100,6 +104,7 @@ struct ReadingOverlayPlacementInput: Equatable {
         self.preferredGap = preferredGap
         self.horizontalSafeInset = horizontalSafeInset
         self.verticalSafeInset = verticalSafeInset
+        self.placementOrder = placementOrder
     }
 }
 
@@ -114,6 +119,9 @@ enum ReadingOverlayPlacement: Equatable {
     case trailing
     case leading
     case leastOverlap
+
+    static let defaultOrder: [ReadingOverlayPlacement] = [.below, .above, .trailing, .leading]
+    static let lookUpOrder: [ReadingOverlayPlacement] = [.leading, .trailing, .above, .below]
 }
 
 enum ReadingOverlayPlacementPolicy {
@@ -124,12 +132,7 @@ enum ReadingOverlayPlacementPolicy {
             return ReadingOverlayPlacementResult(origin: .zero, placement: .leastOverlap)
         }
 
-        let candidates = [
-            ReadingOverlayPlacement.below,
-            .above,
-            .trailing,
-            .leading
-        ].map { evaluate($0, input: input) }
+        let candidates = input.placementOrder.map { evaluate($0, input: input) }
 
         if let clear = candidates.first(where: { $0.isClearAndOnExpectedSide }) {
             return ReadingOverlayPlacementResult(origin: clear.origin, placement: clear.placement)
@@ -292,6 +295,55 @@ enum ReadingOverlayPlacementPolicy {
             x: min(max(origin.x, horizontalSafeInset), maxX),
             y: min(max(origin.y, verticalSafeInset), maxY)
         )
+    }
+}
+
+enum ReadingOverlayPointerGeometry {
+    static let horizontalSize = CGSize(width: 11, height: 16)
+    static let verticalSize = CGSize(width: 16, height: 11)
+    static let edgeInset: CGFloat = 22
+
+    static func size(for placement: ReadingOverlayPlacement) -> CGSize {
+        switch placement {
+        case .leading, .trailing:
+            return horizontalSize
+        case .above, .below, .leastOverlap:
+            return verticalSize
+        }
+    }
+
+    static func alongEdge(
+        anchorRect: CGRect,
+        overlayOrigin: CGPoint,
+        overlaySize: CGSize,
+        placement: ReadingOverlayPlacement
+    ) -> CGFloat {
+        switch placement {
+        case .leading, .trailing:
+            let y = anchorRect.midY - overlayOrigin.y
+            return min(max(y, edgeInset), max(edgeInset, overlaySize.height - edgeInset))
+        case .above, .below, .leastOverlap:
+            let x = anchorRect.midX - overlayOrigin.x
+            return min(max(x, edgeInset), max(edgeInset, overlaySize.width - edgeInset))
+        }
+    }
+
+    static func origin(
+        overlaySize: CGSize,
+        alongEdge: CGFloat,
+        placement: ReadingOverlayPlacement
+    ) -> CGPoint {
+        let pointer = size(for: placement)
+        switch placement {
+        case .leading:
+            return CGPoint(x: overlaySize.width - 1, y: alongEdge - pointer.height / 2)
+        case .trailing:
+            return CGPoint(x: 1 - pointer.width, y: alongEdge - pointer.height / 2)
+        case .above:
+            return CGPoint(x: alongEdge - pointer.width / 2, y: overlaySize.height - 1)
+        case .below, .leastOverlap:
+            return CGPoint(x: alongEdge - pointer.width / 2, y: 1 - pointer.height)
+        }
     }
 }
 
