@@ -4,6 +4,7 @@ date: 2026-07-16
 prd: prd/prd-2026-07-16-reading-ai-input-selection.md
 successor:
   - tdd/tdd-2026-08-14-ai-settings-notes.md
+  - tdd/tdd-2026-09-01-native-translation-popover.md
 related:
   - tdd/tdd-2026-07-16-llm-configuration-discovery.md
 ---
@@ -19,7 +20,7 @@ related:
 | `lumen-pdf-core/src/domain/translation/entity.rs` | 为 `TranslationResult` 新增带 serde 默认值的 `etymology` 字段。 |
 | `lumen-pdf-core/src/infrastructure/translator/llm_translator.rs` | 更新默认单词 prompt、流式字段映射和最终 JSON 解析，独立读取 `etymology`。 |
 | `lumen-pdf-core/src/domain/vocabulary/entity.rs`、`infrastructure/db/` | 将词源写入词汇记录，并通过幂等迁移为旧数据库新增默认空值列。 |
-| `LumenPDF/Views/TranslationBubble.swift` | 将「词源 / 历史故事」作为独立小块展示。 |
+| `LumenPDF/Views/TranslationBubble.swift` | 将「词源 / 历史故事」展示为与「语境翻译」「语境解释」「通用释义」分开的独立小块。后续修订：语境翻译进入原生预览译文段，词源等细节段仍独立，见 [tdd-2026-09-01-native-translation-popover.md](tdd-2026-09-01-native-translation-popover.md)。 |
 | `LumenPDF/Views/VocabularyListView.swift` | 展示并支持编辑已保存的词源内容。 |
 | `LumenPDF/Services/PromptTemplateUpdateCoordinator.swift` | 按语言维护单词提示词版本，自动迁移内置模板并保护用户自定义模板。 |
 | `LumenPDF/App/AppState.swift`、`Views/SettingsView.swift` | 启动时执行迁移并提示；设置页处理自定义模板的保留或升级。 |

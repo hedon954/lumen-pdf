@@ -7,6 +7,8 @@ predecessor:
   - prd/prd-2026-07-10-note-overlay-optimization.md
   - prd/prd-2026-08-09-selection-overlay-placement.md
   - prd/prd-2026-08-20-library-cover-translation-retry.md
+successor:
+  - prd/prd-2026-09-01-native-translation-popover.md
 ---
 
 # LumenPDF — 笔记自动保存与翻译浮窗位置稳定 PRD

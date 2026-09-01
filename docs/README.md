@@ -48,6 +48,7 @@ PRD 记录**用户可感知的行为与验收标准**。TDD 记录**如何实现
 | v1.0.29 | 2026-08-24 | LLM 服务商「其他」 | [prd-2026-08-24-llm-provider-other.md](prd/prd-2026-08-24-llm-provider-other.md) | [tdd-2026-08-24-llm-provider-other.md](tdd/tdd-2026-08-24-llm-provider-other.md) |
 | v1.0.29 | 2026-08-25 | 搜索模糊、翻译 AI 快捷入口与跨页笔记划线 | [prd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md](prd/prd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md) | [tdd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md](tdd/tdd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md) |
 | v1.0.30 | 2026-08-26 | 标注撤回与重做历史 | [prd-2026-08-26-annotation-undo-history.md](prd/prd-2026-08-26-annotation-undo-history.md) | [tdd-2026-08-26-annotation-undo-history.md](tdd/tdd-2026-08-26-annotation-undo-history.md) |
+| unreleased | 2026-09-01 | 原生翻译预览样式 | [prd-2026-09-01-native-translation-popover.md](prd/prd-2026-09-01-native-translation-popover.md) | [tdd-2026-09-01-native-translation-popover.md](tdd/tdd-2026-09-01-native-translation-popover.md) |
 
 未单独成对的发布：
 
@@ -66,6 +67,7 @@ v1.0.15 公共窗口外壳
   → v1.0.23 翻译浮窗提升到阅读窗口根层
   → v1.0.26 首次定位后锁定原点，内容变高不再换边跳位
   → unreleased 小节标题不因正文复述而进入翻译原文
+  → unreleased 单词 / 句子翻译改为系统翻译预览式原文译文对
 ```
 
 v1.0.21 曾要求内容变高后重新换边避让；2026-08-20 修订为「首次位置固定」，以 v1.0.15 的稳定方向为优先体验。

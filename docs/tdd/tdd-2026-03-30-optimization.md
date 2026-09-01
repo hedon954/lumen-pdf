@@ -7,6 +7,7 @@ predecessor:
 successor:
   - tdd/tdd-2026-03-31-v103.md
   - tdd/tdd-2026-08-24-codebase-simplification.md
+  - tdd/tdd-2026-09-01-native-translation-popover.md
 ---
 
 # LumenPDF — 优化需求技术实现文档 (TDD)

@@ -4,6 +4,7 @@ date: 2026-07-16
 tdd: tdd/tdd-2026-07-16-reading-ai-input-selection.md
 successor:
   - prd/prd-2026-08-14-ai-settings-notes.md
+  - prd/prd-2026-09-01-native-translation-popover.md
 related:
   - prd/prd-2026-07-16-llm-configuration-discovery.md
 ---
@@ -40,7 +41,7 @@ related:
 - 默认单词 prompt 要求模型通过独立的 `etymology` 字段，按需输出简短词源、历史故事或构词来源。
 - 当词源信息不可靠或无助于理解时，模型应省略该小节。
 - `TranslationResult`、UniFFI Swift 绑定和词汇记录新增 `etymology` 字段。
-- 翻译卡片将「词源 / 历史故事」展示为与「语境翻译」「语境解释」「通用释义」分开的独立小块。
+- 翻译卡片将「词源 / 历史故事」展示为与「语境翻译」「语境解释」「通用释义」分开的独立小块。后续修订：语境翻译进入系统翻译预览的强调色译文段，其余小块仍独立展示，见 [prd-2026-09-01-native-translation-popover.md](prd-2026-09-01-native-translation-popover.md)。
 - 旧翻译缓存缺少该字段时按空字符串读取；旧词汇数据库通过幂等迁移新增默认空值列。
 - `etymology` 允许为空；为空时翻译卡片不显示「词源 / 历史故事」小块。
 

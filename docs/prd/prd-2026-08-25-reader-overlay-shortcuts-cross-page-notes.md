@@ -9,6 +9,7 @@ predecessor:
   - prd/prd-2026-08-21-markup-interval-merge.md
 successor:
   - prd/prd-2026-08-26-annotation-undo-history.md
+  - prd/prd-2026-09-01-native-translation-popover.md
 ---
 
 # LumenPDF — 阅读浮层快捷入口与跨页笔记划线 PRD
@@ -27,7 +28,7 @@ successor:
 
 ### F2 — 翻译后的 AI 解释快捷入口
 
-- 翻译成功且生成结束后，在 footer 的「保存到笔记 / 保存到单词本」左侧显示「AI 解释」。
+- 翻译成功且生成结束后，在 footer 的「保存到笔记 / 保存到单词本」左侧显示「AI 解释」。后续修订：footer 左侧增加「拷贝译文」，「AI 解释」仍在保存动作左侧，见 [prd-2026-09-01-native-translation-popover.md](prd-2026-09-01-native-translation-popover.md)。
 - 点击后关闭翻译浮窗，用同一个原文选区、上下文、页码和完整跨页几何打开右侧 AI 导读。
 - 翻译进行中、完全失败或没有有效内容时不显示该入口。
 - 该入口只是缩短路径，不改变 AI 解释的提示词、追问、保存和失败重试规则。

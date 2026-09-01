@@ -9,6 +9,7 @@ predecessor:
   - tdd/tdd-2026-08-21-markup-interval-merge.md
 successor:
   - tdd/tdd-2026-08-26-annotation-undo-history.md
+  - tdd/tdd-2026-09-01-native-translation-popover.md
 ---
 
 # LumenPDF — 阅读浮层快捷入口与跨页笔记划线 TDD
@@ -22,7 +23,7 @@ successor:
 | 模块 | 职责 |
 | --- | --- |
 | `WorkspaceSearchOverlay` | 根层使用低透明明暗遮罩；搜索控件和结果卡片使用实体材质与自适应 tint。 |
-| `TranslationBubble` | 成功 footer 发出 `onExplain`，不直接持有 Inspector 或服务。 |
+| `TranslationBubble` | 成功 footer 发出 `onExplain`，不直接持有 Inspector 或服务。后续修订：footer 左侧增加「拷贝译文」，见 [tdd-2026-09-01-native-translation-popover.md](tdd-2026-09-01-native-translation-popover.md)。 |
 | `ContentView` | 从 `TranslationBubbleRequest` 还原 `PDFSelectionContext`，关闭翻译浮窗并启动既有导读。 |
 | `PDFSelectionMarkupGeometry` / `PDFPageMarkupCodec` | 生成逐页正文矩形；把页码与 `boundsStr` 编解码为稳定 JSON；旧数据回退到单页字段。 |
 | `ReaderEventBus` | 自由标注与笔记标注共用 `pageMarkupUserInfo`，同时发出 `pageIndexes` / `boundsStrs`。 |

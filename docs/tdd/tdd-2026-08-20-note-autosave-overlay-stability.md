@@ -6,6 +6,8 @@ predecessor:
   - tdd/tdd-2026-07-03-reading-inspector.md
   - tdd/tdd-2026-07-10-note-overlay-optimization.md
   - tdd/tdd-2026-08-09-selection-overlay-placement.md
+successor:
+  - tdd/tdd-2026-09-01-native-translation-popover.md
 ---
 
 # LumenPDF — 笔记自动保存与翻译浮窗位置稳定 TDD
