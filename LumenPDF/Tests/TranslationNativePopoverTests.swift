@@ -24,35 +24,23 @@ final class TranslationNativePopoverTests: XCTestCase {
         XCTAssertEqual(edge.nsRectEdge, .maxX)
     }
 
-    func testUsesAboveWhenHorizontalEdgesAreTooTight() {
+    func testChoosesTheWiderHorizontalSideWhenBothAreTight() {
         let edge = TranslationPopoverGeometry.preferredEdge(
-            anchorRect: CGRect(x: 40, y: 520, width: 920, height: 20),
+            anchorRect: CGRect(x: 200, y: 300, width: 80, height: 18),
             contentSize: CGSize(width: 320, height: 240),
-            containerSize: CGSize(width: 1_000, height: 800)
+            containerSize: CGSize(width: 500, height: 800)
         )
 
-        XCTAssertEqual(edge, .above)
-        XCTAssertEqual(edge.nsRectEdge, .maxY)
+        XCTAssertEqual(edge, .trailing)
+        XCTAssertEqual(edge.nsRectEdge, .maxX)
     }
 
-    func testUsesBelowWhenOnlyTheBottomHasRoom() {
-        let edge = TranslationPopoverGeometry.preferredEdge(
-            anchorRect: CGRect(x: 40, y: 40, width: 920, height: 20),
-            contentSize: CGSize(width: 320, height: 240),
-            containerSize: CGSize(width: 1_000, height: 800)
+    func testSelectionFrameKeepsAtLeastOnePoint() {
+        let frame = TranslationPopoverGeometry.selectionFrame(
+            CGRect(x: 40, y: 80, width: 0, height: 16)
         )
 
-        XCTAssertEqual(edge, .below)
-        XCTAssertEqual(edge.nsRectEdge, .minY)
-    }
-
-    func testAppKitRectFlipsSwiftUIOrigin() {
-        let rect = TranslationPopoverGeometry.appKitRect(
-            fromSwiftUI: CGRect(x: 40, y: 80, width: 80, height: 16),
-            viewHeight: 600
-        )
-
-        XCTAssertEqual(rect, CGRect(x: 40, y: 504, width: 80, height: 16))
+        XCTAssertEqual(frame, CGRect(x: 40, y: 80, width: 1, height: 16))
     }
 
     func testWordAndSentenceContentWidthStayWithinCaps() {

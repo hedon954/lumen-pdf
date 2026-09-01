@@ -16,7 +16,7 @@ predecessor:
 
 ## 1. 技术结论
 
-翻译不再用 `ReadingOverlayWindow` 手绘三角。根层 `GeometryReader` 只放一个全尺寸、不吃点击的定位 `NSView`（`isFlipped == false`），由 `TranslationNativePopover` 对选区调用 `NSPopover.show(relativeTo:of:preferredEdge:)`。系统弹出层负责喙、材质和阴影。`TranslationBubble` 只提供内容，不再自带卡片外壳、拖动手柄或缩放。流式在 JSON 闭合或 `finish_reason` / `[DONE]` 时结束读取；词典音标查询限时 1.5 秒。
+翻译不再用 `ReadingOverlayWindow` 手绘三角。根层 `GeometryReader` 把一个与选区等大的定位 `NSView` 钉在高亮上，由 `TranslationNativePopover` 对 `view.bounds` 调用 `NSPopover.show(relativeTo:of:preferredEdge:)`。不要铺满窗口再手转 Y 轴——SwiftUI 托管的 AppKit 视图坐标系和顶原点选区不是同一套。系统弹出层负责喙、材质和阴影。`TranslationBubble` 用固有高度排版，不用会塌成 0 的外层 `ScrollView`。流式在 JSON 闭合或 `finish_reason` / `[DONE]` 时结束读取；词典音标查询限时 1.5 秒。
 
 ## 2. 模块边界
 
@@ -25,7 +25,7 @@ predecessor:
 | `TranslationPopoverPresentation` | 语言标签、TTS 语言码、原文展示文本、强调色译文 / 拷贝文本。无 I/O。 |
 | `TranslationPopoverLanguagePair` / `TranslationPopoverDetailSection` | 原生预览行与细节段的排版。 |
 | `TranslationBubble` | 原文 / 译文对、失败卡、拆解、footer 动作；不直接调用 `BridgeService`，也不创建窗口。 |
-| `TranslationPopoverGeometry` | 内容宽度、首选边、SwiftUI→AppKit 矩形、高度上限。无 I/O。 |
+| `TranslationPopoverGeometry` | 内容宽度、左右首选边、选区 frame、高度上限。无 I/O。 |
 | `TranslationNativePopover` | 拥有一个 `NSPopover` + `NSHostingController`。`behavior = .transient`。在 `dismantleNSView` 和点外关闭的每条路径上关闭并断开 delegate。 |
 | `TranslationPopoverLiveContent` | 同一弹出层实例上承接流式 `request` / `isLoading`，避免每次刷新重建 `AnyView` 丢掉内容状态。 |
 | `AudioService` | 按传入的 `languageCode` 朗读原文或译文。 |
@@ -35,11 +35,11 @@ predecessor:
 
 ## 3. 弹出层生命周期
 
-- 定位视图铺满阅读根层，`hitTest` 返回 `nil`，避免挡住 PDF 和选区操作栏。
-- 选区矩形是 SwiftUI 顶原点；展示前用 `viewHeight - maxY` 转成未翻转 AppKit 坐标。
-- 首选边：左侧放得下用 `.minX`（弹出层在左、箭头在右），否则 `.maxX`，再否则上 / 下。同一次 `resetID` 锁定该边，流式变高只改 `contentSize`，不换边。
-- 点外关闭走 `popoverDidClose` → `onDismiss`。关闭按钮先清 model，再 `dismantle`。关闭后禁止在同一实例上再次 `show`，避免 `layout` 把已关的弹出层拉回来。
-- 宿主视图背景透明，让系统弹出层材质透出来；内容不再铺 `regularMaterial` 卡片。
+- 定位视图只覆盖选区矩形，由 SwiftUI `offset` 放到高亮上；`hitTest` 返回 `nil`，避免挡住 PDF。
+- `show(relativeTo: view.bounds)`，不再把选区坐标换算进全窗口 NSView。首选边只用 `.minX` / `.maxX`，避开翻转视图里上下边含义相反的问题。
+- 左侧放得下用 `.minX`（弹出层在左、箭头在右），否则 `.maxX`。同一次请求锁定该边，流式变高只改 `contentSize`。
+- `NSHostingController.sizingOptions` 使用 `preferredContentSize` 与 `intrinsicContentSize`。内容 `fixedSize(vertical: true)`，禁止外层 `ScrollView` 在弹出层里把高度塌成 0。
+- 点外关闭走 `popoverDidClose` → `onDismiss`。关闭按钮先清 model，再 `dismantle`。关闭后禁止在同一实例上再次 `show`。
 - 这是系统弹出层，不是独立 `NSPanel`。
 
 ## 4. 内容映射
@@ -65,6 +65,6 @@ predecessor:
 
 ## 5. 验证
 
-- Swift：`TranslationPopoverPresentationTests` 覆盖语言标签、单词 / 句子强调色译文选择、拷贝载荷和转圈消失条件；`TranslationNativePopoverTests` 覆盖左侧优先、贴左缘改右侧、坐标翻转和尺寸上限。笔记浮层的 `ReadingOverlayPlacementTests` 保持原默认顺序。
+- Swift：`TranslationPopoverPresentationTests` 覆盖语言标签、单词 / 句子强调色译文选择、拷贝载荷和转圈消失条件；`TranslationNativePopoverTests` 覆盖左侧优先、贴左缘改右侧和尺寸上限。笔记浮层的 `ReadingOverlayPlacementTests` 保持原默认顺序。
 - Rust：`json_root_object_closed` / `stream_has_terminal_payload`；词典音标超时后保留 LLM 音标。`cargo test`。
 - 运行时（需 macOS app）：弹出层带系统三角箭头对准选区；浅色 / 深色下能看到材质和阴影；译文写出后不再转圈；保存与 AI 解释仍可用。本环境无法启动 macOS 应用，视觉与交互验收未在运行中的 app 完成。

@@ -2,24 +2,18 @@ import AppKit
 import SwiftUI
 
 /// Preferred attachment edge for the system translation popover.
-/// Maps to unflipped AppKit `NSRectEdge` so the arrow sits on the
-/// popover side that faces the selection.
+/// Horizontal edges only: vertical `NSRectEdge` depends on whether the
+/// positioning view is flipped, so we never ask AppKit to attach above/below.
 enum TranslationPopoverEdge: Equatable {
     /// Popover to the left of the selection; system arrow on the right edge.
     case leading
     /// Popover to the right of the selection; system arrow on the left edge.
     case trailing
-    /// Popover above the selection; system arrow on the bottom edge.
-    case above
-    /// Popover below the selection; system arrow on the top edge.
-    case below
 
     var nsRectEdge: NSRectEdge {
         switch self {
         case .leading: return .minX
         case .trailing: return .maxX
-        case .above: return .maxY
-        case .below: return .minY
         }
     }
 }
@@ -30,7 +24,7 @@ enum TranslationPopoverGeometry {
     static let inset: CGFloat = 12
     static let minWidth: CGFloat = 280
     static let maxWidth: CGFloat = 760
-    static let minHeight: CGFloat = 80
+    static let minHeight: CGFloat = 120
 
     static func contentWidth(
         isSentenceMode: Bool,
@@ -49,34 +43,11 @@ enum TranslationPopoverGeometry {
         containerSize: CGSize
     ) -> TranslationPopoverEdge {
         let needWidth = contentSize.width + arrowAllowance
-        let needHeight = contentSize.height + arrowAllowance
         let left = anchorRect.minX - inset
         let right = containerSize.width - anchorRect.maxX - inset
-        let above = anchorRect.minY - inset
-        let below = containerSize.height - anchorRect.maxY - inset
-
         if left >= needWidth { return .leading }
         if right >= needWidth { return .trailing }
-        if above >= needHeight { return .above }
-        if below >= needHeight { return .below }
-
-        let ranked: [(TranslationPopoverEdge, CGFloat)] = [
-            (.leading, left),
-            (.trailing, right),
-            (.above, above),
-            (.below, below),
-        ]
-        return ranked.max(by: { $0.1 < $1.1 })?.0 ?? .leading
-    }
-
-    /// SwiftUI (top-left) rect → unflipped AppKit view coordinates.
-    static func appKitRect(fromSwiftUI rect: CGRect, viewHeight: CGFloat) -> CGRect {
-        CGRect(
-            x: rect.minX,
-            y: viewHeight - rect.maxY,
-            width: max(rect.width, 1),
-            height: max(rect.height, 1)
-        )
+        return left >= right ? .leading : .trailing
     }
 
     static func clampContentSize(_ size: CGSize, available: CGSize) -> CGSize {
@@ -87,9 +58,18 @@ enum TranslationPopoverGeometry {
             height: min(max(size.height, minHeight), maxH)
         )
     }
+
+    static func selectionFrame(_ rect: CGRect) -> CGRect {
+        CGRect(
+            x: rect.minX,
+            y: rect.minY,
+            width: max(rect.width, 1),
+            height: max(rect.height, 1)
+        )
+    }
 }
 
-/// Invisible full-size host that presents a real `NSPopover` at the selection.
+/// Pins a 1:1 selection-sized `NSView` and presents a real `NSPopover` from it.
 /// AppKit draws the beak, vibrancy, and shadow as one chrome shape.
 struct TranslationNativePopover: NSViewRepresentable {
     let request: TranslationBubbleRequest
@@ -145,7 +125,6 @@ final class TranslationPopoverLiveContent: ObservableObject {
     var onExplain: () -> Void
     var onRetry: () -> Void
     var onDismiss: () -> Void
-    var onMeasuredSize: (CGSize) -> Void = { _ in }
 
     init(
         request: TranslationBubbleRequest,
@@ -172,27 +151,16 @@ private struct TranslationPopoverLiveHost: View {
     @ObservedObject var live: TranslationPopoverLiveContent
 
     var body: some View {
-        let width = TranslationPopoverGeometry.contentWidth(
-            isSentenceMode: live.request.isSentenceMode,
-            textCount: (live.request.isSentenceMode ? live.request.word : live.request.sentence).count,
-            availableWidth: live.availableSize.width
+        TranslationBubble(
+            request: live.request,
+            isLoading: live.isLoading,
+            availableSize: live.availableSize,
+            onSave: { live.onSave($0) },
+            onDelete: { id, savedToNote in live.onDelete(id, savedToNote) },
+            onExplain: { live.onExplain() },
+            onRetry: { live.onRetry() },
+            onDismiss: { live.onDismiss() }
         )
-        TranslationPopoverMeasuredContent(
-            width: width,
-            maxHeight: max(live.availableSize.height * 0.8, TranslationPopoverGeometry.minHeight),
-            onSize: live.onMeasuredSize
-        ) {
-            TranslationBubble(
-                request: live.request,
-                isLoading: live.isLoading,
-                availableSize: live.availableSize,
-                onSave: { live.onSave($0) },
-                onDelete: { id, savedToNote in live.onDelete(id, savedToNote) },
-                onExplain: { live.onExplain() },
-                onRetry: { live.onRetry() },
-                onDismiss: { live.onDismiss() }
-            )
-        }
     }
 }
 
@@ -250,16 +218,14 @@ final class TranslationNativePopoverCoordinator: NSObject, NSPopoverDelegate {
                 onRetry: onRetry,
                 onDismiss: onDismiss
             )
-            live.onMeasuredSize = { [weak self] size in
-                guard let self else { return }
-                self.applyMeasuredSize(size, available: self.lastAvailableSize)
-            }
             self.live = live
             let hosting = TranslationPopoverHostingController(
                 rootView: TranslationPopoverLiveHost(live: live)
             )
-            hosting.sizingOptions = []
-            hosting.safeAreaRegions = []
+            hosting.sizingOptions = [.preferredContentSize, .intrinsicContentSize]
+            hosting.onFittingSize = { [weak self] size in
+                self?.applyMeasuredSize(size)
+            }
             hostingController = hosting
             let popover = NSPopover()
             popover.behavior = .transient
@@ -291,9 +257,8 @@ final class TranslationNativePopoverCoordinator: NSObject, NSPopoverDelegate {
 
     func showIfPossible() {
         guard hasSynced, !suppressShow else { return }
-        guard let view = positioningView, view.window != nil, view.bounds.width > 1 else {
-            return
-        }
+        guard let view = positioningView, view.window != nil else { return }
+        guard view.bounds.width >= 1, view.bounds.height >= 1 else { return }
         guard let popover, !popover.isShown, let live else { return }
 
         let contentSize = popover.contentSize.width > 1
@@ -305,17 +270,12 @@ final class TranslationNativePopoverCoordinator: NSObject, NSPopoverDelegate {
             containerSize: lastAvailableSize
         )
         lockedEdge = edge
-
-        let rect = TranslationPopoverGeometry.appKitRect(
-            fromSwiftUI: live.request.selectionAnchorRect,
-            viewHeight: view.bounds.height
-        )
-        popover.show(relativeTo: rect, of: view, preferredEdge: edge.nsRectEdge)
+        popover.show(relativeTo: view.bounds, of: view, preferredEdge: edge.nsRectEdge)
     }
 
-    private func applyMeasuredSize(_ size: CGSize, available: CGSize) {
+    private func applyMeasuredSize(_ size: CGSize) {
         guard let popover else { return }
-        let clamped = TranslationPopoverGeometry.clampContentSize(size, available: available)
+        let clamped = TranslationPopoverGeometry.clampContentSize(size, available: lastAvailableSize)
         if abs(clamped.width - lastContentSize.width) < 1,
            abs(clamped.height - lastContentSize.height) < 1
         {
@@ -334,6 +294,7 @@ final class TranslationNativePopoverCoordinator: NSObject, NSPopoverDelegate {
             popover?.close()
         }
         popover = nil
+        hostingController?.onFittingSize = nil
         hostingController = nil
         live = nil
         shownRequestID = nil
@@ -374,35 +335,17 @@ final class TranslationPopoverPositioningView: NSView {
 }
 
 final class TranslationPopoverHostingController<Content: View>: NSHostingController<Content> {
+    var onFittingSize: ((CGSize) -> Void)?
+
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.wantsLayer = true
-        view.layer?.backgroundColor = NSColor.clear.cgColor
+        view.autoresizingMask = [.width, .height]
     }
-}
 
-private struct TranslationPopoverSizeKey: PreferenceKey {
-    static var defaultValue: CGSize = .zero
-    static func reduce(value: inout CGSize, nextValue: () -> CGSize) {
-        value = nextValue()
-    }
-}
-
-private struct TranslationPopoverMeasuredContent<Content: View>: View {
-    let width: CGFloat
-    let maxHeight: CGFloat
-    let onSize: (CGSize) -> Void
-    @ViewBuilder let content: () -> Content
-
-    var body: some View {
-        content()
-            .frame(width: width)
-            .frame(maxHeight: maxHeight, alignment: .top)
-            .background {
-                GeometryReader { proxy in
-                    Color.clear.preference(key: TranslationPopoverSizeKey.self, value: proxy.size)
-                }
-            }
-            .onPreferenceChange(TranslationPopoverSizeKey.self, perform: onSize)
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        let fitting = view.fittingSize
+        guard fitting.width > 1, fitting.height > 1 else { return }
+        onFittingSize?(fitting)
     }
 }

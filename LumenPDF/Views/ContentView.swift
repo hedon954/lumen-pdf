@@ -100,27 +100,38 @@ struct ContentView: View {
                let request = translationOverlayModel.request
             {
                 GeometryReader { proxy in
-                    TranslationNativePopover(
-                        request: request,
-                        isLoading: translationOverlayModel.isLoading,
-                        availableSize: proxy.size,
-                        onSave: { result in
-                            saveTranslation(result: result, request: request)
-                        },
-                        onDelete: { id, savedToNote in
-                            deleteTranslationSave(
-                                id: id,
-                                savedToNote: savedToNote,
-                                request: request
-                            )
-                        },
-                        onExplain: {
-                            startGuideFromTranslation(request)
-                        },
-                        onRetry: translationOverlayModel.retry,
-                        onDismiss: translationOverlayModel.dismiss
+                    let anchor = TranslationPopoverGeometry.selectionFrame(
+                        request.selectionAnchorRect
                     )
-                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    ZStack(alignment: .topLeading) {
+                        TranslationNativePopover(
+                            request: request,
+                            isLoading: translationOverlayModel.isLoading,
+                            availableSize: proxy.size,
+                            onSave: { result in
+                                saveTranslation(result: result, request: request)
+                            },
+                            onDelete: { id, savedToNote in
+                                deleteTranslationSave(
+                                    id: id,
+                                    savedToNote: savedToNote,
+                                    request: request
+                                )
+                            },
+                            onExplain: {
+                                startGuideFromTranslation(request)
+                            },
+                            onRetry: translationOverlayModel.retry,
+                            onDismiss: translationOverlayModel.dismiss
+                        )
+                        .frame(width: anchor.width, height: anchor.height)
+                        .offset(x: anchor.minX, y: anchor.minY)
+                    }
+                    .frame(
+                        width: proxy.size.width,
+                        height: proxy.size.height,
+                        alignment: .topLeading
+                    )
                     .allowsHitTesting(false)
                 }
             }

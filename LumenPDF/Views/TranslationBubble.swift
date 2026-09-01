@@ -22,16 +22,14 @@ struct TranslationBubble: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             toolbar
-            ScrollView {
-                content
-            }
+            content
             if showsFooter {
                 Divider()
                 overlayFooter
             }
         }
-        .frame(width: cardWidth)
-        .frame(maxHeight: max(120, availableSize.height * 0.8), alignment: .top)
+        .frame(width: cardWidth, alignment: .topLeading)
+        .fixedSize(horizontal: false, vertical: true)
         .onAppear(perform: syncSavedState)
         .onChange(of: request.id) { _, _ in syncSavedState() }
         .onDisappear { copyResetTask?.cancel() }
