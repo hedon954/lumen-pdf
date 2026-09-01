@@ -76,6 +76,27 @@ final class ReadingOverlayPlacementTests: XCTestCase {
         )
     }
 
+    func testArrowFrameSitsOnTheFacingEdge() {
+        let overlay = CGSize(width: 334, height: 400)
+        let along: CGFloat = 188
+        let leading = ReadingOverlayPointerGeometry.arrowFrame(
+            overlaySize: overlay,
+            along: along,
+            placement: .leading
+        )
+        let trailing = ReadingOverlayPointerGeometry.arrowFrame(
+            overlaySize: overlay,
+            along: along,
+            placement: .trailing
+        )
+
+        XCTAssertEqual(leading.maxX, overlay.width)
+        XCTAssertEqual(leading.midY, along, accuracy: 0.5)
+        XCTAssertEqual(trailing.minX, 0)
+        XCTAssertEqual(trailing.midY, along, accuracy: 0.5)
+        XCTAssertGreaterThan(leading.width, ReadingOverlayPointerGeometry.arrowDepth)
+    }
+
     func testLookUpPlacementLeavesGapFromArrowTipToSelection() {
         let body = CGSize(width: 320, height: 240)
         let outer = ReadingOverlayPointerGeometry.outerSize(body: body, placement: .leading)

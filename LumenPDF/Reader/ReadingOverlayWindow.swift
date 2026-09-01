@@ -167,49 +167,87 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
         along: CGFloat
     ) -> some View {
         if let pointing {
-            popoverChrome(card: card, pointing: pointing, along: along)
-        } else {
-            card
-                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+            roundedCard(card)
+                .padding(swiftUIInsets(ReadingOverlayPointerGeometry.contentInsets(for: pointing)))
+                .overlay(alignment: .topLeading) {
+                    arrowOverlay(placement: pointing, along: along)
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        } else {
+            roundedCard(card)
         }
     }
 
-    private func popoverChrome(
-        card: some View,
-        pointing: ReadingOverlayPlacement,
-        along: CGFloat
-    ) -> some View {
-        let shape = ReadingOverlayPopoverShape(placement: pointing, along: along)
-        let insets = ReadingOverlayPointerGeometry.contentInsets(for: pointing)
-        return card
-            .padding(
-                EdgeInsets(
-                    top: insets.top,
-                    leading: insets.leading,
-                    bottom: insets.bottom,
-                    trailing: insets.trailing
-                )
-            )
-            .background(shape.fill(.regularMaterial))
-            .overlay(shape.stroke(Color.primary.opacity(0.14), lineWidth: 0.6))
-            .clipShape(shape)
+    private func roundedCard(_ card: some View) -> some View {
+        card
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func swiftUIInsets(_ insets: ReadingOverlayEdgeInsets) -> EdgeInsets {
+        EdgeInsets(
+            top: insets.top,
+            leading: insets.leading,
+            bottom: insets.bottom,
+            trailing: insets.trailing
+        )
+    }
+
+    private func arrowOverlay(placement: ReadingOverlayPlacement, along: CGFloat) -> some View {
+        let frame = ReadingOverlayPointerGeometry.arrowFrame(
+            overlaySize: renderedSize,
+            along: along,
+            placement: placement
+        )
+        return ReadingOverlayArrowShape(placement: placement)
+            .fill(Color(nsColor: .windowBackgroundColor))
+            .overlay {
+                ReadingOverlayArrowShape(placement: placement)
+                    .fill(.regularMaterial)
+            }
+            .overlay {
+                ReadingOverlayArrowShape(placement: placement)
+                    .stroke(Color.primary.opacity(0.16), lineWidth: 0.6)
+            }
+            .frame(width: frame.width, height: frame.height)
+            .offset(x: frame.minX, y: frame.minY)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 
     private var showsPointer: Bool { configuration.showsAnchorPointer }
 
-    /// Side that owns the popover arrow. Before the first layout lock, use the
-    /// preferred Look Up / default order so the reserved arrow inset matches the
-    /// side `place` is about to pick.
+    /// Side that owns the popover arrow. Must match the side `place` actually
+    /// chose — assuming `.leading` while the card sits on the right put the
+    /// triangle on the far edge, away from the word.
     private var pointingSide: ReadingOverlayPlacement {
         if let lockedPlacement {
             return lockedPlacement == .leastOverlap ? nearestPointerSide() : lockedPlacement
         }
-        return configuration.placementOrder.first { $0 != .leastOverlap } ?? .leading
+        let placed = ReadingOverlayPlacementPolicy.place(
+            placementInput(for: placementSizeForPointer)
+        ).placement
+        return placed == .leastOverlap ? nearestPointerSide() : placed
+    }
+
+    /// Outer size used to decide the arrow side without reading `renderedSize`
+    /// (that size itself depends on the pointing side).
+    private var placementSizeForPointer: CGSize {
+        if let customSize { return customSize }
+        if measuredWindowSize.width > 1, measuredWindowSize.height > 1 {
+            return measuredWindowSize
+        }
+        let assumed = configuration.placementOrder.first { $0 != .leastOverlap } ?? .leading
+        return ReadingOverlayPointerGeometry.outerSize(
+            body: CGSize(
+                width: min(configuration.width, maximumAvailableWidth),
+                height: min(maximumWindowHeight, 240)
+            ),
+            placement: assumed
+        )
     }
 
     private func nearestPointerSide() -> ReadingOverlayPlacement {
@@ -693,119 +731,31 @@ private extension ReadingOverlayPlacement {
     }
 }
 
-private struct ReadingOverlayPopoverShape: Shape {
+private struct ReadingOverlayArrowShape: Shape {
     var placement: ReadingOverlayPlacement
-    var along: CGFloat
 
     func path(in rect: CGRect) -> Path {
-        let depth = ReadingOverlayPointerGeometry.arrowDepth
-        let base = ReadingOverlayPointerGeometry.arrowBase
-        let radius = min(
-            ReadingOverlayPointerGeometry.cornerRadius,
-            min(rect.width, rect.height) / 4
-        )
-
-        var body = rect
-        switch placement {
-        case .leading:
-            body.size.width = max(radius * 2, rect.width - depth)
-        case .trailing:
-            body.origin.x = rect.minX + depth
-            body.size.width = max(radius * 2, rect.width - depth)
-        case .above:
-            body.size.height = max(radius * 2, rect.height - depth)
-        case .below, .leastOverlap:
-            body.origin.y = rect.minY + depth
-            body.size.height = max(radius * 2, rect.height - depth)
-        }
-
-        let alongMin: CGFloat
-        let alongMax: CGFloat
-        switch placement {
-        case .leading, .trailing:
-            alongMin = body.minY + radius + base / 2
-            alongMax = body.maxY - radius - base / 2
-        case .above, .below, .leastOverlap:
-            alongMin = body.minX + radius + base / 2
-            alongMax = body.maxX - radius - base / 2
-        }
-        let center = min(max(along, alongMin), max(alongMin, alongMax))
-        let half = base / 2
-
         var path = Path()
         switch placement {
         case .leading:
-            // Arrow on the trailing edge, pointing at the selection.
-            path.move(to: CGPoint(x: body.minX + radius, y: body.minY))
-            path.addLine(to: CGPoint(x: body.maxX - radius, y: body.minY))
-            addCorner(&path, center: CGPoint(x: body.maxX - radius, y: body.minY + radius), radius: radius, from: 270, to: 0)
-            path.addLine(to: CGPoint(x: body.maxX, y: center - half))
-            path.addLine(to: CGPoint(x: body.maxX + depth, y: center))
-            path.addLine(to: CGPoint(x: body.maxX, y: center + half))
-            path.addLine(to: CGPoint(x: body.maxX, y: body.maxY - radius))
-            addCorner(&path, center: CGPoint(x: body.maxX - radius, y: body.maxY - radius), radius: radius, from: 0, to: 90)
-            path.addLine(to: CGPoint(x: body.minX + radius, y: body.maxY))
-            addCorner(&path, center: CGPoint(x: body.minX + radius, y: body.maxY - radius), radius: radius, from: 90, to: 180)
-            path.addLine(to: CGPoint(x: body.minX, y: body.minY + radius))
-            addCorner(&path, center: CGPoint(x: body.minX + radius, y: body.minY + radius), radius: radius, from: 180, to: 270)
+            path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+            path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
         case .trailing:
-            path.move(to: CGPoint(x: body.minX + radius, y: body.minY))
-            path.addLine(to: CGPoint(x: body.maxX - radius, y: body.minY))
-            addCorner(&path, center: CGPoint(x: body.maxX - radius, y: body.minY + radius), radius: radius, from: 270, to: 0)
-            path.addLine(to: CGPoint(x: body.maxX, y: body.maxY - radius))
-            addCorner(&path, center: CGPoint(x: body.maxX - radius, y: body.maxY - radius), radius: radius, from: 0, to: 90)
-            path.addLine(to: CGPoint(x: body.minX + radius, y: body.maxY))
-            addCorner(&path, center: CGPoint(x: body.minX + radius, y: body.maxY - radius), radius: radius, from: 90, to: 180)
-            path.addLine(to: CGPoint(x: body.minX, y: center + half))
-            path.addLine(to: CGPoint(x: body.minX - depth, y: center))
-            path.addLine(to: CGPoint(x: body.minX, y: center - half))
-            path.addLine(to: CGPoint(x: body.minX, y: body.minY + radius))
-            addCorner(&path, center: CGPoint(x: body.minX + radius, y: body.minY + radius), radius: radius, from: 180, to: 270)
+            path.move(to: CGPoint(x: rect.maxX, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.minX, y: rect.midY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
         case .above:
-            path.move(to: CGPoint(x: body.minX + radius, y: body.minY))
-            path.addLine(to: CGPoint(x: body.maxX - radius, y: body.minY))
-            addCorner(&path, center: CGPoint(x: body.maxX - radius, y: body.minY + radius), radius: radius, from: 270, to: 0)
-            path.addLine(to: CGPoint(x: body.maxX, y: body.maxY - radius))
-            addCorner(&path, center: CGPoint(x: body.maxX - radius, y: body.maxY - radius), radius: radius, from: 0, to: 90)
-            path.addLine(to: CGPoint(x: center + half, y: body.maxY))
-            path.addLine(to: CGPoint(x: center, y: body.maxY + depth))
-            path.addLine(to: CGPoint(x: center - half, y: body.maxY))
-            path.addLine(to: CGPoint(x: body.minX + radius, y: body.maxY))
-            addCorner(&path, center: CGPoint(x: body.minX + radius, y: body.maxY - radius), radius: radius, from: 90, to: 180)
-            path.addLine(to: CGPoint(x: body.minX, y: body.minY + radius))
-            addCorner(&path, center: CGPoint(x: body.minX + radius, y: body.minY + radius), radius: radius, from: 180, to: 270)
+            path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
         case .below, .leastOverlap:
-            path.move(to: CGPoint(x: body.minX + radius, y: body.minY))
-            path.addLine(to: CGPoint(x: center - half, y: body.minY))
-            path.addLine(to: CGPoint(x: center, y: body.minY - depth))
-            path.addLine(to: CGPoint(x: center + half, y: body.minY))
-            path.addLine(to: CGPoint(x: body.maxX - radius, y: body.minY))
-            addCorner(&path, center: CGPoint(x: body.maxX - radius, y: body.minY + radius), radius: radius, from: 270, to: 0)
-            path.addLine(to: CGPoint(x: body.maxX, y: body.maxY - radius))
-            addCorner(&path, center: CGPoint(x: body.maxX - radius, y: body.maxY - radius), radius: radius, from: 0, to: 90)
-            path.addLine(to: CGPoint(x: body.minX + radius, y: body.maxY))
-            addCorner(&path, center: CGPoint(x: body.minX + radius, y: body.maxY - radius), radius: radius, from: 90, to: 180)
-            path.addLine(to: CGPoint(x: body.minX, y: body.minY + radius))
-            addCorner(&path, center: CGPoint(x: body.minX + radius, y: body.minY + radius), radius: radius, from: 180, to: 270)
+            path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
+            path.addLine(to: CGPoint(x: rect.midX, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
         }
         path.closeSubpath()
         return path
-    }
-
-    private func addCorner(
-        _ path: inout Path,
-        center: CGPoint,
-        radius: CGFloat,
-        from start: Double,
-        to end: Double
-    ) {
-        path.addArc(
-            center: center,
-            radius: radius,
-            startAngle: .degrees(start),
-            endAngle: .degrees(end),
-            clockwise: true
-        )
     }
 }
 

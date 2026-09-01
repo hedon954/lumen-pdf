@@ -345,6 +345,50 @@ enum ReadingOverlayPointerGeometry {
         }
     }
 
+    static let arrowOverlap: CGFloat = 2
+
+    /// Frame of the triangle in the outer overlay, including a small overlap
+    /// onto the card so the arrow sits on the rounded rect instead of a gap.
+    static func arrowFrame(
+        overlaySize: CGSize,
+        along: CGFloat,
+        placement: ReadingOverlayPlacement
+    ) -> CGRect {
+        let depth = arrowDepth + arrowOverlap
+        let base = arrowBase
+        let center = along
+        switch placement {
+        case .leading:
+            return CGRect(
+                x: overlaySize.width - depth,
+                y: center - base / 2,
+                width: depth,
+                height: base
+            )
+        case .trailing:
+            return CGRect(
+                x: 0,
+                y: center - base / 2,
+                width: depth,
+                height: base
+            )
+        case .above:
+            return CGRect(
+                x: center - base / 2,
+                y: overlaySize.height - depth,
+                width: base,
+                height: depth
+            )
+        case .below, .leastOverlap:
+            return CGRect(
+                x: center - base / 2,
+                y: 0,
+                width: base,
+                height: depth
+            )
+        }
+    }
+
     /// Distance along the facing edge from the overlay origin to the arrow center.
     static func alongEdge(
         anchorRect: CGRect,

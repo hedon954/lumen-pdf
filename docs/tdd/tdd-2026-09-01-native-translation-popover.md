@@ -15,7 +15,7 @@ predecessor:
 
 ## 1. 技术结论
 
-继续使用根层 `ReadingOverlayWindow` 承载翻译浮窗，不新增 AppKit 弹出层。翻译浮窗打开 `showsAnchorPointer`，定位顺序改为左、右、上、下。箭头是气泡外形的一部分（`ReadingOverlayPopoverShape`），通过内容 padding 占住布局，避免再贴一层会被裁掉的小三角。流式在 JSON 闭合或 `finish_reason` / `[DONE]` 时结束读取；词典音标查询限时 1.5 秒，避免内容已经齐了还一直转圈。
+继续使用根层 `ReadingOverlayWindow` 承载翻译浮窗，不新增 AppKit 弹出层。翻译浮窗打开 `showsAnchorPointer`，定位顺序改为左、右、上、下。卡片仍用系统 `RoundedRectangle`；箭头是单独的三角，画在朝向选区的 padding 里，不把整张卡片 clip 成自定义 Path（那会抠掉四个角）。流式在 JSON 闭合或 `finish_reason` / `[DONE]` 时结束读取；词典音标查询限时 1.5 秒。
 
 ## 2. 模块边界
 
@@ -26,7 +26,7 @@ predecessor:
 | `TranslationBubble` | 组装 overlay、失败卡、拆解、footer 动作；不直接调用 `BridgeService`。 |
 | `AudioService` | 按传入的 `languageCode` 朗读原文或译文。 |
 | `ReadingOverlayWindow` | 材质、圆角、拖动、缩放、首次定位锁定；翻译使用气泡外形与 Look Up 定位顺序。 |
-| `ReadingOverlayPointerGeometry` / `ReadingOverlayPopoverShape` | 箭头尺寸、内容 inset、沿边缘对准选区中线；气泡 Path 与阴影。 |
+| `ReadingOverlayPointerGeometry` / `ReadingOverlayArrowShape` | 箭头尺寸、padding、沿边缘对准选区；三角只画在指向边。 |
 | `stream_has_terminal_payload` | JSON 已闭合、`finish_reason` 或 `[DONE]` 时停止 SSE。 |
 | `TranslationDomainService` | 词典音标 lookup 1.5 秒超时。 |
 
@@ -47,7 +47,7 @@ predecessor:
 - 语言标签来自 `@AppStorage("target_language")`，默认「简体中文」→「中文 (普通话，简体)」。
 - 「拷贝译文」写入 `NSPasteboard` 的强调色译文，不复制解释或拆解。
 - 加载中若尚无 `result`，仍渲染原文对，译文对显示进度。
-- 箭头是气泡 Path 的一部分，内容用对应边 padding 给箭头留位，避免 overlay 小三角被 round-rect clip 裁掉。
+- 卡片用系统圆角；箭头单独画在指向边的 padding 里。不要用自定义 Path clip 整张卡片。
 - 强调色译文非空后隐藏转圈；footer 仍等 `isLoading == false` 再出现，避免保存半成品。
 - SSE 在根 JSON 闭合后停止，即使网关继续推思考 token。
 - 音标请求与 LLM 并行，但 `tokio::time::timeout(1.5s)`，超时保留 LLM 音标。
