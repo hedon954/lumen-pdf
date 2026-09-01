@@ -19,6 +19,7 @@ LumenPDF 的版本记录由人工/AI 维护。每个版本只记录对用户或�
 ### 工程与文档
 
 - 精简 release-tag 默认流程，仅保留版本、中文变更记录、提交、annotated tag 与远端确认，耗时打包和产物审计改为按需执行（[3a4e267](https://github.com/hedon954/lumen-pdf/commit/3a4e26797a75588aa0093bef783c5a9ebf2896c6)）。
+- 更新 README：补齐工作区搜索、标注撤回和自定义 LLM 等近期能力，并把下载入口、文档链接改到当前 Releases 与文档索引。
 
 ---
 ## [1.0.29](https://github.com/hedon954/lumen-pdf/compare/v1.0.28..v1.0.29) - 2026-08-25

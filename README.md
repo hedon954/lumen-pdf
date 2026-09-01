@@ -6,8 +6,9 @@
 
 LumenPDF 是一款面向深度阅读的 macOS PDF 阅读器。它保留系统 Preview 式的轻量阅读体验，同时把翻译、AI 导读、划线笔记、单词本和本地知识沉淀放在同一个阅读工作流里。
 
-适合阅读英文论文、技术书和长篇资料：边读边翻译、追问、划线、记笔记，并随时回到原文位置。
+适合阅读英文论文、技术书和长篇资料：边读边翻译、追问、划线、记笔记，再用 ⌘F 回到原文位置。
 
+[![Latest release](https://img.shields.io/github/v/release/hedon954/lumen-pdf)](https://github.com/hedon954/lumen-pdf/releases/latest)
 ![macOS 15+](https://img.shields.io/badge/macOS-15%2B-blue)
 ![Swift](https://img.shields.io/badge/Swift-5.9-orange)
 ![Rust](https://img.shields.io/badge/Rust-stable-brown)
@@ -17,20 +18,30 @@ LumenPDF 是一款面向深度阅读的 macOS PDF 阅读器。它保留系统 Pr
   <img src="assets/img/snapshot.jpg" alt="LumenPDF reading and translation interface" width="860">
 </p>
 
+<p align="center">
+  <a href="https://github.com/hedon954/lumen-pdf/releases/latest"><strong>下载最新 DMG</strong></a>
+  ·
+  <a href="CHANGELOG.md">变更记录</a>
+  ·
+  <a href="docs/README.md">产品与技术文档</a>
+</p>
+
 ## 特性
 
-- **PDF 阅读**：连续滚动、目录跳转、自动恢复阅读位置。
-- **轻量翻译**：划选单词、短语或句子后快速查看上下文翻译。
-- **Reading Inspector**：右侧 Inspector 集中显示上下文、AI 导读和笔记。
+- **PDF 阅读**：连续滚动、目录跳转，自动恢复上次阅读位置和视口。
+- **工作区搜索**：⌘F 搜索笔记、划线、单词和当前 AI 导读；选中结果后跳到原文并恢复完整选区。
+- **轻量翻译**：划选单词、短语或句子后快速查看上下文翻译；不配置 LLM 也能使用基础翻译。
+- **Reading Inspector**：右侧集中显示上下文、AI 导读、单词和笔记，减少在多个页面间切换。
 - **AI 导读**：围绕当前选区连续追问，支持 Markdown 回复和一键保存。
-- **单词与笔记**：保存单词、划线、笔记和 AI 回复，沉淀当前文档的阅读上下文。
-- **本地优先**：阅读进度、单词和笔记保存在本机，API Key 存入 macOS Keychain。
+- **划线与笔记**：支持跨页划线，笔记可直接编辑并自动保存；⌘Z / ⇧⌘Z 撤回或重做最近 50 次标注操作。
+- **自定义 LLM**：OpenAI 兼容接口，支持内置服务商或「其他」自定义端点；API Key 存入 macOS Keychain。
+- **本地优先**：阅读进度、单词和笔记保存在本机，不依赖云端账号。
 
 ## 安装
 
 ### 下载 DMG
 
-如果 GitHub Releases 中已经提供 DMG，下载最新版，打开后把 `LumenPDF.app` 拖到 `Applications`。
+从 [GitHub Releases](https://github.com/hedon954/lumen-pdf/releases/latest) 下载最新 `LumenPDF-<version>.dmg`，打开后把 `LumenPDF.app` 拖到 `Applications`。
 
 如果首次打开时 macOS 提示“无法验证开发者”或“无法打开”，先尝试打开一次 `LumenPDF.app`，然后进入 **系统设置 → 隐私与安全性**，在“安全性”区域点击“仍要打开 / Open Anyway”，再在确认弹窗中选择“打开”。这个入口通常只会在尝试打开后的短时间内出现。参考：[Apple 官方说明](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac)。
 
@@ -64,16 +75,20 @@ make upgrade
 
 | 配置项 | 说明 |
 | --- | --- |
+| 服务商 | 内置预设，或选择「其他」填写自定义端点 |
 | API Base URL | 例如 `https://api.openai.com/v1` 或 `https://api.deepseek.com/v1` |
 | API Key | 存入 macOS Keychain，不写入明文配置文件 |
 | 模型 | 任意兼容 Chat Completions 的模型 |
+| Extra Config | 可选；未改时显示当前服务商关闭 thinking 的默认 JSON |
 | 目标语言 | 默认简体中文 |
 
 不配置 LLM 也能使用基础翻译；上下文解释和追问需要 LLM。
 
 ## 阅读工作流
 
-打开 PDF 后，LumenPDF 会自动恢复上次阅读位置，并在左侧显示目录。划选文本后可以翻译、解释、划线或写笔记；「解释」会进入右侧 Reading Inspector，后续追问、AI 回复保存、上下文单词和笔记都在这里完成。切换到“单词本”或“笔记”页，可以集中搜索和管理已保存内容。
+打开 PDF 后，LumenPDF 会自动恢复上次阅读位置，并在左侧显示目录。划选文本后可以翻译、解释、划线或写笔记；「解释」会进入右侧 Reading Inspector，后续追问、保存 AI 回复、查看单词和笔记都在这里完成。
+
+需要回到某条笔记或划线时，按 ⌘F 搜索并跳转。标注操作可用 ⌘Z / ⇧⌘Z 撤回或重做；光标在输入框里时，快捷键仍优先处理文字编辑。切换到“单词本”或“笔记”页，可以集中搜索和管理已保存内容。
 
 ## 开发
 
@@ -138,9 +153,12 @@ Rust 后端按 DDD 分层组织：
 
 ## 文档
 
-- 最新 PRD：[docs/prd/prd-2026-08-09-selection-overlay-placement.md](docs/prd/prd-2026-08-09-selection-overlay-placement.md)
-- 最新 TDD：[docs/tdd/tdd-2026-08-09-selection-overlay-placement.md](docs/tdd/tdd-2026-08-09-selection-overlay-placement.md)
-- 历史产品和技术文档见 [docs/](docs/)
+配对表、主题演进和阅读顺序见 [docs/README.md](docs/README.md)。近期用户可感知主题：
+
+- 工作区搜索：[PRD](docs/prd/prd-2026-08-21-workspace-search.md) · [TDD](docs/tdd/tdd-2026-08-21-workspace-search.md)
+- 标注撤回：[PRD](docs/prd/prd-2026-08-26-annotation-undo-history.md) · [TDD](docs/tdd/tdd-2026-08-26-annotation-undo-history.md)
+
+发布说明见 [CHANGELOG.md](CHANGELOG.md)。签名与 Keychain 约束见 [docs/code-signing.md](docs/code-signing.md)。
 
 ## 数据位置
 
