@@ -100,7 +100,7 @@ struct ContentView: View {
                let request = translationOverlayModel.request
             {
                 GeometryReader { proxy in
-                    TranslationBubble(
+                    TranslationNativePopover(
                         request: request,
                         isLoading: translationOverlayModel.isLoading,
                         availableSize: proxy.size,
@@ -120,12 +120,9 @@ struct ContentView: View {
                         onRetry: translationOverlayModel.retry,
                         onDismiss: translationOverlayModel.dismiss
                     )
-                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .allowsHitTesting(false)
                 }
-                .animation(
-                    .easeOut(duration: 0.15),
-                    value: translationOverlayModel.request != nil
-                )
             }
         }
         .blur(radius: workspaceSearch.isPresented ? 4 : 0)

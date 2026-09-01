@@ -9,6 +9,7 @@ predecessor:
 successor:
   - prd/prd-2026-08-19-markup-diagnostics.md
   - prd/prd-2026-08-21-llm-call-log-http-request.md
+  - prd/prd-2026-09-01-native-translation-popover.md
 ---
 
 # LumenPDF — 用量统计、设置打磨与根层浮窗 PRD
@@ -33,7 +34,7 @@ v1.0.23 打磨设置可用性，并把翻译浮窗提升到阅读窗口根层，
 
 ### F3 — 翻译浮窗根层
 
-- 翻译浮窗从 PDF 列提升到阅读窗口根层，可跨越侧栏拖动。
+- 翻译浮窗从 PDF 列提升到阅读窗口根层，可跨越侧栏拖动。后续修订：翻译改为系统 `NSPopover`，不再拖动，见 [prd-2026-09-01-native-translation-popover.md](prd-2026-09-01-native-translation-popover.md)。
 - 保存到单词本/笔记、删除、关闭的既有联动保持不变。
 - 手动拖动可到达窗口四周，不受自动避让安全边距限制。
 

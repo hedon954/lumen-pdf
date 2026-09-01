@@ -8,6 +8,7 @@ predecessor:
 successor:
   - tdd/tdd-2026-08-19-markup-diagnostics.md
   - tdd/tdd-2026-08-21-llm-call-log-http-request.md
+  - tdd/tdd-2026-09-01-native-translation-popover.md
 ---
 
 # LumenPDF — 用量统计、设置打磨与根层浮窗 TDD
@@ -22,7 +23,7 @@ successor:
 | --- | --- |
 | `LLMUsageHeatmap.swift` / `LLMCallLogStore.swift` | 26 周日聚合、模型筛选、探测记录过滤。 |
 | `LLMConfigurationSection.swift` / `SettingsPages.swift` | 申请入口、验证状态动画、版式压缩。 |
-| `ContentView.swift` + `TranslationOverlayModel` | 根层承载 `TranslationBubble`。 |
+| `ContentView.swift` + `TranslationOverlayModel` | 根层承载 `TranslationBubble`。后续修订：根层只放定位 `NSView`，内容改由系统 `NSPopover` 承载，见 [tdd-2026-09-01-native-translation-popover.md](tdd-2026-09-01-native-translation-popover.md)。 |
 | `ReadingOverlayWindow` | 手动拖动使用较小安全边距，可到达容器边缘。 |
 | `PDFMarkupAppearance` | 下划线颜色固定为 sRGB 红。 |
 

@@ -578,8 +578,8 @@ struct TranslationBubbleRequest: Identifiable, Equatable {
     let boundsStr: String
     let page: Int
     let pageMarkups: [PDFPageMarkup]
-    /// Selection bounds in the main reader-root coordinate space, used to keep
-    /// the window-level translation card from covering the selected text by default.
+    /// Selection bounds in the main reader-root coordinate space. The system
+    /// translation popover points at this rect.
     let selectionAnchorRect: CGRect
     var result: TranslationResult?
     var translationError: String?

@@ -20,29 +20,18 @@ struct TranslationBubble: View {
     @State private var copyResetTask: Task<Void, Never>?
 
     var body: some View {
-        ReadingOverlayWindow(
-            anchorRect: request.selectionAnchorRect,
-            availableSize: availableSize,
-            resetID: AnyHashable(request.id),
-            configuration: ReadingOverlayWindowConfiguration(
-                width: cardWidth,
-                initialContentHeight: initialContentHeight,
-                minimumContentHeight: 80,
-                isResizable: true,
-                minimumSize: CGSize(width: 280, height: 180),
-                maximumSize: CGSize(width: 920, height: CGFloat.greatestFiniteMagnitude),
-                dismissesOnBackgroundTap: true,
-                showsFooter: showsFooter,
-                showsAnchorPointer: true,
-                placementOrder: ReadingOverlayPlacement.lookUpOrder,
-                preferredGap: 5,
-                compactVerticalInset: true
-            ),
-            onDismiss: onDismiss,
-            header: { header },
-            content: { content },
-            footer: { overlayFooter }
-        )
+        VStack(alignment: .leading, spacing: 0) {
+            toolbar
+            ScrollView {
+                content
+            }
+            if showsFooter {
+                Divider()
+                overlayFooter
+            }
+        }
+        .frame(width: cardWidth)
+        .frame(maxHeight: max(120, availableSize.height * 0.8), alignment: .top)
         .onAppear(perform: syncSavedState)
         .onChange(of: request.id) { _, _ in syncSavedState() }
         .onDisappear { copyResetTask?.cancel() }
@@ -76,18 +65,12 @@ struct TranslationBubble: View {
     }
 
     private var cardWidth: CGFloat {
-        let availableWidth = max(availableSize.width, 420)
-        let cap = min(max(280, availableWidth - 96), 760)
-        let base: CGFloat = request.isSentenceMode ? 560 : 320
         let text = request.isSentenceMode ? request.word : request.sentence
-        return min(max(base, CGFloat(text.count) * 4.2), cap)
-    }
-
-    private var initialContentHeight: CGFloat {
-        if request.translationError != nil || request.result?.isCompleteFailure == true {
-            return 248
-        }
-        return request.isSentenceMode ? 200 : 168
+        return TranslationPopoverGeometry.contentWidth(
+            isSentenceMode: request.isSentenceMode,
+            textCount: text.count,
+            availableWidth: availableSize.width
+        )
     }
 
     private var showsFooter: Bool {
@@ -106,10 +89,9 @@ struct TranslationBubble: View {
         return "重新生成"
     }
 
-    private var header: some View {
+    private var toolbar: some View {
         HStack(spacing: 8) {
-            ReadingOverlayMoveHandle()
-            Spacer(minLength: 8)
+            Spacer(minLength: 0)
             if showsRefreshButton {
                 Button(action: onRetry) {
                     Image(systemName: "arrow.clockwise")
@@ -127,7 +109,8 @@ struct TranslationBubble: View {
             .help("关闭")
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 4)
+        .padding(.top, 8)
+        .padding(.bottom, 2)
     }
 
     @ViewBuilder
