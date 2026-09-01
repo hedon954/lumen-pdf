@@ -15,7 +15,7 @@ predecessor:
 
 ## 1. 技术结论
 
-继续使用根层 `ReadingOverlayWindow` 承载翻译浮窗，不新增 AppKit 弹出层。翻译浮窗打开 `showsAnchorPointer`，定位顺序改为左、右、上、下，三角指针沿边缘对准选区。流式在 JSON 闭合或 `finish_reason` / `[DONE]` 时结束读取；词典音标查询限时 1.5 秒，避免内容已经齐了还一直转圈。
+继续使用根层 `ReadingOverlayWindow` 承载翻译浮窗，不新增 AppKit 弹出层。翻译浮窗打开 `showsAnchorPointer`，定位顺序改为左、右、上、下。箭头是气泡外形的一部分（`ReadingOverlayPopoverShape`），通过内容 padding 占住布局，避免再贴一层会被裁掉的小三角。流式在 JSON 闭合或 `finish_reason` / `[DONE]` 时结束读取；词典音标查询限时 1.5 秒，避免内容已经齐了还一直转圈。
 
 ## 2. 模块边界
 
@@ -25,8 +25,8 @@ predecessor:
 | `TranslationPopoverLanguagePair` / `TranslationPopoverDetailSection` | 原生预览行与细节段的排版。 |
 | `TranslationBubble` | 组装 overlay、失败卡、拆解、footer 动作；不直接调用 `BridgeService`。 |
 | `AudioService` | 按传入的 `languageCode` 朗读原文或译文。 |
-| `ReadingOverlayWindow` | 材质、圆角、拖动、缩放、首次定位锁定；翻译开启三角指针与 Look Up 定位顺序。 |
-| `ReadingOverlayPointerGeometry` | 指针沿边缘对准选区中线。 |
+| `ReadingOverlayWindow` | 材质、圆角、拖动、缩放、首次定位锁定；翻译使用气泡外形与 Look Up 定位顺序。 |
+| `ReadingOverlayPointerGeometry` / `ReadingOverlayPopoverShape` | 箭头尺寸、内容 inset、沿边缘对准选区中线；气泡 Path 与阴影。 |
 | `stream_has_terminal_payload` | JSON 已闭合、`finish_reason` 或 `[DONE]` 时停止 SSE。 |
 | `TranslationDomainService` | 词典音标 lookup 1.5 秒超时。 |
 
@@ -47,12 +47,13 @@ predecessor:
 - 语言标签来自 `@AppStorage("target_language")`，默认「简体中文」→「中文 (普通话，简体)」。
 - 「拷贝译文」写入 `NSPasteboard` 的强调色译文，不复制解释或拆解。
 - 加载中若尚无 `result`，仍渲染原文对，译文对显示进度。
+- 箭头是气泡 Path 的一部分，内容用对应边 padding 给箭头留位，避免 overlay 小三角被 round-rect clip 裁掉。
 - 强调色译文非空后隐藏转圈；footer 仍等 `isLoading == false` 再出现，避免保存半成品。
 - SSE 在根 JSON 闭合后停止，即使网关继续推思考 token。
 - 音标请求与 LLM 并行，但 `tokio::time::timeout(1.5s)`，超时保留 LLM 音标。
 
 ## 4. 验证
 
-- Swift：`TranslationPopoverPresentationTests` 覆盖语言标签、单词 / 句子强调色译文选择、拷贝载荷和转圈消失条件；`ReadingOverlayPlacementTests` 覆盖 Look Up 左侧优先和指针几何。
+- Swift：`TranslationPopoverPresentationTests` 覆盖语言标签、单词 / 句子强调色译文选择、拷贝载荷和转圈消失条件；`ReadingOverlayPlacementTests` 覆盖 Look Up 左侧优先、箭头占位和沿边缘对准选区。
 - Rust：`json_root_object_closed` / `stream_has_terminal_payload`；词典音标超时后保留 LLM 音标。`cargo test`。
-- 运行时（需 macOS app）：单词浮窗用三角指针指向选区；译文写出后不再转圈；保存与 AI 解释仍可用。本环境无法启动 macOS 应用，视觉与交互验收未在运行中的 app 完成。
+- 运行时（需 macOS app）：单词浮窗以一体气泡箭头指向选区；译文写出后不再转圈；保存与 AI 解释仍可用。本环境无法启动 macOS 应用，视觉与交互验收未在运行中的 app 完成。

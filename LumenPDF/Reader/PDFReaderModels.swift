@@ -299,19 +299,44 @@ enum ReadingOverlayPlacementPolicy {
 }
 
 enum ReadingOverlayPointerGeometry {
-    static let horizontalSize = CGSize(width: 11, height: 16)
-    static let verticalSize = CGSize(width: 16, height: 11)
-    static let edgeInset: CGFloat = 22
+    /// Matches the visual weight of macOS Preview / Look Up popover arrows.
+    static let arrowBase: CGFloat = 28
+    static let arrowDepth: CGFloat = 14
+    static let cornerRadius: CGFloat = 16
+    static let edgeInset: CGFloat = 32
 
-    static func size(for placement: ReadingOverlayPlacement) -> CGSize {
+    static func contentInsets(for placement: ReadingOverlayPlacement) -> EdgeInsets {
         switch placement {
-        case .leading, .trailing:
-            return horizontalSize
-        case .above, .below, .leastOverlap:
-            return verticalSize
+        case .leading:
+            return EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: arrowDepth)
+        case .trailing:
+            return EdgeInsets(top: 0, leading: arrowDepth, bottom: 0, trailing: 0)
+        case .above:
+            return EdgeInsets(top: 0, leading: 0, bottom: arrowDepth, trailing: 0)
+        case .below, .leastOverlap:
+            return EdgeInsets(top: arrowDepth, leading: 0, bottom: 0, trailing: 0)
         }
     }
 
+    static func outerSize(body: CGSize, placement: ReadingOverlayPlacement) -> CGSize {
+        switch placement {
+        case .leading, .trailing:
+            return CGSize(width: body.width + arrowDepth, height: body.height)
+        case .above, .below, .leastOverlap:
+            return CGSize(width: body.width, height: body.height + arrowDepth)
+        }
+    }
+
+    static func bodySize(outer: CGSize, placement: ReadingOverlayPlacement) -> CGSize {
+        switch placement {
+        case .leading, .trailing:
+            return CGSize(width: max(1, outer.width - arrowDepth), height: outer.height)
+        case .above, .below, .leastOverlap:
+            return CGSize(width: outer.width, height: max(1, outer.height - arrowDepth))
+        }
+    }
+
+    /// Distance along the facing edge from the overlay origin to the arrow center.
     static func alongEdge(
         anchorRect: CGRect,
         overlayOrigin: CGPoint,
@@ -325,24 +350,6 @@ enum ReadingOverlayPointerGeometry {
         case .above, .below, .leastOverlap:
             let x = anchorRect.midX - overlayOrigin.x
             return min(max(x, edgeInset), max(edgeInset, overlaySize.width - edgeInset))
-        }
-    }
-
-    static func origin(
-        overlaySize: CGSize,
-        alongEdge: CGFloat,
-        placement: ReadingOverlayPlacement
-    ) -> CGPoint {
-        let pointer = size(for: placement)
-        switch placement {
-        case .leading:
-            return CGPoint(x: overlaySize.width - 1, y: alongEdge - pointer.height / 2)
-        case .trailing:
-            return CGPoint(x: 1 - pointer.width, y: alongEdge - pointer.height / 2)
-        case .above:
-            return CGPoint(x: alongEdge - pointer.width / 2, y: overlaySize.height - 1)
-        case .below, .leastOverlap:
-            return CGPoint(x: alongEdge - pointer.width / 2, y: 1 - pointer.height)
         }
     }
 }

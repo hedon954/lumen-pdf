@@ -51,21 +51,55 @@ final class ReadingOverlayPlacementTests: XCTestCase {
         )
 
         XCTAssertEqual(along, 188)
-        let origin = ReadingOverlayPointerGeometry.origin(
-            overlaySize: CGSize(width: 320, height: 400),
-            alongEdge: along,
-            placement: .leading
-        )
-        XCTAssertEqual(origin.x, 319)
-        XCTAssertEqual(origin.y, 180)
+    }
 
-        let trailing = ReadingOverlayPointerGeometry.origin(
-            overlaySize: CGSize(width: 320, height: 400),
-            alongEdge: along,
-            placement: .trailing
+    func testPopoverOuterSizeAddsArrowOnThePointingSide() {
+        let body = CGSize(width: 320, height: 400)
+        XCTAssertEqual(
+            ReadingOverlayPointerGeometry.outerSize(body: body, placement: .leading),
+            CGSize(width: 334, height: 400)
         )
-        XCTAssertEqual(trailing.x, -10)
-        XCTAssertEqual(trailing.y, 180)
+        XCTAssertEqual(
+            ReadingOverlayPointerGeometry.bodySize(
+                outer: CGSize(width: 334, height: 400),
+                placement: .leading
+            ),
+            body
+        )
+        XCTAssertEqual(
+            ReadingOverlayPointerGeometry.contentInsets(for: .leading).trailing,
+            ReadingOverlayPointerGeometry.arrowDepth
+        )
+        XCTAssertEqual(
+            ReadingOverlayPointerGeometry.contentInsets(for: .trailing).leading,
+            ReadingOverlayPointerGeometry.arrowDepth
+        )
+    }
+
+    func testLookUpPlacementLeavesGapFromArrowTipToSelection() {
+        let body = CGSize(width: 320, height: 240)
+        let outer = ReadingOverlayPointerGeometry.outerSize(body: body, placement: .leading)
+        let anchor = CGRect(x: 620, y: 300, width: 80, height: 18)
+        let result = ReadingOverlayPlacementPolicy.place(
+            input(
+                anchorRect: anchor,
+                overlaySize: outer,
+                placementOrder: ReadingOverlayPlacement.lookUpOrder
+            )
+        )
+
+        XCTAssertEqual(result.placement, .leading)
+        XCTAssertEqual(result.origin.x + outer.width + 12, anchor.minX, accuracy: 0.5)
+        XCTAssertEqual(
+            ReadingOverlayPointerGeometry.alongEdge(
+                anchorRect: anchor,
+                overlayOrigin: result.origin,
+                overlaySize: outer,
+                placement: .leading
+            ),
+            anchor.midY - result.origin.y,
+            accuracy: 0.5
+        )
     }
 
     func testUsesAboveWhenBelowWouldBeClampedAcrossSelection() {

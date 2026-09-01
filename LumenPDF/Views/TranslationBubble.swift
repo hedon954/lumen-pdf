@@ -35,7 +35,7 @@ struct TranslationBubble: View {
                 showsFooter: showsFooter,
                 showsAnchorPointer: true,
                 placementOrder: ReadingOverlayPlacement.lookUpOrder,
-                preferredGap: 10,
+                preferredGap: 5,
                 compactVerticalInset: true
             ),
             onDismiss: onDismiss,
