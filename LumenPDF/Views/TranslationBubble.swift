@@ -20,16 +20,30 @@ struct TranslationBubble: View {
     @State private var copyResetTask: Task<Void, Never>?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            toolbar
-            content
-            if showsFooter {
-                Divider()
-                overlayFooter
-            }
-        }
-        .frame(width: cardWidth, alignment: .topLeading)
-        .fixedSize(horizontal: false, vertical: true)
+        ReadingOverlayWindow(
+            anchorRect: request.selectionAnchorRect,
+            availableSize: availableSize,
+            resetID: AnyHashable(request.id),
+            configuration: ReadingOverlayWindowConfiguration(
+                width: cardWidth,
+                initialContentHeight: initialContentHeight,
+                minimumContentHeight: 80,
+                isResizable: true,
+                minimumSize: CGSize(width: 280, height: 180),
+                maximumSize: CGSize(width: 920, height: CGFloat.greatestFiniteMagnitude),
+                dismissesOnBackgroundTap: true,
+                showsFooter: showsFooter,
+                showsAnchorPointer: true,
+                placementOrder: ReadingOverlayPlacement.lookUpOrder,
+                preferredGap: 2,
+                compactVerticalInset: true,
+                opaqueChrome: true
+            ),
+            onDismiss: onDismiss,
+            header: { header },
+            content: { content },
+            footer: { overlayFooter }
+        )
         .onAppear(perform: syncSavedState)
         .onChange(of: request.id) { _, _ in syncSavedState() }
         .onDisappear { copyResetTask?.cancel() }
@@ -71,6 +85,13 @@ struct TranslationBubble: View {
         )
     }
 
+    private var initialContentHeight: CGFloat {
+        if request.translationError != nil || request.result?.isCompleteFailure == true {
+            return 248
+        }
+        return request.isSentenceMode ? 200 : 168
+    }
+
     private var showsFooter: Bool {
         guard let result = request.result else { return false }
         return !isLoading && !result.isCompleteFailure && Self.hasAnyContent(result)
@@ -87,9 +108,10 @@ struct TranslationBubble: View {
         return "重新生成"
     }
 
-    private var toolbar: some View {
+    private var header: some View {
         HStack(spacing: 8) {
-            Spacer(minLength: 0)
+            ReadingOverlayMoveHandle()
+            Spacer(minLength: 8)
             if showsRefreshButton {
                 Button(action: onRetry) {
                     Image(systemName: "arrow.clockwise")
@@ -107,8 +129,7 @@ struct TranslationBubble: View {
             .help("关闭")
         }
         .padding(.horizontal, 10)
-        .padding(.top, 8)
-        .padding(.bottom, 2)
+        .padding(.vertical, 4)
     }
 
     @ViewBuilder

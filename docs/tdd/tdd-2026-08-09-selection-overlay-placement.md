@@ -55,7 +55,7 @@ v1.0.21 要求窗口尺寸变化时调用 `place(_:keeping:)`：原方向仍无�
 
 **后续修订（2026-08-20）**：翻译完成导致内容变高时，换边比挡住选区更突兀。`ReadingOverlayWindow` 改为锁定首次 origin；`place(_:keeping:)` 保持原方向，即使增高后与选区重叠。详见 [浮窗稳定 TDD](tdd-2026-08-20-note-autosave-overlay-stability.md)。
 
-**后续修订（2026-09-01）**：翻译改为系统 `NSPopover`（左侧优先，由系统绘制指向选区的箭头），见 [原生翻译预览 TDD](tdd-2026-09-01-native-translation-popover.md)。操作栏和笔记仍用默认下、上、右、左的 `ReadingOverlayWindow`。
+**后续修订（2026-09-01）**：翻译浮窗改用 Look Up 顺序（左、右、上、下），用不透明卡片上的三角对准选区，并保留拖动，见 [原生翻译预览 TDD](tdd-2026-09-01-native-translation-popover.md)。操作栏和笔记仍用默认下、上、右、左的 `ReadingOverlayWindow`。
 
 首次打开时的方向选择（下、上、右、左、最小遮挡）仍然有效。操作栏和笔记仍按此顺序；翻译浮窗除外。
 

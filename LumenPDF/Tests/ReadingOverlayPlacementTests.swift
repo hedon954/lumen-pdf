@@ -53,6 +53,28 @@ final class ReadingOverlayPlacementTests: XCTestCase {
         XCTAssertEqual(along, 188)
     }
 
+    func testAlongEdgeTracksTheWordAfterATallCardIsClamped() {
+        let anchor = CGRect(x: 620, y: 80, width: 50, height: 16)
+        let overlaySize = CGSize(width: 334, height: 640)
+        let origin = ReadingOverlayPlacementPolicy.clamp(
+            origin: CGPoint(x: 286, y: anchor.midY - overlaySize.height / 2),
+            overlaySize: overlaySize,
+            containerSize: containerSize,
+            horizontalSafeInset: 12,
+            verticalSafeInset: 12
+        )
+        let along = ReadingOverlayPointerGeometry.alongEdge(
+            anchorRect: anchor,
+            overlayOrigin: origin,
+            overlaySize: overlaySize,
+            placement: .leading
+        )
+
+        XCTAssertEqual(origin.y, 12)
+        XCTAssertEqual(along, anchor.midY - origin.y, accuracy: 0.5)
+        XCTAssertGreaterThan(along, ReadingOverlayPointerGeometry.edgeInset)
+    }
+
     func testPopoverOuterSizeAddsArrowOnThePointingSide() {
         let body = CGSize(width: 320, height: 400)
         XCTAssertEqual(

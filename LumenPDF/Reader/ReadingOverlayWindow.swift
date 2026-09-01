@@ -14,6 +14,7 @@ struct ReadingOverlayWindowConfiguration {
     let placementOrder: [ReadingOverlayPlacement]
     let preferredGap: CGFloat
     let compactVerticalInset: Bool
+    let opaqueChrome: Bool
 
     init(
         width: CGFloat,
@@ -27,7 +28,8 @@ struct ReadingOverlayWindowConfiguration {
         showsAnchorPointer: Bool = false,
         placementOrder: [ReadingOverlayPlacement] = ReadingOverlayPlacement.defaultOrder,
         preferredGap: CGFloat = 12,
-        compactVerticalInset: Bool = false
+        compactVerticalInset: Bool = false,
+        opaqueChrome: Bool = false
     ) {
         self.width = width
         self.initialContentHeight = initialContentHeight
@@ -41,6 +43,7 @@ struct ReadingOverlayWindowConfiguration {
         self.placementOrder = placementOrder
         self.preferredGap = preferredGap
         self.compactVerticalInset = compactVerticalInset
+        self.opaqueChrome = opaqueChrome
     }
 }
 
@@ -167,10 +170,14 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
         along: CGFloat
     ) -> some View {
         if let pointing {
-            roundedCard(card)
+            roundedCard(card, opaque: configuration.opaqueChrome)
                 .padding(swiftUIInsets(ReadingOverlayPointerGeometry.contentInsets(for: pointing)))
                 .overlay(alignment: .topLeading) {
-                    arrowOverlay(placement: pointing, along: along)
+                    arrowOverlay(
+                        placement: pointing,
+                        along: along,
+                        opaque: configuration.opaqueChrome
+                    )
                 }
         } else {
             card
@@ -183,14 +190,20 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
         }
     }
 
-    private func roundedCard(_ card: some View) -> some View {
-        card
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    @ViewBuilder
+    private func roundedCard(_ card: some View, opaque: Bool = false) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
+        if opaque {
+            card
+                .background(Color(nsColor: .textBackgroundColor), in: shape)
+                .overlay { shape.strokeBorder(Color.primary.opacity(0.16), lineWidth: 0.5) }
+                .clipShape(shape)
+        } else {
+            card
+                .background(.regularMaterial, in: shape)
+                .overlay { shape.strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5) }
+                .clipShape(shape)
+        }
     }
 
     private func swiftUIInsets(_ insets: ReadingOverlayEdgeInsets) -> EdgeInsets {
@@ -202,17 +215,24 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
         )
     }
 
-    private func arrowOverlay(placement: ReadingOverlayPlacement, along: CGFloat) -> some View {
+    private func arrowOverlay(
+        placement: ReadingOverlayPlacement,
+        along: CGFloat,
+        opaque: Bool
+    ) -> some View {
         let frame = ReadingOverlayPointerGeometry.arrowFrame(
             overlaySize: renderedSize,
             along: along,
             placement: placement
         )
+        let fill = Color(nsColor: .textBackgroundColor)
         return ReadingOverlayArrowShape(placement: placement)
-            .fill(Color(nsColor: .windowBackgroundColor))
+            .fill(fill)
             .overlay {
-                ReadingOverlayArrowShape(placement: placement)
-                    .fill(.regularMaterial)
+                if !opaque {
+                    ReadingOverlayArrowShape(placement: placement)
+                        .fill(.regularMaterial)
+                }
             }
             .overlay {
                 ReadingOverlayArrowShape(placement: placement)

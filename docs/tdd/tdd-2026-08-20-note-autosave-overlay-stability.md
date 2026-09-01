@@ -42,7 +42,7 @@ successor:
 
 1. 首次 `recordMeasuredWindowSize` 且尚无手动 `customCenter` 时，按当时尺寸调用 `place`，写入 `lockedOrigin`。
 2. 之后 `displayedOrigin` 只对锁定原点做容器 clamp，不再 `place(keeping:)`。
-3. `resetID` 变化（新翻译会话）清空 `lockedOrigin`。后续修订：翻译不再使用 `ReadingOverlayWindow` 的锁定原点，见 [tdd-2026-09-01-native-translation-popover.md](tdd-2026-09-01-native-translation-popover.md)。
+3. `resetID` 变化（新翻译会话）清空 `lockedOrigin`。后续修订：翻译仍用该锁定原点，三角沿边对准选区，见 [tdd-2026-09-01-native-translation-popover.md](tdd-2026-09-01-native-translation-popover.md)。
 4. 用户拖动写入 `customCenter`，优先于锁定原点。
 
 `place(_:keeping:)` 仍保留给其他调用方：保持原 placement 的几何，但不再因 overlap 改去完整搜索。这撤销了 v1.0.21 TDD 第 4 节「长高后换边」的窗口行为。

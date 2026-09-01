@@ -312,7 +312,7 @@ enum ReadingOverlayPointerGeometry {
     static let arrowBase: CGFloat = 28
     static let arrowDepth: CGFloat = 14
     static let cornerRadius: CGFloat = 16
-    static let edgeInset: CGFloat = 32
+    static let edgeInset: CGFloat = 20
 
     static func contentInsets(for placement: ReadingOverlayPlacement) -> ReadingOverlayEdgeInsets {
         switch placement {
