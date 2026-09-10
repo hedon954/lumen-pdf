@@ -49,6 +49,7 @@ PRD 记录**用户可感知的行为与验收标准**。TDD 记录**如何实现
 | v1.0.29 | 2026-08-25 | 搜索模糊、翻译 AI 快捷入口与跨页笔记划线 | [prd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md](prd/prd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md) | [tdd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md](tdd/tdd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md) |
 | v1.0.30 | 2026-08-26 | 标注撤回与重做历史 | [prd-2026-08-26-annotation-undo-history.md](prd/prd-2026-08-26-annotation-undo-history.md) | [tdd-2026-08-26-annotation-undo-history.md](tdd/tdd-2026-08-26-annotation-undo-history.md) |
 | v1.0.31 | 2026-09-01 | Look Up 式翻译浮窗 | [prd-2026-09-01-native-translation-popover.md](prd/prd-2026-09-01-native-translation-popover.md) | [tdd-2026-09-01-native-translation-popover.md](tdd/tdd-2026-09-01-native-translation-popover.md) |
+| unreleased | 2026-09-10 | 系统打开 PDF、统一浮窗与笔记快速追加 | [prd-2026-09-10-reader-open-note-popover.md](prd/prd-2026-09-10-reader-open-note-popover.md) | [tdd-2026-09-10-reader-open-note-popover.md](tdd/tdd-2026-09-10-reader-open-note-popover.md) |
 
 未单独成对的发布：
 
@@ -68,6 +69,7 @@ v1.0.15 公共窗口外壳
   → v1.0.26 首次定位后锁定原点，内容变高不再换边跳位
   → unreleased 小节标题不因正文复述而进入翻译原文
   → v1.0.31 单词 / 句子翻译采用 Look Up 式实色锚定浮窗，黄色轻阴影选区并恢复拖拽手柄
+  → unreleased 翻译与笔记统一薄材质背景，系统打开文件切回阅读并恢复位置
 ```
 
 v1.0.21 曾要求内容变高后重新换边避让；2026-08-20 修订为「首次位置固定」，以 v1.0.15 的稳定方向为优先体验。
@@ -80,6 +82,7 @@ v1.0.2 笔记 + 划线
   → v1.0.15 原文回顾浮窗、删除、空内容禁止提交
   → v1.0.22 回顾浮窗内删除单条/全部
   → v1.0.26 Inspector、回顾浮窗、笔记列表可编辑并自动保存
+  → unreleased 回顾浮窗快速追加，编辑删除读取最新内容并防止旧编辑器错写
   → v1.0.30 ⌘F 搜索自动聚焦，笔记结果恢复完整单页或跨页选区
   → unreleased 邻近新划线不再抹掉未选中的旧行
   → unreleased 笔记保存逐页选区，跨页划线可重启恢复

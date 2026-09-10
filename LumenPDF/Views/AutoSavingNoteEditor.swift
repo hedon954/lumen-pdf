@@ -15,7 +15,7 @@ enum NoteAutoSavePolicy {
 struct AutoSavingNoteEditor: View {
     let minLineLimit: Int
     let maxLineLimit: Int
-    let onSave: (String) -> Bool
+    let onSave: (String, String) -> Bool
 
     @State private var text: String
     @State private var lastSavedText: String
@@ -32,7 +32,20 @@ struct AutoSavingNoteEditor: View {
     ) {
         self.minLineLimit = minLineLimit
         self.maxLineLimit = maxLineLimit
-        self.onSave = onSave
+        self.onSave = { text, _ in onSave(text) }
+        _text = State(initialValue: initialText)
+        _lastSavedText = State(initialValue: initialText)
+    }
+
+    init(
+        initialText: String,
+        minLineLimit: Int = 2,
+        maxLineLimit: Int = 12,
+        onSaveWithPreviousText: @escaping (String, String) -> Bool
+    ) {
+        self.minLineLimit = minLineLimit
+        self.maxLineLimit = maxLineLimit
+        self.onSave = onSaveWithPreviousText
         _text = State(initialValue: initialText)
         _lastSavedText = State(initialValue: initialText)
     }
@@ -100,7 +113,7 @@ struct AutoSavingNoteEditor: View {
         guard let prepared = NoteAutoSavePolicy.textToSave(newValue, lastSaved: lastSavedText) else {
             return
         }
-        if onSave(prepared) {
+        if onSave(prepared, lastSavedText) {
             lastSavedText = prepared
             didSaveSuccessfully = true
             saveFailed = false

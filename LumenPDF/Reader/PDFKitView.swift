@@ -795,6 +795,7 @@ struct PDFKitView: NSViewRepresentable {
                 guard !lineRects.isEmpty else { continue }
                 applyFreeAnnotation(type: typeStr, page: page, lineRects: lineRects)
             }
+            publishNoteAnchors()
         }
 
         private func applyFreeAnnotation(type typeStr: String, page: PDFPage, lineRects: [CGRect]) {
@@ -893,6 +894,7 @@ struct PDFKitView: NSViewRepresentable {
                     label: label
                 )
                 self.triggerAnnotationSave(immediate: true)
+                self.publishNoteAnchors()
             }
             undo.setActionName(label)
         }
@@ -922,6 +924,7 @@ struct PDFKitView: NSViewRepresentable {
                     label: label
                 )
                 self.triggerAnnotationSave(immediate: true)
+                self.publishNoteAnchors()
             }
             undo.setActionName(label)
         }
@@ -1669,6 +1672,7 @@ struct PDFKitView: NSViewRepresentable {
         @objc func savePositionNow(_ notification: Notification) {
             guard let filePath = notification.userInfo?["filePath"] as? String,
                   filePath == currentFilePath,
+                  !isRestoringViewport,
                   let pdfView,
                   let currentPage = pdfView.currentPage,
                   let doc = pdfView.document else { return }
@@ -1798,7 +1802,7 @@ struct PDFKitView: NSViewRepresentable {
 
         func publishNoteAnchors() {
             attachViewportObserverIfNeeded()
-            guard let pdfView, !parent.noteAnchorRequests.isEmpty else {
+            guard let pdfView, let document = pdfView.document else {
                 DispatchQueue.main.async { self.parent.onNoteAnchorsChanged([]) }
                 return
             }
@@ -1806,7 +1810,10 @@ struct PDFKitView: NSViewRepresentable {
             let pdfFrameInWindow = pdfView.convert(pdfView.bounds, to: nil)
             let visibleRect = pdfView.bounds
             var textRectsByPageIndex: [Int: [CGRect]] = [:]
-            let anchors = parent.noteAnchorRequests.compactMap { request -> NoteAnchorPosition? in
+            let requests = NoteAnchorCatalog.includingUnderlines(
+                saved: parent.noteAnchorRequests, visiblePages: pdfView.visiblePages, document: document
+            )
+            let anchors = requests.compactMap { request -> NoteAnchorPosition? in
                 guard let page = pdfView.document?.page(at: request.pageIndex) else { return nil }
                 let rects = Self.parseAnnotationRects(request.boundsStr)
                 guard let first = rects.first, !first.isEmpty else { return nil }
@@ -1848,7 +1855,11 @@ struct PDFKitView: NSViewRepresentable {
                     noteId: request.noteId,
                     pageIndex: request.pageIndex,
                     point: point,
-                    anchorRect: anchorRect
+                    anchorRect: anchorRect,
+                    pageMarkup: PDFPageMarkup(
+                        pageIndex: request.pageIndex, lineRects: rects,
+                        text: rects.compactMap { page.selection(for: $0)?.string }.joined(separator: " ")
+                    )
                 )
             }
             DispatchQueue.main.async { self.parent.onNoteAnchorsChanged(anchors) }

@@ -212,7 +212,7 @@ final class ReadingOverlayPlacementTests: XCTestCase {
         XCTAssertFalse(frame.intersects(anchor))
     }
 
-    func testKeepingPlacementStaysPutWhenContentGrowsOverSelection() {
+    func testKeepingPlacementClampsGrowingContentWithoutChangingSide() {
         let anchor = CGRect(x: 450, y: 450, width: 100, height: 24)
         let initial = ReadingOverlayPlacementPolicy.place(
             input(anchorRect: anchor, overlaySize: CGSize(width: 380, height: 200))
@@ -225,7 +225,10 @@ final class ReadingOverlayPlacementTests: XCTestCase {
 
         XCTAssertEqual(initial.placement, .below)
         XCTAssertEqual(grown.placement, .below)
-        XCTAssertEqual(grown.origin, initial.origin)
+        // The original y (486) plus the new height (330) would extend past 800.
+        // Keep the side, but honor the existing 12pt safe inset at the bottom.
+        XCTAssertEqual(grown.origin.x, initial.origin.x)
+        XCTAssertEqual(grown.origin.y, containerSize.height - 330 - 12)
     }
 
     func testLockedOriginKeepsTopLeftUntilItMustClamp() {

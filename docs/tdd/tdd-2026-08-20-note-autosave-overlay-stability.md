@@ -7,6 +7,7 @@ predecessor:
   - tdd/tdd-2026-07-10-note-overlay-optimization.md
   - tdd/tdd-2026-08-09-selection-overlay-placement.md
 successor:
+  - tdd/tdd-2026-09-10-reader-open-note-popover.md
   - tdd/tdd-2026-09-01-native-translation-popover.md
 ---
 
@@ -60,3 +61,5 @@ successor:
 - 锁定原点在仍放得下时不动，超出容器时只做最小 clamp
 
 运行时必须在 macOS App 中确认：翻译完成不跳位；三处笔记编辑自动保存。编译不能代替这项验收。
+
+后续修订：背景样式统一以笔记薄材质为准，并补充系统打开和笔记快速追加，见 [tdd-2026-09-10-reader-open-note-popover.md](tdd-2026-09-10-reader-open-note-popover.md)。

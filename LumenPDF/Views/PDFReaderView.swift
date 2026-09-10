@@ -5,15 +5,14 @@ import AppKit
 struct PDFReaderView: View {
     let document: PdfDocument
     @ObservedObject var selectionActionBarModel: SelectionActionBarModel
-    @ObservedObject var translationOverlayModel: TranslationOverlayModel
+    @ObservedObject var readingPopoverModel: ReadingPopoverModel
     let viewportTransitionController: ReaderViewportTransitionController
     let onExplainSelection: (PDFSelectionContext) -> Void
     let onOpenNotes: () -> Void
     @EnvironmentObject private var appState: AppState
 
-    @State private var underlineDraft: UnderlineNoteDraft?
     @State private var noteAnchorPositions: [NoteAnchorPosition] = []
-    @State private var activeNoteReview: ActiveNoteReview?
+    private var activeNoteReview: ActiveNoteReview? { readingPopoverModel.noteReview }
     // totalPages is kept as a local state for the initial load callback,
     // then written to appState so ContentView can display it in the toolbar.
 
@@ -36,6 +35,7 @@ struct PDFReaderView: View {
                 },
                 onTextSelected: { selection in
                     guard !selection.word.isEmpty else { return }
+                    readingPopoverModel.dismiss()
                     let readerFrame = proxy.frame(in: .named(ReaderRootCoordinateSpace.name))
                     let rootSelectionRect = selection.selectionAnchorRect.offsetBy(
                         dx: readerFrame.minX,
@@ -61,7 +61,7 @@ struct PDFReaderView: View {
                 },
                 translationSelection: translationSelectionEmphasis,
                 onTranslationViewportChanged: {
-                    translationOverlayModel.dismiss()
+                    readingPopoverModel.dismiss()
                 },
                 noteAnchorRequests: noteAnchorRequests,
                 onNoteAnchorsChanged: { anchors in
@@ -72,69 +72,11 @@ struct PDFReaderView: View {
                 viewportTransitionController: viewportTransitionController
             )
 
-            if let draft = underlineDraft {
-                UnderlineNoteDraftView(
-                    draft: draft,
-                    availableSize: proxy.size,
-                    onCancel: {
-                        underlineDraft = nil
-                    },
-                    onSave: { noteText in
-                        let trimmedNoteText = noteText.trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard !trimmedNoteText.isEmpty else {
-                            appState.showToast("请输入笔记内容")
-                            return
-                        }
-                        if let noteId = draft.appendingNoteId {
-                            appendUnderlineNoteText(
-                                noteId: noteId,
-                                existingNoteText: draft.existingNoteText,
-                                noteText: trimmedNoteText
-                            )
-                        } else {
-                            saveUnderlineNote(
-                                word: draft.word,
-                                noteText: trimmedNoteText,
-                                pageMarkups: draft.effectivePageMarkups,
-                                preferredPage: draft.page
-                            )
-                        }
-                        underlineDraft = nil
-                    }
-                )
-                .transition(.opacity.combined(with: .scale(scale: 0.96)))
-                .zIndex(2)
-            }
-
             NoteAnchorOverlayView(anchors: noteAnchorPositions) { anchor in
-                openNoteReview(anchor)
+                let frame = proxy.frame(in: .named(ReaderRootCoordinateSpace.name))
+                openNoteReview(anchor.offsetBy(dx: frame.minX, dy: frame.minY))
             }
             .zIndex(1)
-
-            if let review = activeNoteReview {
-                NoteReviewPopoverView(
-                    review: review,
-                    availableSize: proxy.size,
-                    onOpenNotes: {
-                        onOpenNotes()
-                        activeNoteReview = nil
-                    },
-                    onSaveItem: { noteId, itemIndex, text in
-                        appState.saveNoteItem(noteId: noteId, itemIndex: itemIndex, text: text)
-                    },
-                    onDeleteItem: { noteId, itemIndex in
-                        deleteNoteReviewItem(noteId: noteId, itemIndex: itemIndex)
-                    },
-                    onDeleteAll: {
-                        deleteAllNotes(in: review)
-                    },
-                    onClose: {
-                        activeNoteReview = nil
-                    }
-                )
-                .transition(.opacity.combined(with: .scale(scale: 0.96)))
-                .zIndex(3)
-            }
 
             // ⌘S — invisible button that flushes reading position immediately.
             // Must be inside the ZStack (not .background) to stay in the responder chain.
@@ -160,29 +102,21 @@ struct PDFReaderView: View {
         }
         }
         .id(document.id)
+        .onChange(of: document.id) { _, _ in
+            readingPopoverModel.dismiss()
+            noteAnchorPositions = []
+        }
         .onReceive(NotificationCenter.default.publisher(for: .refreshNotesList)) { _ in
             appState.refreshNotes()
         }
     }
 
     private var noteAnchorRequests: [NoteAnchorRequest] {
-        let notes = appState.notes.filter { $0.pdfPath == document.filePath && !$0.boundsStr.isEmpty }
-        let grouped = Dictionary(grouping: notes) { note in
-            "\(note.pageIndex)|\(note.boundsStr)"
-        }
-        return grouped.values.compactMap { group in
-            guard let first = group.sorted(by: { $0.createdAt < $1.createdAt }).first else { return nil }
-            return NoteAnchorRequest(
-                id: "note-anchor|\(first.pageIndex)|\(first.boundsStr)",
-                noteId: first.id,
-                pageIndex: Int(first.pageIndex),
-                boundsStr: first.boundsStr
-            )
-        }
+        NoteAnchorCatalog.savedNotes(appState.notes.filter { $0.pdfPath == document.filePath })
     }
 
     private var translationSelectionEmphasis: TranslationSelectionEmphasis? {
-        guard let request = translationOverlayModel.request,
+        guard let request = readingPopoverModel.request,
               request.pdfPath == document.filePath else { return nil }
         return TranslationSelectionEmphasis(
             id: request.id,
@@ -192,31 +126,70 @@ struct PDFReaderView: View {
     }
 
     private func openNoteReview(_ anchor: NoteAnchorPosition) {
-        let anchorBounds = appState.notes.first(where: { $0.id == anchor.noteId })?.boundsStr
+        let reference = appState.notes.first(where: { $0.id == anchor.noteId })
         let notes = appState.notes.filter { note in
             note.pdfPath == document.filePath &&
-                Int(note.pageIndex) == anchor.pageIndex &&
-                (note.id == anchor.noteId || note.boundsStr == anchorBounds)
+                (note.id == anchor.noteId ||
+                 (note.pageIndex == reference?.pageIndex && note.boundsStr == reference?.boundsStr))
         }
-        guard !notes.isEmpty else { return }
-        closeTranslationOverlay()
-        underlineDraft = nil
         selectionActionBarModel.dismiss()
-        activeNoteReview = ActiveNoteReview(id: anchor.id, anchor: anchor, notes: notes.sorted { $0.createdAt < $1.createdAt })
+        if notes.isEmpty {
+            guard let markup = anchor.pageMarkup else { return }
+            presentNoteDraft(UnderlineNoteDraft(
+                word: markup.text, boundsStr: markup.boundsStr, page: markup.pageIndex,
+                pageMarkups: [markup], anchor: anchor.point, anchorRect: anchor.anchorRect,
+                appendingNoteId: nil, existingNoteText: ""
+            ))
+            return
+        }
+        let review = ActiveNoteReview(id: anchor.id, anchor: anchor, notes: notes.sorted { $0.createdAt < $1.createdAt })
+        readingPopoverModel.presentNoteReview(review, actions: .init(
+            openNotes: {
+                readingPopoverModel.dismiss()
+                onOpenNotes()
+            },
+            saveItem: { noteId, index, text, previous, count in
+                let saved = appState.saveNoteItem(
+                    noteId: noteId, itemIndex: index, text: text,
+                    expectedText: previous, expectedCount: count
+                )
+                if saved { refreshActiveNoteReview(matching: review) }
+                return saved
+            },
+            append: { text in
+                guard let current = activeNoteReview,
+                      let id = current.notes.last?.id,
+                      appState.appendNoteItem(noteId: id, text: text) else { return false }
+                refreshActiveNoteReview(matching: current)
+                return true
+            },
+            deleteItem: deleteNoteReviewItem,
+            deleteAll: {
+                guard let current = activeNoteReview else { return }
+                deleteAllNotes(in: current)
+            }
+        ))
     }
 
-    private func closeOtherReadingOverlays() {
-        closeTranslationOverlay()
-        activeNoteReview = nil
-    }
-
-    private func closeTranslationOverlay() {
-        translationOverlayModel.dismiss()
+    private func presentNoteDraft(_ draft: UnderlineNoteDraft) {
+        selectionActionBarModel.dismiss()
+        readingPopoverModel.presentNoteDraft(draft) { text in
+            if let id = draft.appendingNoteId {
+                if !appState.appendNoteItem(noteId: id, text: text) {
+                    appState.showToast("保存笔记失败")
+                    return
+                }
+            } else {
+                saveUnderlineNote(word: draft.word, noteText: text,
+                                  pageMarkups: draft.effectivePageMarkups, preferredPage: draft.page)
+            }
+            readingPopoverModel.dismiss()
+        }
     }
 
     private func deleteNoteReviewItem(noteId: String, itemIndex: Int) {
         guard let review = activeNoteReview,
-              let note = review.notes.first(where: { $0.id == noteId }),
+              let note = appState.notes.first(where: { $0.id == noteId }),
               let remainingText = NoteTextList.removingItem(at: itemIndex, from: note.note)
         else {
             appState.showToast("删除笔记失败")
@@ -265,8 +238,10 @@ struct PDFReaderView: View {
 
     private func refreshActiveNoteReview(matching review: ActiveNoteReview) {
         appState.refreshNotes()
+        // A final editor flush after dismissal must not reopen the popover.
+        guard activeNoteReview?.id == review.id else { return }
         guard let reference = review.notes.first else {
-            activeNoteReview = nil
+            readingPopoverModel.dismiss()
             return
         }
 
@@ -276,15 +251,15 @@ struct PDFReaderView: View {
                 note.boundsStr == reference.boundsStr
         }
         guard !remainingNotes.isEmpty else {
-            activeNoteReview = nil
+            readingPopoverModel.dismiss()
             return
         }
 
-        activeNoteReview = ActiveNoteReview(
+        readingPopoverModel.updateNoteReview(ActiveNoteReview(
             id: review.id,
             anchor: review.anchor,
             notes: remainingNotes.sorted { $0.createdAt < $1.createdAt }
-        )
+        ))
     }
 
     // MARK: - Selection Action Bar
@@ -324,18 +299,17 @@ struct PDFReaderView: View {
         case .underline:
             postFreeAnnotations(type: "underline", selection: selection)
         case .addNote:
-            closeOtherReadingOverlays()
             let existingNote = exactUnderlineNote(markups: selection.effectivePageMarkups)
-            underlineDraft = UnderlineNoteDraft(
+            presentNoteDraft(UnderlineNoteDraft(
                 word: selection.word,
                 boundsStr: selection.boundsStr,
                 page: selection.page,
                 pageMarkups: selection.effectivePageMarkups,
                 anchor: selection.menuAnchor,
-                anchorRect: selection.selectionAnchorRect,
+                anchorRect: translationAnchorRect,
                 appendingNoteId: existingNote?.id,
                 existingNoteText: existingNote?.note ?? ""
-            )
+            ))
         case .removeNote:
             if let existingNote = exactUnderlineNote(markups: selection.effectivePageMarkups) {
                 removeUnderlineNote(existingNote)
@@ -369,20 +343,6 @@ struct PDFReaderView: View {
             fallbackBoundsStr: note.boundsStr,
             fallbackText: note.content
         )
-    }
-
-    private func appendUnderlineNoteText(noteId: String, existingNoteText: String, noteText: String) {
-        let trimmed = noteText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            appState.showToast("请输入笔记内容")
-            return
-        }
-        _ = try? ReaderPersistence.shared.updateNote(
-            id: noteId,
-            note: NoteTextList.appending(trimmed, to: existingNoteText)
-        )
-        appState.refreshNotes()
-        appState.showToast("已追加笔记")
     }
 
     private func removeUnderlineNote(_ note: NoteEntry) {
@@ -569,8 +529,6 @@ struct PDFReaderView: View {
                                      bounds: CGRect, boundsStr: String, page: Int,
                                      pageMarkups: [PDFPageMarkup],
                                      selectionAnchorRect: CGRect) {
-        underlineDraft = nil
-        activeNoteReview = nil
         ReaderPersistence.shared.initializeIfNeeded()
 
         // Determine if this is sentence mode (multi-word selection)
@@ -604,7 +562,7 @@ struct PDFReaderView: View {
             existingEntryId: existingEntryId,
             isSentenceMode: isSentenceMode
         )
-        let overlay = translationOverlayModel
+        let overlay = readingPopoverModel
         overlay.present(request)
         overlay.bindRetryHandler { request in
             Self.launchTranslation(on: overlay, request: request, skipCache: true)
@@ -614,7 +572,7 @@ struct PDFReaderView: View {
 
     @MainActor
     private static func launchTranslation(
-        on overlay: TranslationOverlayModel,
+        on overlay: ReadingPopoverModel,
         request: TranslationBubbleRequest,
         skipCache: Bool
     ) {
@@ -662,214 +620,5 @@ struct PDFReaderView: View {
             }
         }
         overlay.track(task)
-    }
-}
-
-private struct NoteAnchorOverlayView: View {
-    let anchors: [NoteAnchorPosition]
-    let onOpen: (NoteAnchorPosition) -> Void
-
-    var body: some View {
-        ZStack(alignment: .topLeading) {
-            ForEach(anchors) { anchor in
-                Button {
-                    onOpen(anchor)
-                } label: {
-                    Image(systemName: "note.text")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .padding(5)
-                        .background(Color.accentColor.opacity(0.88), in: Circle())
-                        .shadow(color: .black.opacity(0.16), radius: 4, x: 0, y: 1)
-                }
-                .buttonStyle(.plain)
-                .help("打开笔记")
-                .position(anchor.point)
-            }
-        }
-        .allowsHitTesting(!anchors.isEmpty)
-    }
-}
-
-private struct NoteReviewPopoverView: View {
-    let review: ActiveNoteReview
-    let availableSize: CGSize
-    let onOpenNotes: () -> Void
-    let onSaveItem: (String, Int, String) -> Bool
-    let onDeleteItem: (String, Int) -> Void
-    let onDeleteAll: () -> Void
-    let onClose: () -> Void
-
-    @State private var pendingDeletion: NoteReviewDeletion?
-
-    private var noteItems: [NoteReviewItem] {
-        review.notes.flatMap { note in
-            NoteTextList.decode(note.note).enumerated().map { index, markdown in
-                NoteReviewItem(
-                    id: "\(note.id)#\(index)",
-                    noteId: note.id,
-                    itemIndex: index,
-                    markdown: markdown,
-                    createdAt: note.createdAt
-                )
-            }
-        }
-    }
-
-    var body: some View {
-        ReadingOverlayWindow(
-            anchorRect: review.anchor.anchorRect,
-            availableSize: availableSize,
-            resetID: AnyHashable(review.id),
-            configuration: ReadingOverlayWindowConfiguration(
-                width: 420,
-                initialContentHeight: 300,
-                minimumContentHeight: 120,
-                dismissesOnBackgroundTap: true
-            ),
-            onDismiss: onClose,
-            header: { header },
-            content: { content },
-            footer: { footer }
-        )
-        .alert(item: $pendingDeletion) { deletion in
-            switch deletion {
-            case let .item(noteId, itemIndex):
-                return Alert(
-                    title: Text("删除这条笔记？"),
-                    message: Text("删除后无法恢复。"),
-                    primaryButton: .destructive(Text("删除")) {
-                        onDeleteItem(noteId, itemIndex)
-                    },
-                    secondaryButton: .cancel()
-                )
-            case let .all(count):
-                return Alert(
-                    title: Text("删除全部笔记？"),
-                    message: Text("这里的 \(count) 条笔记及对应划线都会被删除，且无法恢复。"),
-                    primaryButton: .destructive(Text("全部删除"), action: onDeleteAll),
-                    secondaryButton: .cancel()
-                )
-            }
-        }
-    }
-
-    private var header: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "note.text")
-                .font(.callout.weight(.semibold))
-                .foregroundStyle(.secondary)
-            Text("笔记")
-                .font(.headline)
-            Spacer()
-            ReadingOverlayMoveHandle()
-            Button(action: onClose) {
-                Image(systemName: "xmark")
-                    .font(.callout.weight(.medium))
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 16)
-        .padding(.bottom, 12)
-    }
-
-    private var content: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            if let first = review.notes.first {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("原文")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                    Text(ContextSentenceFormatting.displayParagraph(first.content))
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                }
-            }
-
-            ForEach(noteItems) { item in
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        if let createdAt = ReadingInspectorDateFormat.timestampText(for: item.createdAt) {
-                            Text(createdAt)
-                                .font(.caption2.monospacedDigit())
-                                .foregroundStyle(.tertiary)
-                        }
-                        Spacer()
-                        Button(role: .destructive) {
-                            pendingDeletion = .item(
-                                noteId: item.noteId,
-                                itemIndex: item.itemIndex
-                            )
-                        } label: {
-                            Image(systemName: "trash")
-                                .font(.caption)
-                                .foregroundStyle(.red.opacity(0.75))
-                        }
-                        .buttonStyle(.plain)
-                        .help("删除这条笔记")
-                    }
-                    AutoSavingNoteEditor(
-                        initialText: item.markdown,
-                        minLineLimit: 3,
-                        maxLineLimit: 16,
-                        onSave: { text in
-                            onSaveItem(item.noteId, item.itemIndex, text)
-                        }
-                    )
-                    .id(item.id)
-                }
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.bottom, 12)
-    }
-
-    private var footer: some View {
-        HStack {
-            Button(role: .destructive) {
-                pendingDeletion = .all(count: noteItems.count)
-            } label: {
-                Label("删除全部", systemImage: "trash")
-            }
-            .buttonStyle(.borderless)
-            .foregroundStyle(.red)
-            .disabled(noteItems.isEmpty)
-            Spacer()
-            Button("打开右侧笔记", action: onOpenNotes)
-                .buttonStyle(.borderless)
-            Button("关闭", action: onClose)
-                .buttonStyle(.borderedProminent)
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 10)
-        .padding(.bottom, 16)
-    }
-}
-
-private struct NoteReviewItem: Identifiable {
-    let id: String
-    let noteId: String
-    let itemIndex: Int
-    let markdown: String
-    let createdAt: Int64
-}
-
-private enum NoteReviewDeletion: Identifiable {
-    case item(noteId: String, itemIndex: Int)
-    case all(count: Int)
-
-    var id: String {
-        switch self {
-        case let .item(noteId, itemIndex):
-            return "item|\(noteId)|\(itemIndex)"
-        case let .all(count):
-            return "all|\(count)"
-        }
     }
 }

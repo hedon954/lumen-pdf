@@ -9,6 +9,10 @@ struct LumenPDFApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(appState)
+                .onOpenURL { url in
+                    appState.openPDF(url: url)
+                }
+                .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
                 .frame(minWidth: 900, minHeight: 600)
                 .background(
                     WindowFramePersistence(restorationStore: .shared)

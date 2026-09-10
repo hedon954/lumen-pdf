@@ -30,13 +30,11 @@ struct TranslationBubble: View {
                 initialContentHeight: initialContentHeight,
                 minimumContentHeight: 80,
                 isResizable: false,
-                dismissesOnBackgroundTap: true,
                 showsFooter: showsFooter,
                 showsAnchorPointer: true,
                 placementOrder: ReadingOverlayPlacement.lookUpOrder,
                 preferredGap: 2,
-                compactVerticalInset: true,
-                opaqueChrome: true
+                compactVerticalInset: true
             ),
             onDismiss: onDismiss,
             header: { header },
@@ -106,23 +104,10 @@ struct TranslationBubble: View {
 
     private var header: some View {
         HStack(alignment: .top, spacing: 12) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(sourceText)
-                    .font(.title2.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if let phonetic = request.result?.phonetic, !phonetic.isEmpty {
-                    Text("[\(phonetic)]")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .layoutPriority(1)
+            headerText
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             HStack(spacing: TranslationHeaderControlMetrics.spacing) {
                 ReadingOverlayMoveHandle(
@@ -164,6 +149,12 @@ struct TranslationBubble: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .accessibilityElement(children: .contain)
+    }
+
+    private var headerText: Text {
+        let source = Text(sourceText).font(.title2.weight(.semibold)).foregroundColor(.primary)
+        guard let phonetic = request.result?.phonetic, !phonetic.isEmpty else { return source }
+        return source + Text("  [\(phonetic)]").font(.callout).foregroundColor(.secondary)
     }
 
     private func headerControlButton(

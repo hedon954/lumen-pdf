@@ -94,15 +94,35 @@ final class AppState: ObservableObject {
     }
 
     @discardableResult
-    func saveNoteItem(noteId: String, itemIndex: Int, text: String) -> Bool {
+    func saveNoteItem(
+        noteId: String, itemIndex: Int, text: String,
+        expectedText: String? = nil, expectedCount: Int? = nil
+    ) -> Bool {
         guard let note = notes.first(where: { $0.id == noteId }),
-              let updated = NoteTextList.replacingItem(at: itemIndex, with: text, from: note.note),
+              let updated = NoteTextList.replacingItem(
+                at: itemIndex, with: text, from: note.note,
+                expectedText: expectedText, expectedCount: expectedCount
+              ),
               (try? ReaderPersistence.shared.updateNote(id: noteId, note: updated)) != nil
         else {
             return false
         }
         refreshNotes()
         return true
+    }
+
+    @discardableResult
+    func appendNoteItem(noteId: String, text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let note = notes.first(where: { $0.id == noteId }) else { return false }
+        let updated = NoteTextList.encode(NoteTextList.decode(note.note) + [trimmed])
+        do {
+            try ReaderPersistence.shared.updateNote(id: noteId, note: updated)
+            refreshNotes()
+            return true
+        } catch {
+            return false
+        }
     }
 
     func openFilePicker() {
@@ -115,6 +135,20 @@ final class AppState: ObservableObject {
     }
 
     func openPDF(url: URL) {
+        guard url.isFileURL, url.pathExtension.lowercased() == "pdf" else { return }
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+        guard PDFKit.PDFDocument(url: url) != nil else {
+            showToast("无法打开这个 PDF 文件")
+            return
+        }
+        if let current = selectedDocument {
+            ReaderEventBus.shared.postSaveReadingPositionNow(filePath: current.filePath)
+            if current.filePath == url.path {
+                activeTab = .reader
+                return
+            }
+        }
         // Save a security-scoped bookmark so we can re-open the file after app restart
         // (needed when the app runs in a macOS sandbox).
         saveBookmark(for: url)
@@ -125,6 +159,7 @@ final class AppState: ObservableObject {
             totalPages: 0
         ) else { return }
         selectedDocument = doc
+        activeTab = .reader
         refreshLibrary()
     }
 
@@ -150,6 +185,7 @@ final class AppState: ObservableObject {
 
     func saveReadingPosition(filePath: String, page: UInt32, scrollOffset: Double) {
         try? bridge.saveReadingPosition(filePath: filePath, page: page, scrollOffset: scrollOffset)
+        guard selectedDocument?.filePath == filePath else { return }
         currentPageIndex = Int(page)
         currentScrollOffset = scrollOffset
         // Do not refreshLibrary() here — it is expensive and can fight with PDF restore.

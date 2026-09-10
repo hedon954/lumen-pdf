@@ -3,6 +3,7 @@ import SwiftUI
 struct UnderlineNoteDraftView: View {
     let draft: UnderlineNoteDraft
     let availableSize: CGSize
+    let overlayAnchorRect: CGRect
     let onCancel: () -> Void
     let onSave: (String) -> Void
 
@@ -25,12 +26,6 @@ struct UnderlineNoteDraftView: View {
             footer: { footer }
         )
         .onAppear { isFocused = true }
-    }
-
-    private var overlayAnchorRect: CGRect {
-        draft.anchorRect.isEmpty
-            ? CGRect(x: draft.anchor.x - 80, y: max(0, draft.anchor.y - 8), width: 160, height: 44)
-            : draft.anchorRect
     }
 
     private var resetID: AnyHashable {

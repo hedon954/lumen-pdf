@@ -477,6 +477,14 @@ struct NoteAnchorPosition: Identifiable, Equatable {
     let pageIndex: Int
     let point: CGPoint
     let anchorRect: CGRect
+    var pageMarkup: PDFPageMarkup? = nil
+
+    func offsetBy(dx: CGFloat, dy: CGFloat) -> Self {
+        Self(id: id, noteId: noteId, pageIndex: pageIndex,
+             point: CGPoint(x: point.x + dx, y: point.y + dy),
+             anchorRect: anchorRect.offsetBy(dx: dx, dy: dy), pageMarkup: pageMarkup)
+    }
+
 }
 
 enum NoteAnchorPlacement: Equatable {

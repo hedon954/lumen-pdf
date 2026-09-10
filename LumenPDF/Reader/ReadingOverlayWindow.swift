@@ -8,13 +8,11 @@ struct ReadingOverlayWindowConfiguration {
     let isResizable: Bool
     let minimumSize: CGSize
     let maximumSize: CGSize
-    let dismissesOnBackgroundTap: Bool
     let showsFooter: Bool
     let showsAnchorPointer: Bool
     let placementOrder: [ReadingOverlayPlacement]
     let preferredGap: CGFloat
     let compactVerticalInset: Bool
-    let opaqueChrome: Bool
 
     init(
         width: CGFloat,
@@ -23,13 +21,11 @@ struct ReadingOverlayWindowConfiguration {
         isResizable: Bool = false,
         minimumSize: CGSize = CGSize(width: 340, height: 240),
         maximumSize: CGSize = CGSize(width: 920, height: 820),
-        dismissesOnBackgroundTap: Bool = false,
         showsFooter: Bool = true,
-        showsAnchorPointer: Bool = false,
+        showsAnchorPointer: Bool = true,
         placementOrder: [ReadingOverlayPlacement] = ReadingOverlayPlacement.defaultOrder,
         preferredGap: CGFloat = 12,
-        compactVerticalInset: Bool = false,
-        opaqueChrome: Bool = false
+        compactVerticalInset: Bool = false
     ) {
         self.width = width
         self.initialContentHeight = initialContentHeight
@@ -37,13 +33,11 @@ struct ReadingOverlayWindowConfiguration {
         self.isResizable = isResizable
         self.minimumSize = minimumSize
         self.maximumSize = maximumSize
-        self.dismissesOnBackgroundTap = dismissesOnBackgroundTap
         self.showsFooter = showsFooter
         self.showsAnchorPointer = showsAnchorPointer
         self.placementOrder = placementOrder
         self.preferredGap = preferredGap
         self.compactVerticalInset = compactVerticalInset
-        self.opaqueChrome = opaqueChrome
     }
 }
 
@@ -91,27 +85,12 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
     }
 
     var body: some View {
-        // `.position` expands the child's layout/hit-testing to the full parent. An empty
-        // `onTapGesture` on that child then swallows every click in the reader, so outside
-        // taps and even header buttons stop working. Place the card with `offset` instead so
-        // only its visual bounds receive hits; the clear backdrop handles dismissal.
         ZStack(alignment: .topLeading) {
-            if configuration.dismissesOnBackgroundTap {
-                Color.clear
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .contentShape(Rectangle())
-                    .onTapGesture(perform: onDismiss)
-            }
-
             window
                 .offset(x: displayedOrigin.x, y: displayedOrigin.y)
                 .animation(nil, value: customCenter)
                 .animation(nil, value: displayedOrigin)
         }
-        // Keep the placement origin at the reader's top-left even when this overlay does not
-        // install a full-size dismissal backdrop. Without an explicit frame alignment, a
-        // non-dismissible window is first centered by the outer frame and then offset again,
-        // which sends note drafts toward the bottom-right corner.
         .frame(
             width: availableSize.width,
             height: availableSize.height,
@@ -139,6 +118,7 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
 
         let card = VStack(alignment: .leading, spacing: 0) {
             header()
+                .fixedSize(horizontal: false, vertical: true)
                 .readingOverlayMeasureHeight { measuredHeaderHeight = $0 }
 
             Divider()
@@ -148,6 +128,7 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
             if configuration.showsFooter {
                 Divider()
                 footer()
+                    .fixedSize(horizontal: false, vertical: true)
                     .readingOverlayMeasureHeight { measuredFooterHeight = $0 }
             }
         }
@@ -159,11 +140,16 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
 
         return chrome(card: card, pointing: pointing, along: along)
             .shadow(
-                color: .black.opacity(showsPointer ? 0.22 : 0.12),
-                radius: showsPointer ? 22 : 18,
+                color: .black.opacity(0.12),
+                radius: 18,
                 x: 0,
-                y: showsPointer ? 10 : 8
+                y: 8
             )
+            .background { WindowOutsideClickMonitor(onOutsideClick: onDismiss) }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+                onDismiss()
+            }
+            .onExitCommand(perform: onDismiss)
             .environment(\.readingOverlayMove, moveWindow)
             .readingOverlayMeasureSize(recordMeasuredWindowSize)
     }
@@ -175,40 +161,22 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
         along: CGFloat
     ) -> some View {
         if let pointing {
-            roundedCard(card, opaque: configuration.opaqueChrome)
+            roundedCard(card)
                 .padding(swiftUIInsets(ReadingOverlayPointerGeometry.contentInsets(for: pointing)))
                 .overlay(alignment: .topLeading) {
-                    arrowOverlay(
-                        placement: pointing,
-                        along: along,
-                        opaque: configuration.opaqueChrome
-                    )
+                    arrowOverlay(placement: pointing, along: along)
                 }
         } else {
-            card
-                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            roundedCard(card)
         }
     }
 
-    @ViewBuilder
-    private func roundedCard(_ card: some View, opaque: Bool = false) -> some View {
+    private func roundedCard(_ card: some View) -> some View {
         let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
-        if opaque {
-            card
-                .background(Color(nsColor: .textBackgroundColor), in: shape)
-                .overlay { shape.strokeBorder(Color.primary.opacity(0.16), lineWidth: 0.5) }
-                .clipShape(shape)
-        } else {
-            card
-                .background(.regularMaterial, in: shape)
-                .overlay { shape.strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5) }
-                .clipShape(shape)
-        }
+        return card
+            .background(.thinMaterial, in: shape)
+            .overlay { shape.strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5) }
+            .clipShape(shape)
     }
 
     private func swiftUIInsets(_ insets: ReadingOverlayEdgeInsets) -> EdgeInsets {
@@ -222,26 +190,18 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
 
     private func arrowOverlay(
         placement: ReadingOverlayPlacement,
-        along: CGFloat,
-        opaque: Bool
+        along: CGFloat
     ) -> some View {
         let frame = ReadingOverlayPointerGeometry.arrowFrame(
             overlaySize: renderedSize,
             along: along,
             placement: placement
         )
-        let fill = Color(nsColor: .textBackgroundColor)
         return ReadingOverlayArrowShape(placement: placement)
-            .fill(fill)
-            .overlay {
-                if !opaque {
-                    ReadingOverlayArrowShape(placement: placement)
-                        .fill(.regularMaterial)
-                }
-            }
+            .fill(.thinMaterial)
             .overlay {
                 ReadingOverlayArrowShape(placement: placement)
-                    .stroke(Color.primary.opacity(0.16), lineWidth: 0.6)
+                    .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
             }
             .frame(width: frame.width, height: frame.height)
             .offset(x: frame.minX, y: frame.minY)
@@ -360,7 +320,9 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
     }
 
     private var cardBodyWidth: CGFloat {
-        bodySize(forOuter: renderedSize).width
+        if let customSize { return bodySize(forOuter: customSize).width }
+        let pointerWidth = showsPointer && pointingSide.isHorizontal ? ReadingOverlayPointerGeometry.arrowDepth : 0
+        return min(configuration.width, max(1, maximumAvailableWidth - pointerWidth))
     }
 
     private var cardBodyHeight: CGFloat? {

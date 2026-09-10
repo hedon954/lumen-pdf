@@ -1,9 +1,59 @@
 import SwiftUI
 
 @MainActor
-final class TranslationOverlayModel: ObservableObject {
-    @Published private(set) var request: TranslationBubbleRequest?
+final class ReadingPopoverModel: ObservableObject {
+    enum Presentation {
+        case translation(TranslationBubbleRequest)
+        case noteDraft(UnderlineNoteDraft, (String) -> Void)
+        case noteReview(ActiveNoteReview, NoteReviewActions)
+
+        var anchorRect: CGRect {
+            switch self {
+            case let .translation(request): return request.selectionAnchorRect
+            case let .noteDraft(draft, _): return draft.anchorRect
+            case let .noteReview(review, _): return review.anchor.anchorRect
+            }
+        }
+    }
+
+    struct NoteReviewActions {
+        let openNotes: () -> Void
+        let saveItem: (String, Int, String, String, Int) -> Bool
+        let append: (String) -> Bool
+        let deleteItem: (String, Int) -> Void
+        let deleteAll: () -> Void
+    }
+
+    @Published private(set) var presentation: Presentation?
+    @Published private(set) var generation = UUID()
     @Published private(set) var isLoading = false
+
+    var request: TranslationBubbleRequest? {
+        guard case let .translation(request) = presentation else { return nil }
+        return request
+    }
+
+    var noteReview: ActiveNoteReview? {
+        guard case let .noteReview(review, _) = presentation else { return nil }
+        return review
+    }
+
+    func presentNoteDraft(_ draft: UnderlineNoteDraft, onSave: @escaping (String) -> Void) {
+        dismiss()
+        generation = UUID()
+        presentation = .noteDraft(draft, onSave)
+    }
+
+    func presentNoteReview(_ review: ActiveNoteReview, actions: NoteReviewActions) {
+        dismiss()
+        generation = UUID()
+        presentation = .noteReview(review, actions)
+    }
+
+    func updateNoteReview(_ review: ActiveNoteReview) {
+        guard case let .noteReview(current, actions) = presentation, current.id == review.id else { return }
+        presentation = .noteReview(review, actions)
+    }
 
     private var inFlight: Task<Void, Never>?
     private var retryHandler: (@MainActor (TranslationBubbleRequest) -> Void)?
@@ -15,7 +65,8 @@ final class TranslationOverlayModel: ObservableObject {
 
     func present(_ request: TranslationBubbleRequest) {
         cancelInFlight()
-        self.request = request
+        generation = UUID()
+        presentation = .translation(request)
         isLoading = true
     }
 
@@ -34,7 +85,7 @@ final class TranslationOverlayModel: ObservableObject {
         guard var request else { return }
         request.result = nil
         request.translationError = nil
-        self.request = request
+        presentation = .translation(request)
         isLoading = true
     }
 
@@ -67,7 +118,7 @@ final class TranslationOverlayModel: ObservableObject {
     func dismiss() {
         cancelInFlight()
         retryHandler = nil
-        request = nil
+        presentation = nil
         isLoading = false
     }
 
@@ -83,7 +134,7 @@ final class TranslationOverlayModel: ObservableObject {
     ) -> Bool {
         guard var request, request.id == id else { return false }
         mutation(&request)
-        self.request = request
+        presentation = .translation(request)
         return true
     }
 }

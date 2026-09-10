@@ -12,13 +12,15 @@ predecessor:
   - tdd/tdd-2026-08-15-settings-usage-overlay.md
   - tdd/tdd-2026-08-20-note-autosave-overlay-stability.md
   - tdd/tdd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md
+successor:
+  - tdd/tdd-2026-09-10-reader-open-note-popover.md
 ---
 
 # LumenPDF — Look Up 式翻译浮窗 TDD
 
 ## 1. 技术结论
 
-翻译内容与浮层状态仍由 SwiftUI 和 `TranslationOverlayModel` 持有，展示复用主阅读层中的 `ReadingOverlayWindow`。该容器负责 Look Up 式圆角、阴影、选区箭头、点外关闭、窗口内拖拽、自动高度和边界约束；`opaqueChrome` 使用完全不透明的系统文本背景，不使用会透出 PDF 的材质背景。`PDFKitView.Coordinator` 在翻译请求存在期间重建真实 `PDFSelection`，并用不参与持久化、不可命中的 `NSView` 按逐行几何绘制黄色强调和轻阴影；关闭、换文档和 teardown 都确定性清理。浮窗宽度、初始内容高度、实测扩展、滚动和 80% 高度上限复用 `main` 参数。流式在 JSON 闭合或 `finish_reason` / `[DONE]` 时结束读取；词典音标查询限时 1.5 秒。
+翻译内容与浮层状态仍由 SwiftUI 和 `TranslationOverlayModel` 持有，展示复用主阅读层中的 `ReadingOverlayWindow`。该容器负责 Look Up 式圆角、阴影、选区箭头、点外关闭、窗口内拖拽、自动高度和边界约束；`opaqueChrome` 使用完全不透明的系统文本背景，不使用会透出 PDF 的材质背景。`PDFKitView.Coordinator` 在翻译请求存在期间重建真实 `PDFSelection`，并用不参与持久化、不可命中的 `NSView` 按逐行几何绘制黄色强调和轻阴影；关闭、换文档和 teardown 都确定性清理。浮窗宽度、初始内容高度、实测扩展、滚动和 80% 高度上限复用 `main` 参数。流式在 JSON 闭合或 `finish_reason` / `[DONE]` 时结束读取；词典音标查询限时 1.5 秒。 后续修订：背景样式统一以笔记薄材质为准，并补充系统打开和笔记快速追加，见 [tdd-2026-09-10-reader-open-note-popover.md](tdd-2026-09-10-reader-open-note-popover.md)。
 
 ## 2. 模块边界
 
@@ -56,7 +58,7 @@ predecessor:
 - 加载中若尚无 `result`，仍渲染原文对，译文对显示进度。
 - `ContentView` 的 GeometryReader 必须调用 `ReaderRootCoordinateSpace.localRect`，再把最小 1pt 的选区矩形交给 `ReadingOverlayWindow`；容器根据可用空间选择左右、上下位置并绘制指向选区的箭头。
 - `TranslationBubble` 的单词 / 句子宽度起点分别是 380 / 560pt，按字符数乘 4.2 扩展，最低 340pt、最高 760pt；初始内容高度分别为 120 / 160pt，失败态 248pt；`ReadingOverlayWindow` 实测内容展开后把整体高度限制为阅读窗口的 80%，超出部分滚动。
-- 翻译浮窗配置 `opaqueChrome: true`、`isResizable: false`、`dismissesOnBackgroundTap: true`、`showsAnchorPointer: true`。圆角卡片和箭头都填充 `NSColor.textBackgroundColor`，确保内容 alpha 为 1。
+- 翻译浮窗配置 `opaqueChrome: true`、`isResizable: false`、`dismissesOnBackgroundTap: true`、`showsAnchorPointer: true`。圆角卡片和箭头都填充 `NSColor.textBackgroundColor`，确保内容 alpha 为 1。 后续修订：背景样式统一以笔记薄材质为准，并补充系统打开和笔记快速追加，见 [tdd-2026-09-10-reader-open-note-popover.md](tdd-2026-09-10-reader-open-note-popover.md)。
 - header 外层使用顶部对齐的 `HStack`：左侧原文允许垂直扩展，句子按剩余宽度自然换行且不设 `lineLimit`；单词与音标仍在首行基线对齐的内层 `HStack` 同行显示。右侧固定为拖拽、播放、刷新、关闭四个 28pt 控件，间距 4pt；按钮组固定在右上。刷新在加载态禁用但不移除，避免按钮组跳动。
 - `ReadingOverlayMoveHandle` 从 `ReadingOverlayWindow` 的环境闭包接收增量；拖动只更新容器内部的 `customCenter`，并通过现有 clamp 约束在阅读区域内，不在 `TranslationBubble` 或 `ContentView` 创建第二份位置状态。
 - `TranslationSelectionEmphasisView` 只读 `TranslationSelectionEmphasis(id, filePath, pageMarkups)`；每条 line rect 水平外扩 1.5pt、垂直外扩 0.75pt，使用 system yellow 和 2.5pt 轻阴影。该 view 不接收鼠标，不创建 `PDFAnnotation`，不会进入标注持久化或 Undo。
@@ -69,4 +71,4 @@ predecessor:
 
 - Swift：`TranslationPopoverPresentationTests` 覆盖语言标签、单词 / 句子强调色译文选择、拷贝载荷和转圈消失条件；`TranslationPopoverGeometryTests` 覆盖 `main` 宽高参数、四控件尺寸 / 间距和高亮外扩几何；`ReadingOverlayPlacementTests` 覆盖锚定、指针、拖拽后的边界约束和 80% 上限。
 - Rust：`json_root_object_closed` / `stream_has_terminal_payload`；词典音标超时后保留 LLM 音标。`cargo test`。
-- 运行时（需 macOS app）：单词与跨行句子均出现黄色轻阴影强调；箭头指向选区；浮窗内容不透出或模糊后方 PDF；单词与音标同行；长句原文完整换行且四按钮保持右上；四按钮等大、同行、小间距、右对齐；拖拽首个按钮确实移动浮窗。浅色/深色、左右边缘、窗口移动/缩放、点内/点外均需实际操作确认。滚动或缩放 PDF 时浮窗与临时强调必须一起关闭。
+- 运行时（需 macOS app）：单词与跨行句子均出现黄色轻阴影强调；箭头指向选区；浮窗内容不透出或模糊后方 PDF；单词与音标同行；长句原文完整换行且四按钮保持右上；四按钮等大、同行、小间距、右对齐；拖拽首个按钮确实移动浮窗。浅色/深色、左右边缘、窗口移动/缩放、点内/点外均需实际操作确认。滚动或缩放 PDF 时浮窗与临时强调必须一起关闭。 后续修订：背景样式统一以笔记薄材质为准，并补充系统打开和笔记快速追加，见 [tdd-2026-09-10-reader-open-note-popover.md](tdd-2026-09-10-reader-open-note-popover.md)。

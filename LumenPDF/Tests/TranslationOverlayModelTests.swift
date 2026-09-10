@@ -2,9 +2,9 @@ import XCTest
 @testable import LumenPDF
 
 @MainActor
-final class TranslationOverlayModelTests: XCTestCase {
+final class ReadingPopoverModelTests: XCTestCase {
     func testPresentStartsLoadingAndDisablesRetry() {
-        let model = TranslationOverlayModel()
+        let model = ReadingPopoverModel()
 
         model.present(sampleRequest())
 
@@ -14,7 +14,7 @@ final class TranslationOverlayModelTests: XCTestCase {
     }
 
     func testCanRetryAfterFailure() {
-        let model = TranslationOverlayModel()
+        let model = ReadingPopoverModel()
         let request = sampleRequest()
         model.present(request)
 
@@ -26,7 +26,7 @@ final class TranslationOverlayModelTests: XCTestCase {
     }
 
     func testBeginRetryClearsErrorAndReturnsToLoading() {
-        let model = TranslationOverlayModel()
+        let model = ReadingPopoverModel()
         let request = sampleRequest()
         model.present(request)
         model.fail("网络错误", requestID: request.id)
@@ -41,7 +41,7 @@ final class TranslationOverlayModelTests: XCTestCase {
     }
 
     func testRetryInvokesHandlerAfterClearingCurrentResult() {
-        let model = TranslationOverlayModel()
+        let model = ReadingPopoverModel()
         let request = sampleRequest()
         var retriedIDs: [UUID] = []
         model.bindRetryHandler { request in
@@ -58,7 +58,7 @@ final class TranslationOverlayModelTests: XCTestCase {
     }
 
     func testDismissCancelsRetry() {
-        let model = TranslationOverlayModel()
+        let model = ReadingPopoverModel()
         let request = sampleRequest()
         model.present(request)
         model.fail("网络错误", requestID: request.id)
@@ -68,6 +68,39 @@ final class TranslationOverlayModelTests: XCTestCase {
         XCTAssertNil(model.request)
         XCTAssertFalse(model.isLoading)
         XCTAssertFalse(model.canRetry)
+    }
+
+    func testNoteDraftReplacesTranslationAndRejectsItsLateReply() {
+        let model = ReadingPopoverModel()
+        let request = sampleRequest()
+        model.present(request)
+        let draft = UnderlineNoteDraft(
+            word: "word", boundsStr: "10,20,80,16", page: 0, pageMarkups: [],
+            anchor: .zero, anchorRect: request.selectionAnchorRect,
+            appendingNoteId: nil, existingNoteText: ""
+        )
+        model.presentNoteDraft(draft, onSave: { _ in })
+        model.fail("late translation", requestID: request.id)
+        XCTAssertNil(model.request)
+        XCTAssertFalse(model.isLoading)
+        guard case .noteDraft = model.presentation else { return XCTFail("Draft must remain visible") }
+        model.dismiss()
+        XCTAssertNil(model.presentation)
+    }
+
+    func testDismissedReviewCannotReopenFromFinalEditorSave() {
+        let model = ReadingPopoverModel()
+        let review = ActiveNoteReview(
+            id: "review", anchor: NoteAnchorPosition(id: "anchor", noteId: "note", pageIndex: 0,
+                                                    point: .zero, anchorRect: .zero), notes: []
+        )
+        model.presentNoteReview(review, actions: .init(
+            openNotes: {}, saveItem: { _, _, _, _, _ in true }, append: { _ in true },
+            deleteItem: { _, _ in }, deleteAll: {}
+        ))
+        model.dismiss()
+        model.updateNoteReview(review)
+        XCTAssertNil(model.presentation)
     }
 
     private func sampleRequest() -> TranslationBubbleRequest {

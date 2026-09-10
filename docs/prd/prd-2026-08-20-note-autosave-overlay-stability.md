@@ -8,6 +8,7 @@ predecessor:
   - prd/prd-2026-08-09-selection-overlay-placement.md
   - prd/prd-2026-08-20-library-cover-translation-retry.md
 successor:
+  - prd/prd-2026-09-10-reader-open-note-popover.md
   - prd/prd-2026-09-01-native-translation-popover.md
 ---
 
@@ -41,6 +42,8 @@ successor:
 - 空白（trim 后为空）不写入，避免把已有笔记存成空。
 
 ### F3 — 新建笔记仍需确认
+
+后续修订：背景样式统一以笔记薄材质为准，并补充系统打开和笔记快速追加，见 [prd-2026-09-10-reader-open-note-popover.md](prd-2026-09-10-reader-open-note-popover.md)。
 
 - 添加/追加笔记草稿仍使用显式保存，空内容不可提交。本迭代不把新建草稿改成自动保存。
 

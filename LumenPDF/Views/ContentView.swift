@@ -9,7 +9,7 @@ struct ContentView: View {
     @State private var inspectorTransitionID: UUID?
     @StateObject private var inspectorModel = ReadingInspectorModel()
     @StateObject private var selectionActionBarModel = SelectionActionBarModel()
-    @StateObject private var translationOverlayModel = TranslationOverlayModel()
+    @StateObject private var readingPopoverModel = ReadingPopoverModel()
     @StateObject private var viewportTransitionController = ReaderViewportTransitionController()
     @StateObject private var workspaceSearch = WorkspaceSearchController()
     @ObservedObject private var restorationStore = ReadingRestorationStore.shared
@@ -63,7 +63,7 @@ struct ContentView: View {
                         document: doc,
                         inspectorModel: inspectorModel,
                         selectionActionBarModel: selectionActionBarModel,
-                        translationOverlayModel: translationOverlayModel,
+                        readingPopoverModel: readingPopoverModel,
                         viewportTransitionController: viewportTransitionController,
                         setInspectorVisible: setReadingInspectorVisible
                     )
@@ -97,39 +97,56 @@ struct ContentView: View {
         }
         .overlay {
             if appState.activeTab == .reader,
-               let request = translationOverlayModel.request
+               let presentation = readingPopoverModel.presentation
             {
                 GeometryReader { proxy in
                     let anchor = TranslationPopoverGeometry.selectionFrame(
                         ReaderRootCoordinateSpace.localRect(
-                            request.selectionAnchorRect,
+                            presentation.anchorRect,
                             overlayFrameInRoot: proxy.frame(
                                 in: .named(ReaderRootCoordinateSpace.name)
                             )
                         )
                     )
-                    TranslationBubble(
-                        request: request,
-                        isLoading: translationOverlayModel.isLoading,
-                        availableSize: proxy.size,
-                        overlayAnchorRect: anchor,
-                        onSave: { result in
-                            saveTranslation(result: result, request: request)
-                        },
-                        onDelete: { id, savedToNote in
-                            deleteTranslationSave(
-                                id: id,
-                                savedToNote: savedToNote,
-                                request: request
-                            )
-                        },
-                        onExplain: {
-                            startGuideFromTranslation(request)
-                        },
-                        onRetry: translationOverlayModel.retry,
-                        onDismiss: translationOverlayModel.dismiss
-                    )
+                    switch presentation {
+                    case let .translation(request):
+                        TranslationBubble(
+                            request: request,
+                            isLoading: readingPopoverModel.isLoading,
+                            availableSize: proxy.size,
+                            overlayAnchorRect: anchor,
+                            onSave: { result in
+                                saveTranslation(result: result, request: request)
+                            },
+                            onDelete: { id, savedToNote in
+                                deleteTranslationSave(
+                                    id: id,
+                                    savedToNote: savedToNote,
+                                    request: request
+                                )
+                            },
+                            onExplain: {
+                                startGuideFromTranslation(request)
+                            },
+                            onRetry: readingPopoverModel.retry,
+                            onDismiss: readingPopoverModel.dismiss
+                        )
+                    case let .noteDraft(draft, save):
+                        UnderlineNoteDraftView(
+                            draft: draft, availableSize: proxy.size, overlayAnchorRect: anchor,
+                            onCancel: readingPopoverModel.dismiss, onSave: save
+                        )
+                    case let .noteReview(review, actions):
+                        NoteReviewPopoverView(
+                            review: review, availableSize: proxy.size, overlayAnchorRect: anchor,
+                            onOpenNotes: actions.openNotes, onSaveItem: actions.saveItem,
+                            onAppend: actions.append, onDeleteItem: actions.deleteItem,
+                            onDeleteAll: actions.deleteAll, onClose: readingPopoverModel.dismiss
+                        )
+                    }
+
                 }
+                .id(readingPopoverModel.generation)
             }
         }
         .blur(radius: workspaceSearch.isPresented ? 4 : 0)
@@ -268,15 +285,16 @@ struct ContentView: View {
         }
         .onChange(of: appState.activeTab) { _, _ in
             selectionActionBarModel.dismiss()
-            translationOverlayModel.dismiss()
+            readingPopoverModel.dismiss()
         }
         .onChange(of: appState.selectedDocument?.id) { _, _ in
             selectionActionBarModel.dismiss()
-            translationOverlayModel.dismiss()
+            readingPopoverModel.dismiss()
         }
         .onReceive(NotificationCenter.default.publisher(for: .presentWorkspaceSearch)) { _ in
             presentWorkspaceSearch()
         }
+        .onDisappear { readingPopoverModel.dismiss() }
     }
 
     private static let minimumOutlineSidebarWidth = CGFloat(
@@ -309,7 +327,7 @@ struct ContentView: View {
 
     private func presentWorkspaceSearch() {
         selectionActionBarModel.dismiss()
-        translationOverlayModel.dismiss()
+        readingPopoverModel.dismiss()
         appState.refreshNotes()
         appState.refreshVocabulary()
         let notes = appState.notes
@@ -368,7 +386,7 @@ struct ContentView: View {
             boundsStr: request.boundsStr,
             pageMarkups: request.effectivePageMarkups
         )
-        translationOverlayModel.dismiss()
+        readingPopoverModel.dismiss()
         if !inspectorModel.isVisible {
             setReadingInspectorVisible(true)
         }
