@@ -3,6 +3,22 @@
 LumenPDF 的版本记录由人工/AI 维护。每个版本只记录对用户或后续开发有意义的变化，并为具体变更附上对应的 GitHub commit URL。
 
 ---
+## [1.0.32](https://github.com/hedon954/lumen-pdf/compare/v1.0.31..v1.0.32) - 2026-09-10
+
+这一版统一翻译与笔记的带箭头浮窗及点外关闭行为，修正长音标布局和划线笔记入口，并补齐笔记快速追加与编辑删除；从系统打开 PDF 时也会切换到目标文档并恢复阅读位置。
+
+### 主要变化
+
+- 翻译、添加笔记和回顾笔记共用带箭头的薄材质背景、圆角与阴影；点击正文、侧栏、Inspector 或工具栏关闭旧弹窗，原点击继续生效，重新选区也不会留下重叠弹窗（[bee6473](https://github.com/hedon954/lumen-pdf/commit/bee64732f38dc78cd8670a5f98b9de58788d425c)）。
+- 回顾笔记底部可快速追加，现有条目支持自动保存编辑、单条删除和当前选区的全部删除；防止追加或删除后的延迟编辑覆盖其他条目（[bee6473](https://github.com/hedon954/lumen-pdf/commit/bee64732f38dc78cd8670a5f98b9de58788d425c)）。
+
+### 修复
+
+- 从 Finder「打开方式」等系统入口打开 PDF 时，切换到目标文档与阅读页，并沿用逐文档阅读位置恢复；重复打开当前文件保持视口（[bee6473](https://github.com/hedon954/lumen-pdf/commit/bee64732f38dc78cd8670a5f98b9de58788d425c)）。
+- 长音标与原文自然换行，修正单词被挤掉、大块留白及箭头换边后宽度反馈收缩的问题（[bee6473](https://github.com/hedon954/lumen-pdf/commit/bee64732f38dc78cd8670a5f98b9de58788d425c)）。
+- 尚未填写笔记的自由划线也显示笔记入口；跨页笔记在各划线页面保留入口，点击可打开对应笔记（[bee6473](https://github.com/hedon954/lumen-pdf/commit/bee64732f38dc78cd8670a5f98b9de58788d425c)）。
+
+---
 ## [1.0.31](https://github.com/hedon954/lumen-pdf/compare/v1.0.30..v1.0.31) - 2026-09-02
 
 这一版把单词与句子翻译改成更接近 macOS Look Up 的阅读体验：选区保持黄色轻阴影强调，实色浮窗用箭头指向原文并支持拖动；标题排版、按钮和长句显示也更紧凑完整，同时修复流式译文已经完成后仍持续等待的问题。

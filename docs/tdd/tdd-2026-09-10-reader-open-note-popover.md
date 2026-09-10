@@ -1,5 +1,5 @@
 ---
-version: unreleased
+version: v1.0.32
 date: 2026-09-10
 prd: prd/prd-2026-09-10-reader-open-note-popover.md
 predecessor:

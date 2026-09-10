@@ -49,7 +49,7 @@ PRD 记录**用户可感知的行为与验收标准**。TDD 记录**如何实现
 | v1.0.29 | 2026-08-25 | 搜索模糊、翻译 AI 快捷入口与跨页笔记划线 | [prd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md](prd/prd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md) | [tdd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md](tdd/tdd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md) |
 | v1.0.30 | 2026-08-26 | 标注撤回与重做历史 | [prd-2026-08-26-annotation-undo-history.md](prd/prd-2026-08-26-annotation-undo-history.md) | [tdd-2026-08-26-annotation-undo-history.md](tdd/tdd-2026-08-26-annotation-undo-history.md) |
 | v1.0.31 | 2026-09-01 | Look Up 式翻译浮窗 | [prd-2026-09-01-native-translation-popover.md](prd/prd-2026-09-01-native-translation-popover.md) | [tdd-2026-09-01-native-translation-popover.md](tdd/tdd-2026-09-01-native-translation-popover.md) |
-| unreleased | 2026-09-10 | 系统打开 PDF、统一浮窗与笔记快速追加 | [prd-2026-09-10-reader-open-note-popover.md](prd/prd-2026-09-10-reader-open-note-popover.md) | [tdd-2026-09-10-reader-open-note-popover.md](tdd/tdd-2026-09-10-reader-open-note-popover.md) |
+| v1.0.32 | 2026-09-10 | 系统打开 PDF、统一浮窗与笔记快速追加 | [prd-2026-09-10-reader-open-note-popover.md](prd/prd-2026-09-10-reader-open-note-popover.md) | [tdd-2026-09-10-reader-open-note-popover.md](tdd/tdd-2026-09-10-reader-open-note-popover.md) |
 
 未单独成对的发布：
 
