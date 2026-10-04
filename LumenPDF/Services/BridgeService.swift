@@ -23,6 +23,7 @@ private let _listNotesByPdf: (String) throws -> [NoteEntry]              = listN
 private let _deleteNote: (String) throws -> Void                         = deleteNote(id:)
 private let _updateNote: (UpdateNoteRequest) throws -> NoteEntry         = updateNote(req:)
 private let _defaultExtraConfig: (String, String) -> String              = defaultExtraConfig(baseUrl:model:)
+private let _recordReadingEvent: (ReadingEvent) throws -> Void           = recordReadingEvent(event:)
 
 /// Wraps all UniFFI-generated top-level calls and manages app initialization.
 final class BridgeService {
@@ -349,6 +350,13 @@ final class BridgeService {
 
     func deletePdfDocument(filePath: String) throws {
         try _deletePdfDocument(filePath)
+    }
+
+    // MARK: - Reading log
+
+    /// 阅读日志写不了不影响阅读，忽略错误。
+    func recordReadingEvent(_ event: ReadingEvent) {
+        try? _recordReadingEvent(event)
     }
 
     // MARK: - Notes

@@ -48,6 +48,8 @@ pub fn initialize(db_path: String, config: AppConfig) -> Result<(), LumenError> 
         }
         // Ignore error if another thread beat us to it.
         let _ = POOL.set(pool);
+        // 阅读日志写不了不影响阅读，忽略错误。
+        let _ = super::reading_log_api::start_reading_log(&db_path);
     }
 
     // Config: always write (allows subsequent calls to update settings).

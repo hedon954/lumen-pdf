@@ -34,12 +34,14 @@ final class AppState: ObservableObject {
             loadKitDocument()
             refreshVocabulary()
             refreshNotes()
+            readingActivity.documentChanged(selectedDocument)
         }
     }
     @Published var vocabulary: [VocabularyEntry] = []
     @Published var notes: [NoteEntry] = []
     @Published var activeTab: MainTab = .reader {
         didSet {
+            readingActivity.updateFront()
             guard shouldPersistActiveTab else { return }
             restorationStore.updateActiveTab(activeTab.rawValue)
         }
@@ -57,6 +59,11 @@ final class AppState: ObservableObject {
 
     private let bridge = BridgeService.shared
     private let restorationStore: ReadingRestorationStore
+    /// 阅读日志：只在阅读页、窗口在最前面且最近有输入时计时。
+    private lazy var readingActivity = ReadingActivityMonitor(
+        report: { BridgeService.shared.recordReadingEvent($0) },
+        isReaderTabActive: { [weak self] in self?.activeTab == .reader }
+    )
     private var shouldPersistActiveTab = true
 
     init(restorationStore: ReadingRestorationStore = .shared) {
@@ -75,6 +82,7 @@ final class AppState: ObservableObject {
         }
 
         bridge.initializeIfNeeded()
+        readingActivity.start()
         refreshLibrary()
         restoreLastDocument()
 
