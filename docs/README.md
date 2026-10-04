@@ -50,7 +50,7 @@ PRD 记录**用户可感知的行为与验收标准**。TDD 记录**如何实现
 | v1.0.30 | 2026-08-26 | 标注撤回与重做历史 | [prd-2026-08-26-annotation-undo-history.md](prd/prd-2026-08-26-annotation-undo-history.md) | [tdd-2026-08-26-annotation-undo-history.md](tdd/tdd-2026-08-26-annotation-undo-history.md) |
 | v1.0.31 | 2026-09-01 | Look Up 式翻译浮窗 | [prd-2026-09-01-native-translation-popover.md](prd/prd-2026-09-01-native-translation-popover.md) | [tdd-2026-09-01-native-translation-popover.md](tdd/tdd-2026-09-01-native-translation-popover.md) |
 | v1.0.32 | 2026-09-10 | 系统打开 PDF、统一浮窗与笔记快速追加 | [prd-2026-09-10-reader-open-note-popover.md](prd/prd-2026-09-10-reader-open-note-popover.md) | [tdd-2026-09-10-reader-open-note-popover.md](tdd/tdd-2026-09-10-reader-open-note-popover.md) |
-| unreleased | 2026-10-04 | 从文件夹导入 PDF | [prd-2026-10-04-library-folder-import.md](prd/prd-2026-10-04-library-folder-import.md) | [tdd-2026-10-04-library-folder-import.md](tdd/tdd-2026-10-04-library-folder-import.md) |
+| v1.0.33 | 2026-10-04 | 从文件夹导入 PDF | [prd-2026-10-04-library-folder-import.md](prd/prd-2026-10-04-library-folder-import.md) | [tdd-2026-10-04-library-folder-import.md](tdd/tdd-2026-10-04-library-folder-import.md) |
 
 未单独成对的发布：
 
@@ -126,7 +126,7 @@ v1.0.12 / v1.0.13 导读进入 Inspector
 ```text
 v1.0.0 打开过的 PDF 按最近打开倒序，可移除
   → v1.0.25 列表显示首页封面
-  → unreleased 可导入文件夹中的 PDF（默认不含子文件夹，导入可撤回）；可清空文库列表；列表标题为「文库」
+  → v1.0.33 可导入文件夹中的 PDF（默认不含子文件夹，导入可撤回）；可清空文库列表；列表标题为「文库」
 ```
 
 ## 其他文档

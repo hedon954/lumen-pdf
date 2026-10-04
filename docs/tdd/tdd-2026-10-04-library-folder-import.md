@@ -1,5 +1,5 @@
 ---
-version: unreleased
+version: v1.0.33
 date: 2026-10-04
 prd: prd/prd-2026-10-04-library-folder-import.md
 predecessor:
