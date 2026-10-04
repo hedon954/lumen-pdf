@@ -13,6 +13,7 @@ private let _updateAnnotation: (String, String) throws -> Void           = updat
 private let _incrementQueryCount: (String) throws -> Void                = incrementVocabularyQueryCount(id:)
 private let _updateVocabulary: (UpdateVocabularyRequest) throws -> VocabularyEntry = updateVocabulary(req:)
 private let _upsertPdf: (UpsertPdfRequest) throws -> PdfDocument         = upsertPdfDocument(req:)
+private let _importPdf: (UpsertPdfRequest) throws -> ImportedPdf         = importPdfDocument(req:)
 private let _savePosition: (String, UInt32, Double) throws -> Void       = saveReadingPosition(filePath:page:scrollOffset:)
 private let _listPdfDocuments: () throws -> [PdfDocument]                = listPdfDocuments
 private let _deletePdfDocument: (String) throws -> Void                  = deletePdfDocument(filePath:)
@@ -348,6 +349,12 @@ final class BridgeService {
         try _listPdfDocuments()
     }
 
+    /// 导入原文件：复制进书库（内容相同则复用已有的书），原文件不动。
+    func importPdfDocument(filePath: String, fileName: String) throws -> ImportedPdf {
+        try _importPdf(UpsertPdfRequest(filePath: filePath, fileName: fileName, totalPages: 0))
+    }
+
+    /// 移出文库并删除书库里的副本；笔记、单词和原文件保留。
     func deletePdfDocument(filePath: String) throws {
         try _deletePdfDocument(filePath)
     }

@@ -86,7 +86,55 @@ pub fn run(conn: &Connection) -> Result<(), LumenError> {
     )?;
 
     migrate_translation_cache_language_key(conn)?;
+    add_library_columns(conn)?;
 
+    Ok(())
+}
+
+/// 书库需要的列：副本的内容哈希和原文件路径；笔记和单词记下所属文档 id。
+/// 新写入的笔记和单词由触发器按 `pdf_path` 填上 `document_id`。
+fn add_library_columns(conn: &Connection) -> Result<(), LumenError> {
+    add_column_if_missing(
+        conn,
+        "pdf_documents",
+        "content_hash",
+        "ALTER TABLE pdf_documents ADD COLUMN content_hash TEXT;",
+    )?;
+    add_column_if_missing(
+        conn,
+        "pdf_documents",
+        "original_path",
+        "ALTER TABLE pdf_documents ADD COLUMN original_path TEXT;",
+    )?;
+    add_column_if_missing(
+        conn,
+        "notes",
+        "document_id",
+        "ALTER TABLE notes ADD COLUMN document_id TEXT;",
+    )?;
+    add_column_if_missing(
+        conn,
+        "vocabulary_entries",
+        "document_id",
+        "ALTER TABLE vocabulary_entries ADD COLUMN document_id TEXT;",
+    )?;
+    conn.execute_batch(
+        "
+        CREATE INDEX IF NOT EXISTS idx_pdf_documents_content_hash ON pdf_documents(content_hash);
+        CREATE TRIGGER IF NOT EXISTS notes_fill_document_id AFTER INSERT ON notes
+        WHEN NEW.document_id IS NULL
+        BEGIN
+            UPDATE notes SET document_id = (SELECT id FROM pdf_documents WHERE file_path = NEW.pdf_path)
+            WHERE id = NEW.id;
+        END;
+        CREATE TRIGGER IF NOT EXISTS vocabulary_fill_document_id AFTER INSERT ON vocabulary_entries
+        WHEN NEW.document_id IS NULL
+        BEGIN
+            UPDATE vocabulary_entries SET document_id = (SELECT id FROM pdf_documents WHERE file_path = NEW.pdf_path)
+            WHERE id = NEW.id;
+        END;
+        ",
+    )?;
     Ok(())
 }
 

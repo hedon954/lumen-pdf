@@ -1,3 +1,4 @@
+pub mod library;
 pub mod note;
 pub mod pdf_document;
 pub mod reading_log;

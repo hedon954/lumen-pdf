@@ -10,6 +10,8 @@ pub struct PdfDocument {
     pub last_scroll_offset: f64,
     pub opened_at: i64,
     pub added_at: i64,
+    /// 复制进书库之前的原文件路径。旧书在迁移前、或原文件找不到时为空。
+    pub original_path: Option<String>,
 }
 
 impl PdfDocument {
@@ -28,6 +30,13 @@ pub struct UpsertPdfRequest {
     pub file_path: String,
     pub file_name: String,
     pub total_pages: u32,
+}
+
+/// 导入结果：`is_new` 为假表示复用了文库里已有的书（同一路径或内容相同）。
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct ImportedPdf {
+    pub document: PdfDocument,
+    pub is_new: bool,
 }
 
 #[cfg(test)]

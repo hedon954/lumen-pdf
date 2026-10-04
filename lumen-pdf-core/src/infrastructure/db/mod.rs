@@ -1,3 +1,4 @@
+pub mod library;
 pub mod migration;
 pub mod note_repo;
 pub mod pdf_document_repo;

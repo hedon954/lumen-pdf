@@ -167,7 +167,7 @@ final class AppState: ObservableObject {
 
     private func importPDFs(in folder: URL, includingSubfolders: Bool) {
         let accessing = folder.startAccessingSecurityScopedResource()
-        let existingAtStart = Set(library.map(\.filePath))
+        let existingAtStart = libraryPaths
         Task {
             defer {
                 if accessing { folder.stopAccessingSecurityScopedResource() }
@@ -193,7 +193,7 @@ final class AppState: ObservableObject {
         }
         if let current = selectedDocument {
             ReaderEventBus.shared.postSaveReadingPositionNow(filePath: current.filePath)
-            if current.filePath == url.path {
+            if current.matches(path: url.path) {
                 activeTab = .reader
                 return
             }
@@ -202,12 +202,15 @@ final class AppState: ObservableObject {
         // (needed when the app runs in a macOS sandbox).
         saveBookmark(for: url)
 
-        guard let doc = try? bridge.upsertPdfDocument(
+        // 复制进 LumenPDF 的书库后打开副本；内容相同的文件复用已有的书。
+        guard let imported = try? bridge.importPdfDocument(
             filePath: url.path,
-            fileName: url.lastPathComponent,
-            totalPages: 0
-        ) else { return }
-        selectedDocument = doc
+            fileName: url.lastPathComponent
+        ) else {
+            showToast("无法把这个 PDF 加入文库")
+            return
+        }
+        selectedDocument = imported.document
         activeTab = .reader
         refreshLibrary()
     }
@@ -219,7 +222,7 @@ final class AppState: ObservableObject {
     }
 
     private func commitFolderImport(_ collected: [CollectedLibraryPDF]) {
-        let existing = Set(library.map(\.filePath))
+        let existing = libraryPaths
         let partition = LibraryFolderImporter.partition(
             collected.map(\.pdf),
             existingPaths: existing
@@ -232,28 +235,31 @@ final class AppState: ObservableObject {
         }
 
         var addedPaths: [String] = []
+        var reused = 0
         var failed = 0
         for pdf in partition.adding {
             do {
-                _ = try bridge.upsertPdfDocument(
-                    filePath: pdf.path,
-                    fileName: pdf.fileName,
-                    totalPages: 0
-                )
+                let imported = try bridge.importPdfDocument(filePath: pdf.path, fileName: pdf.fileName)
+                guard imported.isNew else {
+                    // 内容和文库里已有的书相同。
+                    reused += 1
+                    continue
+                }
                 if let bookmark = bookmarks[pdf.path] {
                     UserDefaults.standard.set(bookmark, forKey: "bm_\(pdf.path)")
                 }
-                addedPaths.append(pdf.path)
+                // 撤回时按书库副本的路径移出。
+                addedPaths.append(imported.document.filePath)
             } catch {
                 failed += 1
             }
         }
-        if !addedPaths.isEmpty {
+        if !addedPaths.isEmpty || reused > 0 {
             refreshLibrary()
         }
         let message = folderImportToast(
             added: addedPaths.count,
-            alreadyPresent: partition.alreadyPresent,
+            alreadyPresent: partition.alreadyPresent + reused,
             failed: failed
         )
         if addedPaths.isEmpty {
@@ -311,7 +317,7 @@ final class AppState: ObservableObject {
         guard !library.isEmpty else { return }
         let alert = NSAlert()
         alert.messageText = "清空文库？"
-        alert.informativeText = "PDF 会从文库移出。笔记、单词和磁盘上的文件都会保留。"
+        alert.informativeText = "PDF 会从文库移出，LumenPDF 书库里的副本会删除。笔记、单词和原来的文件都会保留。"
         alert.alertStyle = .warning
         alert.addButton(withTitle: "清空")
         alert.addButton(withTitle: "取消")
@@ -347,9 +353,15 @@ final class AppState: ObservableObject {
         kitDocument = PDFKitView.loadDocument(filePath: filePath)
     }
 
+    /// 文库里每本书的副本路径和原文件路径，用于判断文件是否已在文库中。
+    private var libraryPaths: Set<String> {
+        Set(library.flatMap { [$0.filePath] + ($0.originalPath.map { [$0] } ?? []) })
+    }
+
     private func restoreLastDocument() {
+        // 迁移进书库之前记下的是原文件路径。
         guard let path = restorationStore.state.lastOpenedFilePath,
-              let doc = library.first(where: { $0.filePath == path }) else { return }
+              let doc = library.first(where: { $0.matches(path: path) }) else { return }
         selectedDocument = doc
     }
 
@@ -364,15 +376,17 @@ final class AppState: ObservableObject {
     }
 
     func openLibraryDocument(filePath: String, page: Int) {
-        if let doc = library.first(where: { $0.filePath == filePath }) {
+        if let doc = library.first(where: { $0.matches(path: filePath) }) {
             selectedDocument = doc
             activeTab = .reader
         } else {
             openPDF(url: URL(fileURLWithPath: filePath))
-            guard selectedDocument?.filePath == filePath else { return }
+            guard selectedDocument?.matches(path: filePath) == true else { return }
         }
+        // 重新导入后打开的是书库副本，跳页要用副本的路径。
+        guard let openedPath = selectedDocument?.filePath else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-            ReaderEventBus.shared.postJumpToPage(page: page, filePath: filePath)
+            ReaderEventBus.shared.postJumpToPage(page: page, filePath: openedPath)
         }
     }
 }

@@ -1,5 +1,5 @@
 use crate::domain::pdf_document::{
-    entity::{PdfDocument, UpsertPdfRequest},
+    entity::{ImportedPdf, PdfDocument, UpsertPdfRequest},
     repository::PdfDocumentRepository,
 };
 use crate::error::LumenError;
@@ -16,6 +16,10 @@ impl PdfDocumentUseCase {
 
     pub fn upsert(&self, req: UpsertPdfRequest) -> Result<PdfDocument, LumenError> {
         self.repo.upsert(req)
+    }
+
+    pub fn import(&self, req: UpsertPdfRequest) -> Result<ImportedPdf, LumenError> {
+        self.repo.import(req)
     }
 
     pub fn save_reading_position(

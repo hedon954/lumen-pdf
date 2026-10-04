@@ -572,7 +572,11 @@ private struct LibraryPickerView: View {
                                     .fontWeight(appState.selectedDocument?.id == doc.id ? .semibold : .regular)
                                     .lineLimit(2)
                                     .foregroundStyle(.primary)
-                                if doc.totalPages > 0 {
+                                if doc.isFileMissing {
+                                    Text("找不到文件")
+                                        .font(.caption2)
+                                        .foregroundStyle(.orange)
+                                } else if doc.totalPages > 0 {
                                     Text("P\(doc.lastPage + 1) / \(doc.totalPages)")
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)

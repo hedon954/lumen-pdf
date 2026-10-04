@@ -3,7 +3,7 @@ use crate::application::pdf_document::use_case::PdfDocumentUseCase;
 use crate::application::translation::use_case::TranslationUseCase;
 use crate::application::vocabulary::use_case::VocabularyUseCase;
 use crate::domain::note::entity::{NoteEntry, SaveNoteRequest, UpdateNoteRequest};
-use crate::domain::pdf_document::entity::{PdfDocument, UpsertPdfRequest};
+use crate::domain::pdf_document::entity::{ImportedPdf, PdfDocument, UpsertPdfRequest};
 use crate::domain::translation::entity::{
     ImageAttachment, ImageInputCapability, TranslationRequest, TranslationResult,
 };
@@ -17,16 +17,20 @@ use crate::infrastructure::db::{
     note_repo::SqliteNoteRepo, pdf_document_repo::SqlitePdfDocumentRepo,
     translation_cache_repo::SqliteTranslationCacheRepo, vocabulary_repo::SqliteVocabularyRepo,
 };
+use crate::infrastructure::library_store::LibraryStore;
 use crate::infrastructure::translator::{
     dictionary_phonetic::DictionaryApiPhoneticProvider,
     fallback_translator::FallbackTranslator,
     llm_translator::{LlmConfig, LlmTranslator},
 };
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock, RwLock};
 
 // ── Global state ────────────────────────────────────────────────────────────
 
 static POOL: OnceLock<DbPool> = OnceLock::new();
+/// 书库目录：`data.db` 同目录下的 `Library/`。
+static LIBRARY_ROOT: OnceLock<PathBuf> = OnceLock::new();
 // RwLock so the config can be hot-swapped without restarting the app.
 static LLM_CONFIG: RwLock<Option<LlmConfig>> = RwLock::new(None);
 
@@ -45,6 +49,10 @@ pub fn initialize(db_path: String, config: AppConfig) -> Result<(), LumenError> 
                 message: e.to_string(),
             })?;
             crate::infrastructure::db::migration::run(&conn)?;
+            let store = LibraryStore::for_database(Path::new(&db_path));
+            // 把还没复制进书库的书复制进去。失败时这些书照旧用原路径，下次启动再试。
+            let _ = crate::infrastructure::db::library::migrate(&conn, &store, Path::new(&db_path));
+            let _ = LIBRARY_ROOT.set(store.root().to_path_buf());
         }
         // Ignore error if another thread beat us to it.
         let _ = POOL.set(pool);
@@ -129,8 +137,9 @@ fn vocabulary_use_case() -> Result<VocabularyUseCase, LumenError> {
 }
 
 fn pdf_document_use_case() -> Result<PdfDocumentUseCase, LumenError> {
+    let root = LIBRARY_ROOT.get().ok_or(LumenError::ConfigNotInitialized)?;
     Ok(PdfDocumentUseCase::new(Arc::new(
-        SqlitePdfDocumentRepo::new(pool()?.clone()),
+        SqlitePdfDocumentRepo::new(pool()?.clone(), LibraryStore::new(root.clone())),
     )))
 }
 
@@ -286,6 +295,12 @@ pub fn update_vocabulary(req: UpdateVocabularyRequest) -> Result<VocabularyEntry
 #[uniffi::export]
 pub fn upsert_pdf_document(req: UpsertPdfRequest) -> Result<PdfDocument, LumenError> {
     pdf_document_use_case()?.upsert(req)
+}
+
+/// 导入原文件：复制进书库，或复用路径 / 内容相同的已有书。原文件不会被修改或移动。
+#[uniffi::export]
+pub fn import_pdf_document(req: UpsertPdfRequest) -> Result<ImportedPdf, LumenError> {
+    pdf_document_use_case()?.import(req)
 }
 
 #[uniffi::export]

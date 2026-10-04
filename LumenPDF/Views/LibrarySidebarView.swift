@@ -42,7 +42,11 @@ private struct LibraryRow: View {
                     .fontWeight(.medium)
                     .lineLimit(2)
 
-                if doc.totalPages > 0 {
+                if doc.isFileMissing {
+                    Text("找不到文件")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                } else if doc.totalPages > 0 {
                     Text("P\(doc.lastPage + 1) / \(doc.totalPages)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
