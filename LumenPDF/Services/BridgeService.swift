@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 // File-scope type-aliased references to UniFFI top-level functions.
 // BridgeService methods have the same names → would shadow them inside the class.
@@ -34,8 +35,7 @@ final class BridgeService {
     private let dbURL: URL
 
     private init() {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let dir = appSupport.appendingPathComponent("LumenPDF", isDirectory: true)
+        let dir = AppDataDirectory.current
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         dbURL = dir.appendingPathComponent("data.db")
     }
@@ -66,6 +66,20 @@ final class BridgeService {
             return
         }
         isInitialized = true
+        logLibraryMigration()
+    }
+
+    /// 启动时书库迁移的计数写进系统日志（`log show --predicate 'subsystem == "com.LumenPDF.app"'`）。
+    private func logLibraryMigration() {
+        guard let summary = libraryMigrationSummary() else { return }
+        let logger = Logger(subsystem: "com.LumenPDF.app", category: "library")
+        if let error = summary.error {
+            logger.error("library migration failed: \(error, privacy: .public)")
+        } else {
+            logger.notice(
+                "library migration: copied \(summary.copied), missing \(summary.missing), failed \(summary.failed)"
+            )
+        }
     }
 
     /// Hot-swap LLM config — takes effect for the very next translation call.

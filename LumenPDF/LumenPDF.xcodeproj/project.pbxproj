@@ -47,6 +47,7 @@
 		6986D8C59A85F24C07531810 /* UnderlineNoteDraftView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5D204492B4D1E54DC478CF6 /* UnderlineNoteDraftView.swift */; };
 		6A12ACDFCA91C875FFF4397E /* JSONEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30478E70EB58E55D266FA711 /* JSONEditorView.swift */; };
 		6BBE6EE08B8CE203AA0081D9 /* LLMModelCatalogService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694E6185E5C735E0C291FB8B /* LLMModelCatalogService.swift */; };
+		6BE2D47DA2AE566C01518602 /* AppDataDirectoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DE24606DD233F6157DD8E70 /* AppDataDirectoryTests.swift */; };
 		6FBBFDB39C541E7C6DCD4F97 /* LLMThinkingExtraConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C52E1E1684DB23E807A10C2 /* LLMThinkingExtraConfig.swift */; };
 		7169990F59B805C6B5E1175C /* ReadingNoteGrouping.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88795B8209674FF5713769A0 /* ReadingNoteGrouping.swift */; };
 		722601B36BD9B333B1AFEB79 /* NoteReviewPopoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE2D09DB8AEF5FF7D682FB11 /* NoteReviewPopoverView.swift */; };
@@ -109,6 +110,7 @@
 		DA410654D0FCF8C48775E83D /* LumenPDFApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66589F46D22ED6A1DCCCB8A8 /* LumenPDFApp.swift */; };
 		DD2BBDABC05C216597F66BE9 /* PDFReaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32758932B2FC895E4526CA2E /* PDFReaderView.swift */; };
 		DFA2B08300942BF058F88127 /* TextLineMarkupMerge.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE8A3587A627C93B31A8EDA4 /* TextLineMarkupMerge.swift */; };
+		DFC0036D9A191C26F5BD0188 /* AppDataDirectory.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAF833188808BFFB3C4023A4 /* AppDataDirectory.swift */; };
 		E23D236734A52E85A8BA40C8 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92D0F2DE24CFD041786B3ED5 /* ContentView.swift */; };
 		E2684FF5C59F48293D104175 /* ReadingPopoverLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B13DAAFEADFC4C841B20BF3E /* ReadingPopoverLayoutTests.swift */; };
 		E38D23DE8D648E714C9F7338 /* SettingsPages.swift in Sources */ = {isa = PBXBuildFile; fileRef = 457FDF92DABD4EF06B2DFA35 /* SettingsPages.swift */; };
@@ -183,6 +185,7 @@
 		5BDBB71CE7F98EA218AA64E7 /* PDFCoverThumbnailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFCoverThumbnailView.swift; sourceTree = "<group>"; };
 		5C083A7A95B100E70465F609 /* LumenPDFTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LumenPDFTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		5C78B1E205D32DA4BC871E46 /* TranslationPopoverPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationPopoverPresentation.swift; sourceTree = "<group>"; };
+		5DE24606DD233F6157DD8E70 /* AppDataDirectoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDataDirectoryTests.swift; sourceTree = "<group>"; };
 		5F85887C20DDD21B7B5F0C70 /* LLMProviderPickerSelectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMProviderPickerSelectionTests.swift; sourceTree = "<group>"; };
 		64617D1512820E56274C1747 /* TranslationErrorFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationErrorFormatter.swift; sourceTree = "<group>"; };
 		656A225A0B3D0AE834BBCD0D /* LLMConfigurationHistoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMConfigurationHistoryTests.swift; sourceTree = "<group>"; };
@@ -218,6 +221,7 @@
 		A934133960CE5C745C0C03D2 /* PDFSelectionMarkupGeometryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFSelectionMarkupGeometryTests.swift; sourceTree = "<group>"; };
 		AAADF103642AE411F00A83B2 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		AAF7255A0FB99F30B44BBF35 /* PromptTemplateUpdateCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptTemplateUpdateCoordinator.swift; sourceTree = "<group>"; };
+		AAF833188808BFFB3C4023A4 /* AppDataDirectory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDataDirectory.swift; sourceTree = "<group>"; };
 		AB31EAE93D21D7777797E190 /* LLMConfigurationHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMConfigurationHistory.swift; sourceTree = "<group>"; };
 		AE2D09DB8AEF5FF7D682FB11 /* NoteReviewPopoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteReviewPopoverView.swift; sourceTree = "<group>"; };
 		AE608EB05C9C424192F3C777 /* ReadingGuideService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingGuideService.swift; sourceTree = "<group>"; };
@@ -389,6 +393,7 @@
 		572A5A8B9101D88220F06B34 /* Tests */ = {
 			isa = PBXGroup;
 			children = (
+				5DE24606DD233F6157DD8E70 /* AppDataDirectoryTests.swift */,
 				1B3D5836CA4A44C0C7D2A8AC /* GuideConversationPolicyTests.swift */,
 				2D41D2305298910E62C1B0BC /* JSONAutoIndenterTests.swift */,
 				7661449090CDFC4372B246B2 /* KeychainItemQueryTests.swift */,
@@ -451,6 +456,7 @@
 		88264BB772BD40E71DDBAF54 /* App */ = {
 			isa = PBXGroup;
 			children = (
+				AAF833188808BFFB3C4023A4 /* AppDataDirectory.swift */,
 				E7BE79696867D170FC2335E2 /* AppState.swift */,
 				66589F46D22ED6A1DCCCB8A8 /* LumenPDFApp.swift */,
 				7F53BC0B8A8F7EDFD2E51CB0 /* PdfDocument+Library.swift */,
@@ -579,6 +585,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				6BE2D47DA2AE566C01518602 /* AppDataDirectoryTests.swift in Sources */,
 				4B9A4F2FB184E193ABC3E33E /* GuideConversationPolicyTests.swift in Sources */,
 				79CB78034000C6BF144685B0 /* JSONAutoIndenterTests.swift in Sources */,
 				9B2F99EF200DD0960301AB35 /* KeychainItemQueryTests.swift in Sources */,
@@ -616,6 +623,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				0FCA880AEE9A07C841BE7CA3 /* AnnotationBoundsCodec.swift in Sources */,
+				DFC0036D9A191C26F5BD0188 /* AppDataDirectory.swift in Sources */,
 				F2CDC7FD8BBAD40DD2870EBF /* AppState.swift in Sources */,
 				482C829E5FEBA2F21ABA0AE9 /* AudioService.swift in Sources */,
 				D49E9FC6FE34693BD8AB2BE2 /* AutoSavingNoteEditor.swift in Sources */,

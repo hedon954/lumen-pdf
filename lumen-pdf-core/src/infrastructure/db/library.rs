@@ -1,6 +1,7 @@
 //! 把文库里的书复制进书库，并改写数据库里的路径。
 //!
-//! 一次性迁移：先在 `data.db` 旁边做带时间戳的备份，再把每本书复制进书库（在事务外，
+//! 一次性迁移：第一次有书要复制时在 `data.db` 旁边做带时间戳的备份（只做这一次，
+//! 之后复制失败重试也不再备份），再把每本书复制进书库（在事务外，
 //! 只写书库目录），最后在**一个事务**里改写 `pdf_documents` / `notes` / `vocabulary_entries`
 //! 的路径并填上 `document_id`。原文件找不到的书留在原处，下次启动再试。
 //! 已在书库里的书不再处理，所以中途崩溃后重跑不会重复复制或重复改写。
@@ -12,7 +13,7 @@ use chrono::Local;
 use rusqlite::{params, Connection};
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct LibraryMigrationReport {
     pub copied: usize,
     /// 原文件找不到，留在文库里等下次。
@@ -43,7 +44,8 @@ pub(crate) fn io_error(error: std::io::Error) -> LumenError {
     }
 }
 
-/// 启动时调用。没有需要复制的书时不做备份。
+/// 启动时调用。没有需要复制的书、或者已经有过迁移备份时不再备份：
+/// 第一份备份就是迁移前的状态，复制一直失败的书不会让每次启动都多一份备份。
 pub fn migrate(
     conn: &Connection,
     store: &LibraryStore,
@@ -54,6 +56,7 @@ pub fn migrate(
     if pending
         .iter()
         .any(|book| Path::new(&book.file_path).is_file())
+        && !has_backup(db_path)
     {
         report.backup = Some(backup_database(conn, db_path)?);
     }
@@ -156,14 +159,29 @@ fn pending_books(conn: &Connection, store: &LibraryStore) -> Result<Vec<PendingB
         .collect())
 }
 
-/// `data.db.before-library-<时间>`，用 `VACUUM INTO` 得到包含 WAL 内容的一致副本。
-fn backup_database(conn: &Connection, db_path: &Path) -> Result<PathBuf, LumenError> {
+fn backup_prefix(db_path: &Path) -> String {
     let name = db_path
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_else(|| "data.db".into());
+    format!("{name}.before-library-")
+}
+
+/// `data.db` 旁边是否已经有迁移备份。
+fn has_backup(db_path: &Path) -> bool {
+    let prefix = backup_prefix(db_path);
+    let dir = db_path.parent().unwrap_or_else(|| Path::new("."));
+    std::fs::read_dir(dir).is_ok_and(|entries| {
+        entries
+            .flatten()
+            .any(|entry| entry.file_name().to_string_lossy().starts_with(&prefix))
+    })
+}
+
+/// `data.db.before-library-<时间>`，用 `VACUUM INTO` 得到包含 WAL 内容的一致副本。
+fn backup_database(conn: &Connection, db_path: &Path) -> Result<PathBuf, LumenError> {
     let stamp = Local::now().format("%Y%m%d-%H%M%S");
-    let base = db_path.with_file_name(format!("{name}.before-library-{stamp}"));
+    let base = db_path.with_file_name(format!("{}{stamp}", backup_prefix(db_path)));
     let mut target = base.clone();
     let mut attempt = 1;
     while target.exists() {
@@ -425,7 +443,31 @@ mod tests {
         assert_eq!(copy, f.store.root().join("a/Book.pdf").to_string_lossy());
         assert_eq!(f.mark_links("a")[0].0, copy);
         assert_eq!(f.marks(), marks_before);
-        assert_eq!(f.backups(), 2, "the first backup is kept");
+        assert_eq!(
+            f.backups(),
+            1,
+            "the first backup is kept and no second one is made"
+        );
+    }
+
+    #[test]
+    fn a_copy_that_keeps_failing_does_not_back_up_on_every_launch() {
+        use std::os::unix::fs::PermissionsExt;
+        let f = fixture();
+        let original = f.add_book("locked", "Locked.pdf", Some(b"%PDF fake"));
+        // 读不了原文件：每次复制都失败。
+        fs::set_permissions(&original, fs::Permissions::from_mode(0o000)).unwrap();
+
+        let first = migrate(&f.conn, &f.store, &f.db_path).unwrap();
+        let second = migrate(&f.conn, &f.store, &f.db_path).unwrap();
+        fs::set_permissions(&original, fs::Permissions::from_mode(0o600)).unwrap();
+        let third = migrate(&f.conn, &f.store, &f.db_path).unwrap();
+
+        assert_eq!((first.failed, second.failed), (1, 1));
+        assert!(first.backup.is_some());
+        assert_eq!((second.backup.clone(), third.backup.clone()), (None, None));
+        assert_eq!(third.copied, 1);
+        assert_eq!(f.backups(), 1);
     }
 
     #[test]

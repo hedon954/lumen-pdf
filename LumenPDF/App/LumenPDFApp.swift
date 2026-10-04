@@ -1,7 +1,27 @@
 import SwiftUI
 import AppKit
 
+/// 正常启动走 `LumenPDFApp`。XCTest 宿主只起一个没有窗口的空 App：不建 `AppState`，
+/// 不初始化数据库，不读写真实的偏好、窗口位置和文库。
 @main
+enum LumenPDFMain {
+    static func main() {
+        if AppDataDirectory.isRunningTests {
+            TestHostApp.main()
+        } else {
+            LumenPDFApp.main()
+        }
+    }
+}
+
+private struct TestHostApp: App {
+    var body: some Scene {
+        Settings {
+            EmptyView()
+        }
+    }
+}
+
 struct LumenPDFApp: App {
     @StateObject private var appState = AppState()
 

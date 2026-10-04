@@ -31,6 +31,23 @@ use std::sync::{Arc, OnceLock, RwLock};
 static POOL: OnceLock<DbPool> = OnceLock::new();
 /// 书库目录：`data.db` 同目录下的 `Library/`。
 static LIBRARY_ROOT: OnceLock<PathBuf> = OnceLock::new();
+/// 这次启动的书库迁移结果，供 Swift 写进日志。
+static LIBRARY_MIGRATION: OnceLock<LibraryMigrationSummary> = OnceLock::new();
+
+/// 书库迁移的计数：复制了几本、几本找不到原文件、几本复制失败；整体出错时带上原因。
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct LibraryMigrationSummary {
+    pub copied: u32,
+    pub missing: u32,
+    pub failed: u32,
+    pub error: Option<String>,
+}
+
+/// `initialize` 之后调用；还没初始化时为空。
+#[uniffi::export]
+pub fn library_migration_summary() -> Option<LibraryMigrationSummary> {
+    LIBRARY_MIGRATION.get().cloned()
+}
 // RwLock so the config can be hot-swapped without restarting the app.
 static LLM_CONFIG: RwLock<Option<LlmConfig>> = RwLock::new(None);
 
@@ -51,7 +68,25 @@ pub fn initialize(db_path: String, config: AppConfig) -> Result<(), LumenError> 
             crate::infrastructure::db::migration::run(&conn)?;
             let store = LibraryStore::for_database(Path::new(&db_path));
             // 把还没复制进书库的书复制进去。失败时这些书照旧用原路径，下次启动再试。
-            let _ = crate::infrastructure::db::library::migrate(&conn, &store, Path::new(&db_path));
+            let summary = match crate::infrastructure::db::library::migrate(
+                &conn,
+                &store,
+                Path::new(&db_path),
+            ) {
+                Ok(report) => LibraryMigrationSummary {
+                    copied: report.copied as u32,
+                    missing: report.missing as u32,
+                    failed: report.failed as u32,
+                    error: None,
+                },
+                Err(error) => LibraryMigrationSummary {
+                    copied: 0,
+                    missing: 0,
+                    failed: 0,
+                    error: Some(error.to_string()),
+                },
+            };
+            let _ = LIBRARY_MIGRATION.set(summary);
             let _ = LIBRARY_ROOT.set(store.root().to_path_buf());
         }
         // Ignore error if another thread beat us to it.

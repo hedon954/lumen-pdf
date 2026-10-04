@@ -247,13 +247,7 @@ final class LLMCallLogStore: ObservableObject {
     }
 
     private static func defaultFileURL() -> URL {
-        let appSupport = FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        ).first!
-        return appSupport
-            .appendingPathComponent("LumenPDF", isDirectory: true)
-            .appendingPathComponent("llm-call-log.json")
+        AppDataDirectory.current.appendingPathComponent("llm-call-log.json")
     }
 
     static func listTimestamp(_ date: Date) -> String {
