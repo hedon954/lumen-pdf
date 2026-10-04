@@ -5,6 +5,12 @@ import Combine
 
 enum MainTab: String { case reader, vocabulary, notes }
 
+struct ReaderToast: Identifiable {
+    let id = UUID()
+    let message: String
+    let undo: (() -> Void)?
+}
+
 @MainActor
 final class AppState: ObservableObject {
     @Published var library: [PdfDocument] = []
@@ -38,7 +44,7 @@ final class AppState: ObservableObject {
             restorationStore.updateActiveTab(activeTab.rawValue)
         }
     }
-    @Published var toastMessage: String?
+    @Published var toast: ReaderToast?
 
     /// PDFKit document object – used for TOC sidebar.
     @Published var kitDocument: PDFKit.PDFDocument?
@@ -134,6 +140,41 @@ final class AppState: ObservableObject {
         openPDF(url: url)
     }
 
+    func openFolderPicker() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = false
+        panel.prompt = "导入"
+        let includeSubfolders = NSButton(checkboxWithTitle: "包含子文件夹", target: nil, action: nil)
+        includeSubfolders.state = .off
+        includeSubfolders.sizeToFit()
+        includeSubfolders.frame.size.height = max(includeSubfolders.frame.height, 22)
+        panel.accessoryView = includeSubfolders
+        panel.isAccessoryViewDisclosed = true
+        guard panel.runModal() == .OK, let folder = panel.url else { return }
+        importPDFs(in: folder, includingSubfolders: includeSubfolders.state == .on)
+    }
+
+    private func importPDFs(in folder: URL, includingSubfolders: Bool) {
+        let accessing = folder.startAccessingSecurityScopedResource()
+        let existingAtStart = Set(library.map(\.filePath))
+        Task {
+            defer {
+                if accessing { folder.stopAccessingSecurityScopedResource() }
+            }
+            let collected = await Task.detached(priority: .userInitiated) {
+                LibraryFolderImporter.collectPDFs(
+                    in: folder,
+                    existingPaths: existingAtStart,
+                    includingSubfolders: includingSubfolders
+                )
+            }.value
+            commitFolderImport(collected)
+        }
+    }
+
     func openPDF(url: URL) {
         guard url.isFileURL, url.pathExtension.lowercased() == "pdf" else { return }
         let accessing = url.startAccessingSecurityScopedResource()
@@ -164,14 +205,89 @@ final class AppState: ObservableObject {
     }
 
     private func saveBookmark(for url: URL) {
-        // Try security-scoped bookmark first; fall back to plain bookmark.
-        let data = (try? url.bookmarkData(options: .withSecurityScope,
-                                          includingResourceValuesForKeys: nil,
-                                          relativeTo: nil))
-                ?? (try? url.bookmarkData())
-        if let data {
+        if let data = LibraryFolderImporter.bookmarkData(for: url) {
             UserDefaults.standard.set(data, forKey: "bm_\(url.path)")
         }
+    }
+
+    private func commitFolderImport(_ collected: [CollectedLibraryPDF]) {
+        let existing = Set(library.map(\.filePath))
+        let partition = LibraryFolderImporter.partition(
+            collected.map(\.pdf),
+            existingPaths: existing
+        )
+        var bookmarks: [String: Data] = [:]
+        for item in collected {
+            if let bookmark = item.bookmark {
+                bookmarks[item.pdf.path] = bookmark
+            }
+        }
+
+        var addedPaths: [String] = []
+        var failed = 0
+        for pdf in partition.adding {
+            do {
+                _ = try bridge.upsertPdfDocument(
+                    filePath: pdf.path,
+                    fileName: pdf.fileName,
+                    totalPages: 0
+                )
+                if let bookmark = bookmarks[pdf.path] {
+                    UserDefaults.standard.set(bookmark, forKey: "bm_\(pdf.path)")
+                }
+                addedPaths.append(pdf.path)
+            } catch {
+                failed += 1
+            }
+        }
+        if !addedPaths.isEmpty {
+            refreshLibrary()
+        }
+        let message = folderImportToast(
+            added: addedPaths.count,
+            alreadyPresent: partition.alreadyPresent,
+            failed: failed
+        )
+        if addedPaths.isEmpty {
+            showToast(message)
+        } else {
+            showToast(message) { [weak self] in
+                self?.undoFolderImport(paths: addedPaths)
+            }
+        }
+    }
+
+    private func undoFolderImport(paths: [String]) {
+        let pathSet = Set(paths)
+        for path in paths {
+            try? bridge.deletePdfDocument(filePath: path)
+        }
+        if let selected = selectedDocument, pathSet.contains(selected.filePath) {
+            selectedDocument = nil
+            kitDocument = nil
+        }
+        refreshLibrary()
+        showToast("已撤回导入")
+    }
+
+    private func folderImportToast(added: Int, alreadyPresent: Int, failed: Int) -> String {
+        if added == 0 && alreadyPresent == 0 && failed == 0 {
+            return "这个文件夹里没有 PDF"
+        }
+        if added == 0 && failed == 0 {
+            return "这些 PDF 已在文库中"
+        }
+        var parts: [String] = []
+        if added > 0 {
+            parts.append("已加入 \(added) 个 PDF")
+        }
+        if alreadyPresent > 0 {
+            parts.append("\(alreadyPresent) 个已在文库中")
+        }
+        if failed > 0 {
+            parts.append("\(failed) 个未能加入")
+        }
+        return parts.joined(separator: "，")
     }
 
     func removeFromLibrary(_ doc: PdfDocument) {
@@ -181,6 +297,28 @@ final class AppState: ObservableObject {
             kitDocument = nil
         }
         refreshLibrary()
+    }
+
+    func confirmClearLibrary() {
+        guard !library.isEmpty else { return }
+        let alert = NSAlert()
+        alert.messageText = "清空文库？"
+        alert.informativeText = "PDF 会从文库移出。笔记、单词和磁盘上的文件都会保留。"
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "清空")
+        alert.addButton(withTitle: "取消")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        clearLibrary()
+    }
+
+    private func clearLibrary() {
+        for doc in library {
+            try? bridge.deletePdfDocument(filePath: doc.filePath)
+        }
+        selectedDocument = nil
+        kitDocument = nil
+        refreshLibrary()
+        showToast("已清空文库")
     }
 
     func saveReadingPosition(filePath: String, page: UInt32, scrollOffset: Double) {
@@ -207,17 +345,24 @@ final class AppState: ObservableObject {
         selectedDocument = doc
     }
 
-    func showToast(_ message: String) {
-        toastMessage = message
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
-            self?.toastMessage = nil
+    func showToast(_ message: String, undo: (() -> Void)? = nil) {
+        let next = ReaderToast(message: message, undo: undo)
+        toast = next
+        let duration: TimeInterval = undo == nil ? 2.5 : 8
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in
+            guard self?.toast?.id == next.id else { return }
+            self?.toast = nil
         }
     }
 
     func openLibraryDocument(filePath: String, page: Int) {
-        guard let doc = library.first(where: { $0.filePath == filePath }) else { return }
-        selectedDocument = doc
-        activeTab = .reader
+        if let doc = library.first(where: { $0.filePath == filePath }) {
+            selectedDocument = doc
+            activeTab = .reader
+        } else {
+            openPDF(url: URL(fileURLWithPath: filePath))
+            guard selectedDocument?.filePath == filePath else { return }
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
             ReaderEventBus.shared.postJumpToPage(page: page, filePath: filePath)
         }

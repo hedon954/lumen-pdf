@@ -81,11 +81,11 @@ struct ContentView: View {
                     NoteListView()
                 }
 
-                if let msg = appState.toastMessage {
-                    ToastView(message: msg)
+                if let toast = appState.toast {
+                    ToastView(message: toast.message, onUndo: toast.undo)
                         .padding(.bottom, 24)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
-                        .animation(.easeInOut(duration: 0.3), value: appState.toastMessage)
+                        .animation(.easeInOut(duration: 0.3), value: toast.id)
                 }
             }
         }
@@ -239,12 +239,8 @@ struct ContentView: View {
                     .accessibilityIdentifier("toolbar.readingInspector")
                 }
 
-                Button {
-                    appState.openFilePicker()
-                } label: {
-                    Label("打开 PDF", systemImage: "plus")
-                }
-                .accessibilityIdentifier("toolbar.openPDF")
+                LibraryAddMenu(showsTitle: true)
+                    .accessibilityIdentifier("toolbar.openPDF")
 
                 if #available(macOS 14, *) {
                     SettingsLink {
@@ -495,6 +491,36 @@ struct ContentView: View {
 
 }
 
+// MARK: - Library add menu
+
+private struct LibraryAddMenu: View {
+    @EnvironmentObject private var appState: AppState
+    var showsTitle: Bool
+
+    var body: some View {
+        Menu {
+            Button("打开 PDF…") {
+                appState.openFilePicker()
+            }
+            .accessibilityIdentifier(showsTitle ? "toolbar.openPDF.file" : "library.openPDF")
+            Button("导入文件夹…") {
+                appState.openFolderPicker()
+            }
+            .accessibilityIdentifier(showsTitle ? "toolbar.importFolder" : "library.importFolder")
+        } label: {
+            if showsTitle {
+                Label("打开 PDF", systemImage: "plus")
+            } else {
+                Image(systemName: "plus")
+            }
+        }
+        .menuIndicator(.hidden)
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("打开 PDF 或导入文件夹")
+    }
+}
+
 // MARK: - Library Picker Popover
 
 private struct LibraryPickerView: View {
@@ -503,15 +529,19 @@ private struct LibraryPickerView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("已打开的文件")
+                Text("文库")
                     .font(.headline)
                 Spacer()
-                Button {
-                    appState.openFilePicker()
-                } label: {
-                    Image(systemName: "plus")
+                if !appState.library.isEmpty {
+                    Button("清空") {
+                        appState.confirmClearLibrary()
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help("移出文库中的全部 PDF，保留笔记和单词")
+                    .accessibilityIdentifier("library.clear")
                 }
-                .buttonStyle(.plain)
+                LibraryAddMenu(showsTitle: false)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -585,10 +615,15 @@ private struct EmptyStateView: View {
             Text("打开一个 PDF 开始阅读")
                 .font(.title3)
                 .foregroundStyle(.secondary)
-            Button("选择文件…") {
-                appState.openFilePicker()
+            HStack(spacing: 12) {
+                Button("选择文件…") {
+                    appState.openFilePicker()
+                }
+                .buttonStyle(.borderedProminent)
+                Button("导入文件夹…") {
+                    appState.openFolderPicker()
+                }
             }
-            .buttonStyle(.borderedProminent)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -598,13 +633,23 @@ private struct EmptyStateView: View {
 
 private struct ToastView: View {
     let message: String
+    var onUndo: (() -> Void)?
 
     var body: some View {
-        Text(message)
-            .font(.callout)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .background(.regularMaterial, in: Capsule())
-            .shadow(radius: 4)
+        HStack(spacing: 12) {
+            Text(message)
+                .font(.callout)
+            if let onUndo {
+                Divider().frame(height: 14)
+                Button("撤回", action: onUndo)
+                    .buttonStyle(.borderless)
+                    .font(.callout.weight(.semibold))
+                    .accessibilityIdentifier("toast.undo")
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(.regularMaterial, in: Capsule())
+        .shadow(radius: 4)
     }
 }

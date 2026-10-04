@@ -24,6 +24,9 @@ struct LumenPDFApp: App {
                     appState.openFilePicker()
                 }
                 .keyboardShortcut("o", modifiers: .command)
+                Button("导入文件夹…") {
+                    appState.openFolderPicker()
+                }
             }
             CommandGroup(after: .textEditing) {
                 Button("查找…") {

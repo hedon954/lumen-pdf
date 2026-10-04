@@ -7,6 +7,7 @@ predecessor:
   - prd/prd-2026-07-10-note-overlay-optimization.md
 successor:
   - prd/prd-2026-08-20-note-autosave-overlay-stability.md
+  - prd/prd-2026-10-04-library-folder-import.md
 ---
 
 # LumenPDF — 文库封面与翻译重新生成 PRD
@@ -19,7 +20,7 @@ v1.0.25 让已打开的 PDF 更容易辨认，并对不满意或失败的翻译�
 
 ### F1 — 文库封面
 
-- 「已打开的文件」列表为每个 PDF 显示首页封面缩略图。
+- 「已打开的文件」列表为每个 PDF 显示首页封面缩略图。后续修订：列表标题改为「文库」，见 [prd-2026-10-04-library-folder-import.md](prd-2026-10-04-library-folder-import.md)。
 - 文件名和阅读进度仍显示在封面右侧。
 - 缩略图失败时退回占位，不得挡住打开文件。
 
