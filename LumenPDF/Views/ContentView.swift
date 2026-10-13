@@ -13,6 +13,7 @@ struct ContentView: View {
     @StateObject private var viewportTransitionController = ReaderViewportTransitionController()
     @StateObject private var workspaceSearch = WorkspaceSearchController()
     @ObservedObject private var restorationStore = ReadingRestorationStore.shared
+    @EnvironmentObject private var appUpdate: AppUpdateCenter
     @AppStorage("llm_base_url") private var baseURL = ""
     @AppStorage("llm_model") private var model = ""
 
@@ -257,6 +258,17 @@ struct ContentView: View {
                 }
             }
         }
+        .overlay(alignment: .top) {
+            if !workspaceSearch.isPresented {
+                AppUpdateBanner(updates: appUpdate)
+            }
+        }
+        .sheet(isPresented: $appUpdate.showsSheet) {
+            AppUpdateSheet(updates: appUpdate)
+        }
+        .task {
+            appUpdate.startIfNeeded()
+        }
         .onAppear {
             let args = ProcessInfo.processInfo.arguments
             if args.contains("--uitesting-show-settings") {
@@ -278,6 +290,7 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showSetupSheet) {
             SettingsView(onDismiss: { showSetupSheet = false })
+                .environmentObject(appUpdate)
         }
         .onChange(of: appState.activeTab) { _, _ in
             selectionActionBarModel.dismiss()
