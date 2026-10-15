@@ -1,5 +1,5 @@
 ---
-version: unreleased
+version: v1.0.34
 date: 2026-10-13
 prd: prd/prd-2026-10-13-app-update.md
 predecessor:

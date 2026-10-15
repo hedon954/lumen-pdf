@@ -51,7 +51,7 @@ PRD 记录**用户可感知的行为与验收标准**。TDD 记录**如何实现
 | v1.0.31 | 2026-09-01 | Look Up 式翻译浮窗 | [prd-2026-09-01-native-translation-popover.md](prd/prd-2026-09-01-native-translation-popover.md) | [tdd-2026-09-01-native-translation-popover.md](tdd/tdd-2026-09-01-native-translation-popover.md) |
 | v1.0.32 | 2026-09-10 | 系统打开 PDF、统一浮窗与笔记快速追加 | [prd-2026-09-10-reader-open-note-popover.md](prd/prd-2026-09-10-reader-open-note-popover.md) | [tdd-2026-09-10-reader-open-note-popover.md](tdd/tdd-2026-09-10-reader-open-note-popover.md) |
 | v1.0.33 | 2026-10-04 | 从文件夹导入 PDF | [prd-2026-10-04-library-folder-import.md](prd/prd-2026-10-04-library-folder-import.md) | [tdd-2026-10-04-library-folder-import.md](tdd/tdd-2026-10-04-library-folder-import.md) |
-| unreleased | 2026-10-13 | 应用内检查更新并原地替换 | [prd-2026-10-13-app-update.md](prd/prd-2026-10-13-app-update.md) | [tdd-2026-10-13-app-update.md](tdd/tdd-2026-10-13-app-update.md) |
+| v1.0.34 | 2026-10-13 | 应用内检查更新并原地替换 | [prd-2026-10-13-app-update.md](prd/prd-2026-10-13-app-update.md) | [tdd-2026-10-13-app-update.md](tdd/tdd-2026-10-13-app-update.md) |
 
 未单独成对的发布：
 
@@ -134,7 +134,7 @@ v1.0.0 打开过的 PDF 按最近打开倒序，可移除
 
 ```text
 v1.0.9 开发者 make upgrade 替换 /Applications
-  → unreleased 已安装的应用启动时检查官方发布，确认后原地替换当前副本并重新打开
+  → v1.0.34 已安装的应用启动时检查官方发布，确认后原地替换当前副本并重新打开
 ```
 
 ## 其他文档
