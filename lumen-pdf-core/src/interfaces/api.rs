@@ -1,6 +1,7 @@
 use crate::application::note::use_case::NoteUseCase;
 use crate::application::pdf_document::use_case::PdfDocumentUseCase;
 use crate::application::translation::use_case::TranslationUseCase;
+use crate::application::update::AppUpdateUseCase;
 use crate::application::vocabulary::use_case::VocabularyUseCase;
 use crate::domain::note::entity::{NoteEntry, SaveNoteRequest, UpdateNoteRequest};
 use crate::domain::pdf_document::entity::{PdfDocument, UpsertPdfRequest};
@@ -8,6 +9,7 @@ use crate::domain::translation::entity::{
     ImageAttachment, ImageInputCapability, TranslationRequest, TranslationResult,
 };
 use crate::domain::translation::repository::StreamProgress;
+use crate::domain::update::{AppUpdateFailure, AppUpdateStatus};
 use crate::domain::vocabulary::entity::{
     SaveVocabularyRequest, UpdateVocabularyRequest, VocabularyEntry,
 };
@@ -22,6 +24,7 @@ use crate::infrastructure::translator::{
     fallback_translator::FallbackTranslator,
     llm_translator::{LlmConfig, LlmTranslator},
 };
+use crate::infrastructure::update::GithubReleaseFeed;
 use std::sync::{Arc, OnceLock, RwLock};
 
 // ── Global state ────────────────────────────────────────────────────────────
@@ -338,4 +341,29 @@ pub fn delete_note(id: String) -> Result<(), LumenError> {
 #[uniffi::export]
 pub fn update_note(req: UpdateNoteRequest) -> Result<NoteEntry, LumenError> {
     note_use_case()?.update(req)
+}
+
+/// Whether a download URL or redirect may be followed while installing an update.
+/// Does not require `initialize`.
+#[uniffi::export]
+pub fn is_trusted_update_url(url: String) -> bool {
+    crate::domain::update::is_trusted_update_url(&url)
+}
+
+/// Whether `url` is the official GitHub release asset for `file_name`.
+#[uniffi::export]
+pub fn is_official_release_asset_url(url: String, file_name: String) -> bool {
+    crate::domain::update::is_official_release_asset_url(&url, &file_name)
+}
+
+/// Compare the running version with the latest stable GitHub release.
+/// Network failures are reported as `AppUpdateStatus::Failed` and do not require `initialize`.
+#[uniffi::export(async_runtime = "tokio")]
+pub async fn check_app_update(current_version: String) -> AppUpdateStatus {
+    let Some(feed) = GithubReleaseFeed::new() else {
+        return AppUpdateStatus::Failed {
+            reason: AppUpdateFailure::FeedUnavailable,
+        };
+    };
+    AppUpdateUseCase::new(feed).check(current_version).await
 }

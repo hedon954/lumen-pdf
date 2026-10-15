@@ -36,12 +36,13 @@ LumenPDF 是一款面向深度阅读的 macOS PDF 阅读器。它保留系统 Pr
 - **划线与笔记**：支持跨页划线，笔记可直接编辑并自动保存；⌘Z / ⇧⌘Z 撤回或重做最近 50 次标注操作。
 - **自定义 LLM**：OpenAI 兼容接口，支持内置服务商或「其他」自定义端点；API Key 存入 macOS Keychain。
 - **本地优先**：阅读进度、单词和笔记保存在本机，不依赖云端账号。
+- **应用内更新**：启动后检查 GitHub 上的新版本；确认后原地替换当前应用并重新打开。
 
 ## 安装
 
 ### 下载 DMG
 
-从 [GitHub Releases](https://github.com/hedon954/lumen-pdf/releases/latest) 下载最新 `LumenPDF-<version>.dmg`，打开后把 `LumenPDF.app` 拖到 `Applications`。
+从 [GitHub Releases](https://github.com/hedon954/lumen-pdf/releases/latest) 下载最新 `LumenPDF-<version>.dmg`，打开后把 `LumenPDF.app` 拖到 `Applications`。之后应用会在启动时检查新版本；确认后下载并替换当前副本，笔记和阅读进度会保留。从 DMG 里直接运行时不会原地替换。
 
 如果首次打开时 macOS 提示“无法验证开发者”或“无法打开”，先尝试打开一次 `LumenPDF.app`，然后进入 **系统设置 → 隐私与安全性**，在“安全性”区域点击“仍要打开 / Open Anyway”，再在确认弹窗中选择“打开”。这个入口通常只会在尝试打开后的短时间内出现。参考：[Apple 官方说明](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac)。
 

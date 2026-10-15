@@ -23,6 +23,9 @@ private let _listNotesByPdf: (String) throws -> [NoteEntry]              = listN
 private let _deleteNote: (String) throws -> Void                         = deleteNote(id:)
 private let _updateNote: (UpdateNoteRequest) throws -> NoteEntry         = updateNote(req:)
 private let _defaultExtraConfig: (String, String) -> String              = defaultExtraConfig(baseUrl:model:)
+private let _checkAppUpdate: (String) async -> AppUpdateStatus           = checkAppUpdate(currentVersion:)
+private let _isTrustedUpdateUrl: (String) -> Bool                        = isTrustedUpdateUrl(url:)
+private let _isOfficialReleaseAssetUrl: (String, String) -> Bool         = isOfficialReleaseAssetUrl(url:fileName:)
 
 /// Wraps all UniFFI-generated top-level calls and manages app initialization.
 final class BridgeService {
@@ -390,6 +393,18 @@ final class BridgeService {
     @discardableResult
     func updateNote(id: String, note: String) throws -> NoteEntry {
         try _updateNote(UpdateNoteRequest(id: id, note: NoteTextList.storageString(from: note)))
+    }
+
+    func checkAppUpdate(currentVersion: String) async -> AppUpdateStatus {
+        await _checkAppUpdate(currentVersion)
+    }
+
+    func isTrustedUpdateURL(_ url: String) -> Bool {
+        _isTrustedUpdateUrl(url)
+    }
+
+    func isOfficialReleaseAssetURL(_ url: String, fileName: String) -> Bool {
+        _isOfficialReleaseAssetUrl(url, fileName)
     }
 
     func exportNotesMarkdown(pdfPath: String? = nil) -> String {

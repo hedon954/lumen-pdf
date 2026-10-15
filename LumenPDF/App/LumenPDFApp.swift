@@ -4,11 +4,13 @@ import AppKit
 @main
 struct LumenPDFApp: App {
     @StateObject private var appState = AppState()
+    @StateObject private var appUpdate = AppUpdateCenter()
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environmentObject(appState)
+                .environmentObject(appUpdate)
                 .onOpenURL { url in
                     appState.openPDF(url: url)
                 }
@@ -34,10 +36,17 @@ struct LumenPDFApp: App {
                 }
                 .keyboardShortcut("f", modifiers: .command)
             }
+            CommandGroup(after: .appInfo) {
+                Button("检查更新…") {
+                    appUpdate.checkManually()
+                }
+                .disabled(appUpdate.isBusy)
+            }
         }
 
         Settings {
             SettingsView()
+                .environmentObject(appUpdate)
                 .background(
                     SettingsWindowConfigurator(minimumSize: NSSize(width: 860, height: 600))
                 )

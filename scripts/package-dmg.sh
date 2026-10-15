@@ -181,9 +181,13 @@ hdiutil create \
     -format UDZO \
     "$DMG_PATH"
 
+SHA_PATH="${DMG_PATH}.sha256"
+shasum -a 256 "$DMG_PATH" | awk '{print $1}' > "$SHA_PATH"
+
 echo ""
 echo "╔══════════════════════════════════════════╗"
 echo "║  ✓ 打包完成！                            ║"
 echo "╚══════════════════════════════════════════╝"
 echo "DMG: $DMG_PATH"
+echo "SHA256: $SHA_PATH"
 echo ""
