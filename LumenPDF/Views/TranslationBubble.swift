@@ -14,6 +14,7 @@ struct TranslationBubble: View {
     let onDismiss: () -> Void
 
     @AppStorage("target_language") private var targetLanguage = "简体中文"
+    @AppStorage("translation_accent_color") private var translationAccentColorHex = TranslationAppearance.defaultAccentHex
     @StateObject private var audio = AudioService()
     @State private var savedEntryId: String?
     @State private var savedToNote = false
@@ -55,6 +56,10 @@ struct TranslationBubble: View {
 
     private var languageStyle: TranslationPopoverPresentation.LanguageStyle {
         TranslationPopoverPresentation.languageStyle(targetLanguage: targetLanguage)
+    }
+
+    private var translationAccentColor: Color {
+        TranslationAppearance.color(from: translationAccentColorHex)
     }
 
     private var sourceText: String {
@@ -252,6 +257,7 @@ struct TranslationBubble: View {
             phonetic: "",
             isResult: true,
             isLoading: isLoading,
+            accentColor: translationAccentColor,
             isFallback: isFallback,
             speakEnabled: !text.isEmpty,
             onSpeak: {

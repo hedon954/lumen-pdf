@@ -7,12 +7,14 @@ struct SettingsView: View {
     @AppStorage("llm_base_url") private var baseURL = ""
     @AppStorage("llm_model") private var model = ""
     @AppStorage("target_language") private var targetLanguage = "简体中文"
+    @AppStorage("translation_accent_color") private var translationAccentColorHex = TranslationAppearance.defaultAccentHex
     @AppStorage("word_prompt_template") private var wordPromptTemplate = PromptTemplateDefaults.word
     @AppStorage("sentence_prompt_template") private var sentencePromptTemplate = PromptTemplateDefaults.sentence
     @AppStorage("explanation_prompt_template") private var explanationPromptTemplate = PromptTemplateDefaults.explanation
     @AppStorage("word_system_prompt") private var wordSystemPrompt = PromptTemplateDefaults.wordSystem
     @AppStorage("sentence_system_prompt") private var sentenceSystemPrompt = PromptTemplateDefaults.sentenceSystem
     @AppStorage("explanation_system_prompt") private var explanationSystemPrompt = PromptTemplateDefaults.explanationSystem
+    @AppStorage("appearance_mode") private var appearanceMode = AppAppearance.system.rawValue
 
     @State private var apiKey = ""
     @State private var extraConfig = ""
@@ -108,7 +110,10 @@ struct SettingsView: View {
                 onSubmit: { _ = saveSettings() }
             )
         case .translation:
-            TranslationSettingsPage(targetLanguage: $targetLanguage)
+            TranslationSettingsPage(
+                targetLanguage: $targetLanguage,
+                accentColorHex: $translationAccentColorHex
+            )
         case .prompts:
             PromptSettingsPage(
                 selectedKind: $selectedPromptKind,
@@ -129,6 +134,8 @@ struct SettingsView: View {
             LLMUsageSettingsPage(currentModel: $model)
         case .update:
             AppUpdateSettingsPage(updates: appUpdate)
+        case .appearance:
+            AppearanceSettingsPage(selection: $appearanceMode)
         }
     }
 

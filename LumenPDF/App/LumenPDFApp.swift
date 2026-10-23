@@ -5,6 +5,11 @@ import AppKit
 struct LumenPDFApp: App {
     @StateObject private var appState = AppState()
     @StateObject private var appUpdate = AppUpdateCenter()
+    @AppStorage("appearance_mode") private var appearanceMode = AppAppearance.system.rawValue
+
+    private var preferredColorScheme: ColorScheme? {
+        AppAppearance(rawValue: appearanceMode)?.colorScheme ?? AppAppearance.system.colorScheme
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -19,6 +24,7 @@ struct LumenPDFApp: App {
                 .background(
                     WindowFramePersistence(restorationStore: .shared)
                 )
+                .preferredColorScheme(preferredColorScheme)
         }
         .commands {
             CommandGroup(replacing: .newItem) {
@@ -50,6 +56,7 @@ struct LumenPDFApp: App {
                 .background(
                     SettingsWindowConfigurator(minimumSize: NSSize(width: 860, height: 600))
                 )
+                .preferredColorScheme(preferredColorScheme)
         }
         .defaultSize(width: 940, height: 680)
         .windowResizability(.contentMinSize)

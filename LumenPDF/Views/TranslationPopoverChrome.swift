@@ -6,6 +6,7 @@ struct TranslationPopoverLanguagePair: View {
     let phonetic: String
     let isResult: Bool
     let isLoading: Bool
+    let accentColor: Color
     var isFallback: Bool = false
     let speakEnabled: Bool
     let onSpeak: () -> Void
@@ -15,7 +16,7 @@ struct TranslationPopoverLanguagePair: View {
             HStack(spacing: 6) {
                 Text(languageLabel)
                     .font(.caption)
-                    .foregroundStyle(isResult ? Color.accentColor : Color.secondary)
+                    .foregroundStyle(isResult ? accentColor : Color.secondary)
                 if isLoading {
                     TranslationPopoverSpinner()
                     Text(text.isEmpty ? "翻译中…" : "正在生成…")
@@ -32,7 +33,7 @@ struct TranslationPopoverLanguagePair: View {
                     } else if !text.isEmpty {
                         Text(text)
                             .font(.title2.weight(.semibold))
-                            .foregroundStyle(isResult ? Color.accentColor : Color.primary)
+                            .foregroundStyle(isResult ? accentColor : Color.primary)
                             .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -54,7 +55,7 @@ struct TranslationPopoverLanguagePair: View {
                 Button(action: onSpeak) {
                     Image(systemName: "play.circle")
                         .font(.title2)
-                        .foregroundStyle(isResult ? Color.accentColor : Color.secondary)
+                        .foregroundStyle(isResult ? accentColor : Color.secondary)
                 }
                 .buttonStyle(.plain)
                 .disabled(!speakEnabled)

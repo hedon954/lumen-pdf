@@ -7,6 +7,7 @@ enum SettingsDestination: String, CaseIterable, Identifiable {
     case logs
     case usage
     case update
+    case appearance
 
     var id: String { rawValue }
 
@@ -18,6 +19,7 @@ enum SettingsDestination: String, CaseIterable, Identifiable {
         case .logs: return "调用日志"
         case .usage: return "Token 与费用"
         case .update: return "更新"
+        case .appearance: return "外观"
         }
     }
 
@@ -29,7 +31,41 @@ enum SettingsDestination: String, CaseIterable, Identifiable {
         case .logs: return "list.bullet.rectangle"
         case .usage: return "chart.bar.xaxis"
         case .update: return "arrow.down.circle"
+        case .appearance: return "circle.lefthalf.filled"
         }
+    }
+}
+
+struct AppearanceSettingsPage: View {
+    @Binding var selection: String
+
+    private var selectedAppearance: Binding<AppAppearance> {
+        Binding(
+            get: { AppAppearance(rawValue: selection) ?? .system },
+            set: { selection = $0.rawValue }
+        )
+    }
+
+    var body: some View {
+        Form {
+            Section("主题") {
+                Picker("外观", selection: selectedAppearance) {
+                    ForEach(AppAppearance.allCases) { appearance in
+                        Label(appearance.title, systemImage: appearance.systemImage)
+                            .tag(appearance)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .accessibilityLabel("外观")
+
+                Text("选择浅色、深色，或跟随 macOS 的外观设置。")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+        .contentMargins(.top, 0, for: .scrollContent)
+        .navigationTitle("外观设置")
     }
 }
 
@@ -65,6 +101,14 @@ struct LLMSettingsPage: View {
 
 struct TranslationSettingsPage: View {
     @Binding var targetLanguage: String
+    @Binding var accentColorHex: String
+
+    private var accentColor: Binding<Color> {
+        Binding(
+            get: { TranslationAppearance.color(from: accentColorHex) },
+            set: { accentColorHex = NSColor($0).hexString }
+        )
+    }
 
     var body: some View {
         Form {
@@ -76,6 +120,12 @@ struct TranslationSettingsPage: View {
                     Text("日本語").tag("日本語")
                     Text("한국어").tag("한국어")
                 }
+            }
+
+            Section("翻译颜色") {
+                ColorPicker("译文强调色", selection: accentColor, supportsOpacity: false)
+                Text("用于翻译标签、译文和朗读按钮，可与 PDF 背景及系统主题分别设置。")
+                    .foregroundStyle(.secondary)
             }
 
             Section {

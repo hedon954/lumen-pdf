@@ -52,6 +52,7 @@ PRD 记录**用户可感知的行为与验收标准**。TDD 记录**如何实现
 | v1.0.32 | 2026-09-10 | 系统打开 PDF、统一浮窗与笔记快速追加 | [prd-2026-09-10-reader-open-note-popover.md](prd/prd-2026-09-10-reader-open-note-popover.md) | [tdd-2026-09-10-reader-open-note-popover.md](tdd/tdd-2026-09-10-reader-open-note-popover.md) |
 | v1.0.33 | 2026-10-04 | 从文件夹导入 PDF | [prd-2026-10-04-library-folder-import.md](prd/prd-2026-10-04-library-folder-import.md) | [tdd-2026-10-04-library-folder-import.md](tdd/tdd-2026-10-04-library-folder-import.md) |
 | v1.0.34 | 2026-10-13 | 应用内检查更新并原地替换 | [prd-2026-10-13-app-update.md](prd/prd-2026-10-13-app-update.md) | [tdd-2026-10-13-app-update.md](tdd/tdd-2026-10-13-app-update.md) |
+| unreleased | 2026-10-23 | 主题切换、PDF 深色阅读与翻译颜色设置 | [prd-2026-10-23-appearance-translation-color.md](prd/prd-2026-10-23-appearance-translation-color.md) | [tdd-2026-10-23-appearance-translation-color.md](tdd/tdd-2026-10-23-appearance-translation-color.md) |
 
 未单独成对的发布：
 
@@ -59,6 +60,12 @@ PRD 记录**用户可感知的行为与验收标准**。TDD 记录**如何实现
 - v1.0.18 右侧栏开关/拖拽过渡：延续 [v1.0.16](prd/prd-2026-07-13-v1016-reader-selection-overlays.md) 的视口与分栏恢复。
 
 ## 主题演进
+
+### 外观与翻译颜色
+
+```text
+unreleased 阅读器可选浅色、深色或跟随系统；PDF 深色阅读保留 PDFKit 文字清晰度；翻译结果强调色可在设置中调整
+```
 
 ### 阅读浮层与定位
 

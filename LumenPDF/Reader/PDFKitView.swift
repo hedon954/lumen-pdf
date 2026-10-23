@@ -2,6 +2,12 @@ import SwiftUI
 import PDFKit
 import AppKit
 
+/// A lightweight blend-mode overlay used to invert PDF page colors without
+/// forcing PDFKit's rendered text into a rasterized Core Image layer.
+private final class PDFDarkModeOverlayView: NSView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
 enum ReaderViewportTransitionMode {
     case animatedChrome
     case interactiveResize
@@ -134,6 +140,7 @@ struct PDFKitView: NSViewRepresentable {
     let noteAnchorRequests: [NoteAnchorRequest]
     let onNoteAnchorsChanged: ([NoteAnchorPosition]) -> Void
     let viewportTransitionController: ReaderViewportTransitionController
+    @Environment(\.colorScheme) private var colorScheme
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -142,6 +149,7 @@ struct PDFKitView: NSViewRepresentable {
         pdfView.autoScales = true
         pdfView.displayMode = .singlePageContinuous
         pdfView.displayDirection = .vertical
+        applyAppearance(to: pdfView, isDark: colorScheme == .dark)
 
         let nc = NotificationCenter.default
         nc.addObserver(context.coordinator, selector: #selector(Coordinator.pageChanged(_:)),
@@ -197,6 +205,7 @@ struct PDFKitView: NSViewRepresentable {
         viewportTransitionController.handler = context.coordinator
         context.coordinator.attachViewportObserverIfNeeded()
         context.coordinator.configureUndoHistory()
+        applyAppearance(to: pdfView, isDark: colorScheme == .dark)
         guard context.coordinator.currentFilePath != filePath else {
             context.coordinator.syncTranslationSelection(translationSelection, in: pdfView)
             context.coordinator.publishNoteAnchors()
@@ -213,10 +222,15 @@ struct PDFKitView: NSViewRepresentable {
             viewportState: storedViewport
         )
         pdfView.document = doc
+        // Assigning a document can cause PDFKit to rebuild its internal page
+        // view hierarchy. Re-apply the appearance after that hierarchy exists
+        // so the dark-mode filter covers the rendered PDF pages as well.
+        applyAppearance(to: pdfView, isDark: colorScheme == .dark)
         onDocumentLoaded(doc.pageCount)
         context.coordinator.applyHighlights(to: doc, filePath: filePath)
         context.coordinator.syncTranslationSelection(translationSelection, in: pdfView)
         DispatchQueue.main.async { [weak coordinator = context.coordinator] in
+            self.applyAppearance(to: pdfView, isDark: self.colorScheme == .dark)
             coordinator?.applyInitialViewportRestore(to: pdfView)
         }
 
@@ -228,6 +242,38 @@ struct PDFKitView: NSViewRepresentable {
             coordinator?.publishNoteAnchors()
         }
         context.coordinator.publishNoteAnchors()
+    }
+
+    private func applyAppearance(to pdfView: PDFView, isDark: Bool) {
+        pdfView.appearance = NSAppearance(named: isDark ? .darkAqua : .aqua)
+        pdfView.backgroundColor = isDark ? .black : .underPageBackgroundColor
+        pdfView.pageShadowsEnabled = !isDark
+
+        guard let documentView = Self.scrollView(for: pdfView)?.documentView else { return }
+
+        if isDark {
+            // A Core Image filter on PDFDocumentView causes the entire page
+            // hierarchy to be rasterized, which makes small text look soft.
+            // A white difference-blend overlay performs the same color
+            // inversion at compositing time while retaining PDFKit's native
+            // vector/text rendering and antialiasing.
+            let overlay: PDFDarkModeOverlayView
+            if let existing = documentView.subviews.first(where: { $0 is PDFDarkModeOverlayView }) as? PDFDarkModeOverlayView {
+                overlay = existing
+            } else {
+                overlay = PDFDarkModeOverlayView(frame: documentView.bounds)
+                overlay.autoresizingMask = [.width, .height]
+                documentView.addSubview(overlay)
+            }
+            overlay.frame = documentView.bounds
+            overlay.wantsLayer = true
+            overlay.layer?.backgroundColor = NSColor.white.cgColor
+            overlay.layer?.compositingFilter = "differenceBlendMode"
+        } else {
+            documentView.subviews
+                .filter { $0 is PDFDarkModeOverlayView }
+                .forEach { $0.removeFromSuperview() }
+        }
     }
 
     static func dismantleNSView(_ nsView: PDFView, coordinator: Coordinator) {
@@ -252,6 +298,18 @@ struct PDFKitView: NSViewRepresentable {
                                        bookmarkDataIsStale: &isStale) {
                 return PDFDocument(url: resolved)
             }
+        }
+        return nil
+    }
+
+    private static func scrollView(for pdfView: PDFView) -> NSScrollView? {
+        embeddedScrollView(in: pdfView) ?? pdfView.enclosingScrollView
+    }
+
+    private static func embeddedScrollView(in view: NSView) -> NSScrollView? {
+        for subview in view.subviews {
+            if let scrollView = subview as? NSScrollView { return scrollView }
+            if let nested = embeddedScrollView(in: subview) { return nested }
         }
         return nil
     }
