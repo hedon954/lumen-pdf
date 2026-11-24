@@ -6,6 +6,7 @@ enum SettingsDestination: String, CaseIterable, Identifiable {
     case prompts
     case logs
     case usage
+    case update
 
     var id: String { rawValue }
 
@@ -16,6 +17,7 @@ enum SettingsDestination: String, CaseIterable, Identifiable {
         case .prompts: return "提示词"
         case .logs: return "调用日志"
         case .usage: return "Token 与费用"
+        case .update: return "更新"
         }
     }
 
@@ -26,6 +28,7 @@ enum SettingsDestination: String, CaseIterable, Identifiable {
         case .prompts: return "text.badge.star"
         case .logs: return "list.bullet.rectangle"
         case .usage: return "chart.bar.xaxis"
+        case .update: return "arrow.down.circle"
         }
     }
 }

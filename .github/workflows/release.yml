@@ -74,7 +74,9 @@ jobs:
         with:
           name: LumenPDF ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}
-          files: build/LumenPDF-*.dmg
+          files: |
+            build/LumenPDF-*.dmg
+            build/LumenPDF-*.dmg.sha256
           body_path: RELEASE_NOTES.md
           generate_release_notes: false
           fail_on_unmatched_files: true

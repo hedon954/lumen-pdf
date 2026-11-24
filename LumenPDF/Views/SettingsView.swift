@@ -23,6 +23,7 @@ struct SettingsView: View {
     @State private var loadedPromptLanguage = "简体中文"
     @State private var pendingUpdateTitles: [String] = []
     @StateObject private var llmConfiguration = LLMConfigurationModel()
+    @EnvironmentObject private var appUpdate: AppUpdateCenter
 
     var body: some View {
         NavigationSplitView {
@@ -126,6 +127,8 @@ struct SettingsView: View {
             LLMCallLogSettingsPage()
         case .usage:
             LLMUsageSettingsPage(currentModel: $model)
+        case .update:
+            AppUpdateSettingsPage(updates: appUpdate)
         }
     }
 
