@@ -1,5 +1,5 @@
 ---
-version: unreleased
+version: v1.0.36
 date: 2026-11-24
 prd: prd/prd-2026-11-24-keychain-rebuild-access.md
 predecessor:

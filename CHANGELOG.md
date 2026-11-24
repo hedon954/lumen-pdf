@@ -3,6 +3,24 @@
 LumenPDF 的版本记录由人工/AI 维护。每个版本只记录对用户或后续开发有意义的变化，并为具体变更附上对应的 GitHub commit URL。
 
 ---
+## [1.0.36](https://github.com/hedon954/lumen-pdf/compare/v1.0.35..v1.0.36) - 2026-11-24
+
+这一版收紧笔记入口，让阅读浮窗可以拖出窗口，并让检查更新和换包后的 API Key 不再反复打断阅读。
+
+### 主要变化
+
+- 只有写了内容的笔记才显示页面上的笔记按钮。空笔记、空白笔记和尚未写笔记的自由划线不再出现按钮；同一段划线跨页也只保留一个按钮（[c0c46a9](https://github.com/hedon954/lumen-pdf/commit/c0c46a97ff514a55b35c21acb8f375891a806ea5)）。
+- 翻译、添加笔记和回顾笔记的浮窗可以拖到应用窗口外面。点到其他应用不会关闭，点回 LumenPDF 里浮窗以外的位置才会关闭。浮窗不再带边框阴影和指向箭头（[c0c46a9](https://github.com/hedon954/lumen-pdf/commit/c0c46a97ff514a55b35c21acb8f375891a806ea5)）。
+- 翻译浮窗底部可以给当前选区高亮或取消高亮（[c0c46a9](https://github.com/hedon954/lumen-pdf/commit/c0c46a97ff514a55b35c21acb8f375891a806ea5)）。
+- 「检查更新」会立刻打开面板并显示正在检查。已是最新、查询失败和发现新版本都在同一面板说明，发布说明按 Markdown 显示。确认安装后，应用先保存阅读位置再退出，由一个已脱离的助手替换应用并重新打开（[c0c46a9](https://github.com/hedon954/lumen-pdf/commit/c0c46a97ff514a55b35c21acb8f375891a806ea5)）。
+- API Key 加密保存在本机应用数据目录。重新构建或安装新的 DMG 后直接读取，不再弹出钥匙串密码（[c0c46a9](https://github.com/hedon954/lumen-pdf/commit/c0c46a97ff514a55b35c21acb8f375891a806ea5)）。
+- `make upgrade` 只编译当前 Mac 的架构，沿用已有编译和绑定缓存，不再每次制作 DMG。产物与已安装副本相同时不替换（[c0c46a9](https://github.com/hedon954/lumen-pdf/commit/c0c46a97ff514a55b35c21acb8f375891a806ea5)）。
+
+### 修复
+
+- 划选文本后点操作栏「笔记」，笔记输入框会再次出现在选区旁边（[c0c46a9](https://github.com/hedon954/lumen-pdf/commit/c0c46a97ff514a55b35c21acb8f375891a806ea5)）。
+
+---
 ## [1.0.35](https://github.com/hedon954/lumen-pdf/compare/v1.0.34..v1.0.35) - 2026-11-24
 
 这一版在导入时保留 PDF 书库副本，记录实际阅读时长，并改善翻译选区、跨行笔记入口和阅读位置恢复。

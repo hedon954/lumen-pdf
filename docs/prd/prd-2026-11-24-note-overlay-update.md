@@ -1,5 +1,5 @@
 ---
-version: unreleased
+version: v1.0.36
 date: 2026-11-24
 tdd: tdd/tdd-2026-11-24-note-overlay-update.md
 predecessor:
