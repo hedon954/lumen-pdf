@@ -52,6 +52,26 @@ final class AppUpdatePolicyTests: XCTestCase {
         ))
     }
 
+    func testSwapScriptWaitsForQuitThenReplacesAndRelaunches() {
+        let script = AppUpdateSwapScript.contents
+        XCTAssertTrue(script.contains("waiting for ${pid}"))
+        XCTAssertTrue(script.contains("mv \"$target\" \"$backup\""))
+        XCTAssertTrue(script.contains("/usr/bin/ditto \"$staged\" \"$target\""))
+        XCTAssertTrue(script.contains("/usr/bin/open \"$target\""))
+        XCTAssertTrue(script.contains("kill -TERM"))
+        XCTAssertTrue(script.contains("kill -KILL"))
+        guard
+            let waitRange = script.range(of: "while kill -0"),
+            let replaceRange = script.range(of: "mv \"$target\" \"$backup\""),
+            let openRange = script.range(of: "/usr/bin/open")
+        else {
+            return XCTFail("swap script is missing wait/replace/relaunch steps")
+        }
+        XCTAssertLessThan(waitRange.lowerBound, replaceRange.lowerBound)
+        XCTAssertLessThan(replaceRange.lowerBound, openRange.lowerBound)
+        XCTAssertEqual(AppUpdateSwapScript.waitSeconds, 120)
+    }
+
     func testDiskImageMountPointUsesTheFirstMountedEntity() {
         let plist: [String: Any] = [
             "system-entities": [

@@ -7,6 +7,7 @@ predecessor:
 successor:
   - prd/prd-2026-07-03-reading-inspector.md
   - prd/prd-2026-08-21-markup-interval-merge.md
+  - prd/prd-2026-11-24-keychain-rebuild-access.md
 ---
 
 # LumenPDF — 阅读上下文与 AI 导读 PRD
@@ -120,7 +121,7 @@ LumenPDF 的阅读页需要同时承担阅读、理解、标注和复习。当�
 
 - API Key 仍存入 macOS Keychain。
 - 本地重新安装或升级 App 后，读取已有 API Key 不应反复弹出登录钥匙串授权。
-- 旧钥匙串条目可迁移到稳定服务名下继续读取。
+- 旧钥匙串条目可迁移到稳定服务名下继续读取。后续修订：ad-hoc 换包改为本机加密 vault，见 [prd-2026-11-24-keychain-rebuild-access.md](prd-2026-11-24-keychain-rebuild-access.md)。
 
 ## 5. 验收标准
 

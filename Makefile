@@ -22,12 +22,13 @@ gen-project:
 test:
 	cd lumen-pdfcore && cargo test
 
-## 打包为 DMG（默认 ad-hoc；可用 SIGN_IDENTITY=<hash-or-name> 指定身份）
+## 打包为双架构 DMG（发布用；可用 SIGN_IDENTITY=<hash-or-name> 指定身份）
 dmg:
 	./scripts/package-dmg.sh
 
-## 打包并更新本机 /Applications/LumenPDF.app（运行中会先终止）
-upgrade: dmg
+## 增量构建当前架构并更新本机 /Applications/LumenPDF.app（不打 DMG）
+upgrade:
+	LUMEN_ARCH=host LUMEN_PACKAGE_DMG=0 ./scripts/package-dmg.sh
 	./scripts/upgrade-local.sh
 
 ## 清除构建产物

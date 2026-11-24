@@ -4,6 +4,9 @@ date: 2026-10-13
 prd: prd/prd-2026-10-13-app-update.md
 predecessor:
   - tdd/tdd-2026-06-25-v109.md
+successor:
+  - tdd/tdd-2026-11-24-note-overlay-update.md
+  - tdd/tdd-2026-11-24-keychain-rebuild-access.md
 ---
 
 # 应用内检查更新并原地替换
@@ -31,7 +34,7 @@ predecessor:
 2. 用当前 bundle 路径、卷是否只读、父目录是否可写判断能不能原地替换。路径含 `/AppTranslocation/` 时视为系统隔离，优先于只读和权限。
 3. 不能原地替换时，把已校验的 DMG 复制到「下载」并在 Finder 中显示。
 4. 能替换时挂载 DMG，确认其中 `LumenPDF.app` 的 `CFBundleShortVersionString` 与发布版本一致，再复制到临时目录并卸载映像。
-5. 写出 `swap.sh`，用 `nohup` 脱离当前进程。脚本等当前 pid 自己退出，让已有的退出保存先写完阅读位置，再把原 bundle 改名为 `LumenPDF.app.previous`，并用 `ditto` 放入新副本。`ditto` 失败时把旧副本移回。成功后去掉 `com.apple.quarantine`，删除备份，并 `open` 新副本。30 秒内进程仍未退出则放弃替换。
+5. 写出 `swap.sh`，用 `nohup` 脱离当前进程。脚本等当前 pid 自己退出，让已有的退出保存先写完阅读位置，再把原 bundle 改名为 `LumenPDF.app.previous`，并用 `ditto` 放入新副本。`ditto` 失败时把旧副本移回。成功后去掉 `com.apple.quarantine`，删除备份，并 `open` 新副本。30 秒内进程仍未退出则放弃替换。后续修订：助手必须完全脱离，等待延长到 120 秒并在僵死时结束旧进程，见 [tdd-2026-11-24-note-overlay-update.md](tdd-2026-11-24-note-overlay-update.md)。
 6. 下次启动删除 `.previous` 和临时目录里的 `LumenPDF-update-*`。日志写在 `~/Library/Logs/LumenPDF/update.log`。
 
 `scripts/package-dmg.sh` 在 DMG 旁写出只含摘要的 `.dmg.sha256`。Release workflow 把这两个文件一起传到 GitHub Release。没有校验文件的发布不会被安装。

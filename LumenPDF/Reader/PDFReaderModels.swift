@@ -485,6 +485,21 @@ struct NoteAnchorRequest: Identifiable, Equatable {
     let noteId: String
     let pageIndex: Int
     let boundsStr: String
+    let pageMarkups: [PDFPageMarkup]
+
+    init(
+        id: String,
+        noteId: String,
+        pageIndex: Int,
+        boundsStr: String,
+        pageMarkups: [PDFPageMarkup] = []
+    ) {
+        self.id = id
+        self.noteId = noteId
+        self.pageIndex = pageIndex
+        self.boundsStr = boundsStr
+        self.pageMarkups = pageMarkups
+    }
 }
 
 struct NoteAnchorPosition: Identifiable, Equatable {

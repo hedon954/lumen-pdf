@@ -15,6 +15,7 @@ predecessor:
 successor:
   - tdd/tdd-2026-09-10-reader-open-note-popover.md
   - tdd/tdd-2026-11-23-reader-context-viewport.md
+  - tdd/tdd-2026-11-24-note-overlay-update.md
 ---
 
 # LumenPDF — Look Up 式翻译浮窗 TDD

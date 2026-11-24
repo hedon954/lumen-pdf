@@ -7,6 +7,7 @@ predecessor:
 successor:
   - tdd/tdd-2026-07-03-reading-inspector.md
   - tdd/tdd-2026-08-21-markup-interval-merge.md
+  - tdd/tdd-2026-11-24-keychain-rebuild-access.md
 ---
 
 # LumenPDF — 阅读上下文与 AI 导读 TDD
@@ -201,7 +202,7 @@ PDF annotation 同步：
 
 读取时先访问正式 data-protection 条目；仅在不弹认证 UI 的前提下尝试读取旧 `com.LumenPDF.app.reinstall-stable` 和旧 file-based 条目。能直接读取时迁移到正式条目并删除旧值；旧 ACL 不再信任当前签名则返回空值，由用户在设置页重新输入一次，绝不自动弹出钥匙串密码框，也不把访问权限扩大到其他本机应用。
 
-打包链路嵌套 dylib 先签、主应用后签，并在最终主应用签名中显式附加 `LumenPDF.entitlements`。默认 ad-hoc 签名可正常打包；若使用稳定身份则应用到全部嵌套代码。ad-hoc 包不保证 Keychain 跨重装延续，系统可再次要求授权。
+打包链路嵌套 dylib 先签、主应用后签，并在最终主应用签名中显式附加 `LumenPDF.entitlements`。默认 ad-hoc 签名可正常打包；若使用稳定身份则应用到全部嵌套代码。ad-hoc 包不保证 Keychain 跨重装延续，系统可再次要求授权。后续修订：本机加密 vault 成为跨 ad-hoc 重签的主存储，见 [tdd-2026-11-24-keychain-rebuild-access.md](tdd-2026-11-24-keychain-rebuild-access.md)。
 
 ## 10. 架构约束
 

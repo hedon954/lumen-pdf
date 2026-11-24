@@ -22,7 +22,7 @@ struct ReadingOverlayWindowConfiguration {
         minimumSize: CGSize = CGSize(width: 340, height: 240),
         maximumSize: CGSize = CGSize(width: 920, height: 820),
         showsFooter: Bool = true,
-        showsAnchorPointer: Bool = true,
+        showsAnchorPointer: Bool = false,
         placementOrder: [ReadingOverlayPlacement] = ReadingOverlayPlacement.defaultOrder,
         preferredGap: CGFloat = 12,
         compactVerticalInset: Bool = false
@@ -47,6 +47,9 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
     let resetID: AnyHashable
     let configuration: ReadingOverlayWindowConfiguration
     let onDismiss: () -> Void
+    @Environment(\.readingOverlayUsesPanel) private var usesPanel
+    @Environment(\.readingOverlayPanelLocalAnchor) private var panelLocalAnchor
+    @Environment(\.readingOverlayReportedSize) private var reportSizeToPanel
 
     @ViewBuilder private let header: () -> Header
     @ViewBuilder private let content: () -> Content
@@ -85,17 +88,23 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
     }
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            window
-                .offset(x: displayedOrigin.x, y: displayedOrigin.y)
-                .animation(nil, value: customCenter)
-                .animation(nil, value: displayedOrigin)
+        Group {
+            if usesPanel {
+                window
+            } else {
+                ZStack(alignment: .topLeading) {
+                    window
+                        .offset(x: displayedOrigin.x, y: displayedOrigin.y)
+                        .animation(nil, value: customCenter)
+                        .animation(nil, value: displayedOrigin)
+                }
+                .frame(
+                    width: availableSize.width,
+                    height: availableSize.height,
+                    alignment: .topLeading
+                )
+            }
         }
-        .frame(
-            width: availableSize.width,
-            height: availableSize.height,
-            alignment: .topLeading
-        )
         .onChange(of: resetID) { _, _ in resetWindowState() }
         .onChange(of: availableSize) { _, _ in handleAvailableSizeChange() }
         .onChange(of: anchorRect) { oldRect, newRect in
@@ -109,8 +118,8 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
         let pointing = showsPointer ? pointingSide : nil
         let along = pointing.map { side in
             ReadingOverlayPointerGeometry.alongEdge(
-                anchorRect: anchorRect,
-                overlayOrigin: displayedOrigin,
+                anchorRect: effectiveAnchorRect,
+                overlayOrigin: usesPanel ? .zero : displayedOrigin,
                 overlaySize: renderedSize,
                 placement: side
             )
@@ -139,16 +148,7 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
         }
 
         return chrome(card: card, pointing: pointing, along: along)
-            .shadow(
-                color: .black.opacity(0.12),
-                radius: 18,
-                x: 0,
-                y: 8
-            )
             .background { WindowOutsideClickMonitor(onOutsideClick: onDismiss) }
-            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
-                onDismiss()
-            }
             .onExitCommand(perform: onDismiss)
             .environment(\.readingOverlayMove, moveWindow)
             .readingOverlayMeasureSize(recordMeasuredWindowSize)
@@ -211,6 +211,10 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
 
     private var showsPointer: Bool { configuration.showsAnchorPointer }
 
+    private var effectiveAnchorRect: CGRect {
+        panelLocalAnchor ?? anchorRect
+    }
+
     /// Side that owns the popover arrow. Must match the side `place` actually
     /// chose — assuming `.leading` while the card sits on the right put the
     /// triangle on the far edge, away from the word.
@@ -264,9 +268,9 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
         } else {
             origin = lockedOrigin ?? .zero
         }
-        let overlay = CGRect(origin: origin, size: size)
-        let dx = anchorRect.midX - overlay.midX
-        let dy = anchorRect.midY - overlay.midY
+        let overlay = CGRect(origin: usesPanel ? .zero : origin, size: size)
+        let dx = effectiveAnchorRect.midX - overlay.midX
+        let dy = effectiveAnchorRect.midY - overlay.midY
         if abs(dx) >= abs(dy) {
             return dx >= 0 ? .leading : .trailing
         }
@@ -366,6 +370,7 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
     }
 
     private var displayedOrigin: CGPoint {
+        if usesPanel { return .zero }
         let size = renderedSize
         if let customCenter {
             let center = clampedCenter(
@@ -393,6 +398,9 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
     }
 
     private func placementInput(for size: CGSize) -> ReadingOverlayPlacementInput {
+        // Side is chosen in the reader overlay. `panelLocalAnchor` is only the
+        // selection's position inside the panel, so using it here puts the
+        // arrow on the opposite edge from the word.
         ReadingOverlayPlacementInput(
             anchorRect: anchorRect,
             overlaySize: size,
@@ -411,6 +419,7 @@ struct ReadingOverlayWindow<Header: View, Content: View, Footer: View>: View {
     private func recordMeasuredWindowSize(_ size: CGSize) {
         lockOriginIfNeeded(for: size)
         measuredWindowSize = size
+        reportSizeToPanel?(size)
     }
 
     private func lockOriginIfNeeded(for size: CGSize) {
@@ -662,6 +671,7 @@ private struct ReadingOverlayDragCapture: NSViewRepresentable {
     final class CaptureView: NSView {
         weak var coordinator: Coordinator?
         private var lastLocation: CGPoint?
+        private var lastScreenLocation: CGPoint?
         private var isDragging = false
 
         init(coordinator: Coordinator) {
@@ -673,11 +683,23 @@ private struct ReadingOverlayDragCapture: NSViewRepresentable {
 
         override func mouseDown(with event: NSEvent) {
             lastLocation = event.locationInWindow
+            lastScreenLocation = NSEvent.mouseLocation
             isDragging = true
             NSCursor.closedHand.set()
         }
 
         override func mouseDragged(with event: NSEvent) {
+            if let window, ReadingOverlayPanelID.isOverlay(window) {
+                let current = NSEvent.mouseLocation
+                if let last = lastScreenLocation {
+                    var frame = window.frame
+                    frame.origin.x += current.x - last.x
+                    frame.origin.y += current.y - last.y
+                    window.setFrame(frame, display: true)
+                }
+                lastScreenLocation = current
+                return
+            }
             guard isDragging, let lastLocation else { return }
             let current = event.locationInWindow
             coordinator?.onDelta(
@@ -688,6 +710,7 @@ private struct ReadingOverlayDragCapture: NSViewRepresentable {
 
         override func mouseUp(with event: NSEvent) {
             lastLocation = nil
+            lastScreenLocation = nil
             isDragging = false
             window?.invalidateCursorRects(for: self)
             NSCursor.openHand.set()

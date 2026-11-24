@@ -34,7 +34,7 @@ LumenPDF 是一款面向深度阅读的 macOS PDF 阅读器。它保留系统 Pr
 - **Reading Inspector**：右侧集中显示上下文、AI 导读、单词和笔记，减少在多个页面间切换。
 - **AI 导读**：围绕当前选区连续追问，支持 Markdown 回复和一键保存。
 - **划线与笔记**：支持跨页划线，笔记可直接编辑并自动保存；⌘Z / ⇧⌘Z 撤回或重做最近 50 次标注操作。
-- **自定义 LLM**：OpenAI 兼容接口，支持内置服务商或「其他」自定义端点；API Key 存入 macOS Keychain。
+- **自定义 LLM**：OpenAI 兼容接口，支持内置服务商或「其他」自定义端点；API Key 加密保存在本机应用数据目录。
 - **本地优先**：阅读进度、单词和笔记保存在本机，不依赖云端账号。
 - **应用内更新**：启动后检查 GitHub 上的新版本；确认后原地替换当前应用并重新打开。
 
@@ -68,7 +68,7 @@ make dmg
 make upgrade
 ```
 
-它会先打包，再终止正在运行的 LumenPDF，并替换 `/Applications/LumenPDF.app`。
+它只编译当前 Mac 的架构，沿用已有缓存，不打 DMG。二进制有变化时才结束正在运行的 LumenPDF，并替换 `/Applications/LumenPDF.app`。
 
 ## 首次设置
 
@@ -78,7 +78,7 @@ make upgrade
 | --- | --- |
 | 服务商 | 内置预设，或选择「其他」填写自定义端点 |
 | API Base URL | 例如 `https://api.openai.com/v1` 或 `https://api.deepseek.com/v1` |
-| API Key | 存入 macOS Keychain，不写入明文配置文件 |
+| API Key | 加密保存在本机应用数据目录，不写入明文配置，换包后也不弹钥匙串密码 |
 | 模型 | 任意兼容 Chat Completions 的模型 |
 | Extra Config | 可选；未改时显示当前服务商关闭 thinking 的默认 JSON |
 | 目标语言 | 默认简体中文 |
@@ -107,11 +107,11 @@ make setup        # 首次安装工具并生成工程
 make build-rust   # 构建 Rust 后端并生成 UniFFI Swift 绑定
 make gen-project  # 根据 project.yml 重新生成 Xcode 工程
 make test         # 运行 Rust 单元测试
-make dmg          # 使用稳定签名身份打包 DMG
-make upgrade      # 打包并安装到本机 /Applications
+make dmg          # 双架构 Release，并打 DMG（发布用）
+make upgrade      # 只编本机架构，增量安装到 /Applications，不打 DMG
 ```
 
-`make dmg` / `make upgrade` 默认要求长期稳定的代码签名身份，避免二进制更新后反复触发 Keychain 授权。身份准备、CI secrets 和临时 ad-hoc 调试方式见 [代码签名与 Keychain 延续](docs/code-signing.md)。
+`make upgrade` 只编当前 Mac 的架构，并沿用 Rust、Swift 和绑定缓存；产物与已安装副本相同时不会重新替换。`make dmg` 仍打双架构安装包。两者默认使用 ad-hoc 签名。身份准备与嵌套签名顺序见 [代码签名与 Keychain 延续](docs/code-signing.md)。
 
 也可以直接用 Xcode 打开工程运行：
 
@@ -166,7 +166,7 @@ Rust 后端按 DDD 分层组织：
 | 数据 | 位置 |
 | --- | --- |
 | SQLite 数据库 | `~/Library/Application Support/LumenPDF/data.db` |
-| API Key | macOS Keychain |
+| API Key | `~/Library/Application Support/LumenPDF/llm-api-key.vault` |
 | 阅读状态 | `UserDefaults` |
 
 ## License

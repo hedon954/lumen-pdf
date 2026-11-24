@@ -8,6 +8,8 @@ predecessor:
   - tdd/tdd-2026-08-05-viewport-restore-overlay-drag.md
   - tdd/tdd-2026-08-21-llm-extra-config.md
   - tdd/tdd-2026-09-01-native-translation-popover.md
+successor:
+  - tdd/tdd-2026-11-24-note-overlay-update.md
 ---
 
 # LumenPDF — 划线入口、选词语境与阅读位置 TDD
@@ -22,7 +24,7 @@ predecessor:
 | --- | --- |
 | `PDFHighlightAnnotationFactory.makeUnderline` | 一次划线的全部行写入同一个 underline 标注的 QuadPoints。 |
 | `NoteAnchorGrouping` | 把紧挨着的旧划线行合成一组，段落间隔则分开。 |
-| `NoteAnchorCatalog` | 自由划线先分组，再各生成一个笔记入口。 |
+| `NoteAnchorCatalog` | 自由划线先分组，再各生成一个笔记入口。后续修订：空笔记和自由划线不再生成入口，跨页同一划线只留一个按钮，见 [tdd-2026-11-24-note-overlay-update.md](tdd-2026-11-24-note-overlay-update.md)。 |
 | `ReadingSentenceContext` | 从可见行抽出包含选中词的句子；句子过短或从该词开头时带上相邻句。 |
 | `PDFSelectionMarkupGeometry.contextSentence` | 从选区所在页收集行，交给上面的纯函数。 |
 | `ReadingViewportCommit` | 决定新的视口采集能否替换已记住的位置；恢复页码优先用锚点页。 |

@@ -10,6 +10,7 @@ struct TranslationBubble: View {
     let onSave: (TranslationResult) -> String?
     let onDelete: (String, Bool) -> Void
     let onExplain: () -> Void
+    var onToggleHighlight: (() -> Void)? = nil
     let onRetry: () -> Void
     let onDismiss: () -> Void
 
@@ -19,6 +20,7 @@ struct TranslationBubble: View {
     @State private var savedToNote = false
     @State private var copyConfirmation: String?
     @State private var copyResetTask: Task<Void, Never>?
+    @State private var isHighlighted = false
 
     var body: some View {
         ReadingOverlayWindow(
@@ -31,7 +33,6 @@ struct TranslationBubble: View {
                 minimumContentHeight: 80,
                 isResizable: false,
                 showsFooter: showsFooter,
-                showsAnchorPointer: true,
                 placementOrder: ReadingOverlayPlacement.lookUpOrder,
                 preferredGap: 2,
                 compactVerticalInset: true
@@ -41,8 +42,14 @@ struct TranslationBubble: View {
             content: { content },
             footer: { overlayFooter }
         )
-        .onAppear(perform: syncSavedState)
-        .onChange(of: request.id) { _, _ in syncSavedState() }
+        .onAppear {
+            syncSavedState()
+            refreshHighlightState()
+        }
+        .onChange(of: request.id) { _, _ in
+            syncSavedState()
+            refreshHighlightState()
+        }
         .onDisappear { copyResetTask?.cancel() }
     }
 
@@ -466,6 +473,23 @@ struct TranslationBubble: View {
 
             Spacer()
 
+            if onToggleHighlight != nil {
+                Button {
+                    onToggleHighlight?()
+                    DispatchQueue.main.async {
+                        refreshHighlightState()
+                    }
+                } label: {
+                    Label(
+                        isHighlighted ? "取消高亮" : "高亮",
+                        systemImage: "highlighter"
+                    )
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .accessibilityIdentifier("translation.highlight")
+            }
+
             Button(action: onExplain) {
                 Label("AI 解释", systemImage: "text.bubble")
             }
@@ -505,6 +529,13 @@ struct TranslationBubble: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+    }
+
+    private func refreshHighlightState() {
+        isHighlighted = FreeHighlightQuery.covers(
+            markups: request.effectivePageMarkups,
+            filePath: request.pdfPath
+        )
     }
 
     private func copyPrimaryTranslation(from result: TranslationResult) {

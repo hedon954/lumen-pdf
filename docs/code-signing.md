@@ -32,7 +32,7 @@ SIGN_IDENTITY=<certificate-sha1-or-name> \
 make dmg
 ```
 
-没有稳定身份时，脚本会生成 ad-hoc 包。二进制变化后它不保证跨重装读取旧 Keychain 条目，系统可能要求再次授权。
+没有稳定身份时，脚本会生成 ad-hoc 包。API Key 的跨重装读取走本机加密 vault，不依赖这次签名是否与上次相同。
 
 ## GitHub Release Secrets
 
@@ -40,9 +40,9 @@ Release workflow 默认使用 ad-hoc 签名。若后续配置稳定签名身份�
 
 ## 安全边界
 
-- 主应用只使用一个 Keychain 条目（`com.LumenPDF.app` / `llm_api_key`）。优先写 data-protection 钥匙串；若返回缺少 entitlement（`-34018`），改写同一条 file-based 条目，不附加 trusted-application ACL。ad-hoc 包通常走后一条路径，重新安装不会补上 entitlement。
-- 旧 file-based 条目仅在无需认证 UI 即可读取时迁移；无法读取时由用户重新输入一次 API Key。
-- 不把旧条目的 ACL 扩大为任意应用可访问。
+- API Key 的主存储是 `AppDataDirectory` 下的加密 vault。data-protection 钥匙串尽力而为；不再把 file-based 登录钥匙串当作保存回退。
+- 所有 `SecItem` 调用都关闭钥匙串交互。旧 file-based 条目仅在无需认证 UI 即可读取时迁入 vault；无法读取时由用户在设置里再保存一次。
+- 不把旧条目的 ACL 扩大为任意应用可访问，也不把 API Key 写入 `UserDefaults`。
 - 嵌套 dylib 与主应用使用同一身份从内到外签名。
 - 发布包最终签名刻意不包含 `LumenPDF.entitlements` 或 App Sandbox entitlement，以继续使用 `~/Library/Application Support/LumenPDF` 和全局 `UserDefaults` 中已有的数据。若未来重新启用 Sandbox，必须在同一版本提供并验证无损数据库与偏好迁移。
 

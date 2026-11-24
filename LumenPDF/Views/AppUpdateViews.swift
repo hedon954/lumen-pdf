@@ -97,16 +97,11 @@ struct AppUpdateSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("发现新版本 \(updates.offer?.version ?? "")")
+            Text(title)
                 .font(.title2.weight(.semibold))
             Text("当前版本 \(AppUpdateCenter.currentVersion)")
                 .foregroundStyle(.secondary)
-            ScrollView {
-                Text(notes)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
-            }
-            .frame(minHeight: 140, maxHeight: 260)
+            notesSection
             progress
             if !updates.statusMessage.isEmpty {
                 Text(updates.statusMessage)
@@ -116,24 +111,78 @@ struct AppUpdateSheet: View {
             Toggle("启动时检查更新", isOn: $updates.checksOnLaunch)
             HStack {
                 Spacer()
-                Button("稍后", action: updates.deferCurrentOffer)
+                if updates.offer != nil {
+                    Button("稍后", action: updates.deferCurrentOffer)
+                        .disabled(updates.activity == .installing)
+                } else {
+                    Button("关闭") {
+                        updates.showsSheet = false
+                    }
                     .disabled(updates.activity == .installing)
+                }
                 if updates.activity == .downloading {
                     Button("取消", action: updates.cancelInstall)
                 }
-                Button("立即更新", action: updates.installCurrentOffer)
-                    .buttonStyle(.borderedProminent)
-                    .disabled(updates.isBusy)
-                    .accessibilityIdentifier("update.install")
+                if updates.offer != nil {
+                    Button("立即更新", action: updates.installCurrentOffer)
+                        .buttonStyle(.borderedProminent)
+                        .disabled(updates.isBusy)
+                        .accessibilityIdentifier("update.install")
+                }
             }
         }
         .padding(20)
         .frame(width: 480)
+        .accessibilityIdentifier("update.sheet")
+    }
+
+    private var title: String {
+        if updates.activity == .checking {
+            return "正在检查更新"
+        }
+        if let version = updates.offer?.version {
+            return "发现新版本 \(version)"
+        }
+        if updates.statusMessage.contains("最新") {
+            return "已是最新版本"
+        }
+        if updates.activity == .idle, !updates.statusMessage.isEmpty {
+            return "检查更新"
+        }
+        return "检查更新"
+    }
+
+    @ViewBuilder
+    private var notesSection: some View {
+        ScrollView {
+            if updates.activity == .checking, updates.offer == nil {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("正在查询官方发布…")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                MarkdownText(markdown: notes)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+            }
+        }
+        .frame(minHeight: 140, maxHeight: 260)
     }
 
     private var notes: String {
         let text = updates.offer?.notes.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return text.isEmpty ? "这个版本没有发布说明。" : text
+        if !text.isEmpty { return text }
+        if updates.activity == .checking {
+            return ""
+        }
+        if updates.offer == nil, updates.statusMessage.isEmpty {
+            return "这个版本没有发布说明。"
+        }
+        return updates.statusMessage.isEmpty ? "这个版本没有发布说明。" : ""
     }
 
     @ViewBuilder
@@ -144,7 +193,7 @@ struct AppUpdateSheet: View {
             }
         } else if updates.activity == .installing {
             ProgressView {
-                Text("正在替换并重新打开…")
+                Text("正在退出并替换当前应用…")
             }
         }
     }
@@ -167,6 +216,14 @@ struct AppUpdateSettingsPage: View {
                     updates.checkManually()
                 }
                 .disabled(updates.isBusy)
+                if updates.activity == .checking {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("正在查询官方发布…")
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 if !updates.statusMessage.isEmpty {
                     Text(updates.statusMessage)
                         .foregroundStyle(.secondary)
@@ -177,7 +234,7 @@ struct AppUpdateSettingsPage: View {
             if let offer = updates.offer {
                 Section("可用更新") {
                     LabeledContent("新版本", value: offer.version)
-                    Text(offer.notes.isEmpty ? "这个版本没有发布说明。" : offer.notes)
+                    MarkdownText(markdown: offer.notes.isEmpty ? "这个版本没有发布说明。" : offer.notes)
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
                     if updates.activity == .downloading {

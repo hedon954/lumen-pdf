@@ -6,6 +6,7 @@ predecessor:
   - tdd/tdd-2026-07-10-note-overlay-optimization.md
 successor:
   - tdd/tdd-2026-08-05-viewport-restore-overlay-drag.md
+  - tdd/tdd-2026-11-24-keychain-rebuild-access.md
 ---
 
 # LumenPDF — 阅读选择控件与窗口延续性优化 TDD
@@ -199,7 +200,7 @@ SwiftUI preference 在恢复锁期间可能只上报一次；如果该值被正�
 
 ### 8.7 Keychain 与签名闭环
 
-`KeychainService` 只读写 `com.LumenPDF.app` 的 data-protection 条目，并禁止查询过程弹出认证 UI。旧 `reinstall-stable` / file-based 条目仅作为无 UI 的一次性迁移来源；迁移成功后删除，失败则等待用户在设置页重新输入。
+`KeychainService` 只读写 `com.LumenPDF.app` 的 data-protection 条目，并禁止查询过程弹出认证 UI。旧 `reinstall-stable` / file-based 条目仅作为无 UI 的一次性迁移来源；迁移成功后删除，失败则等待用户在设置页重新输入。后续修订：本机加密 vault 成为跨 ad-hoc 重签的主存储，见 [tdd-2026-11-24-keychain-rebuild-access.md](tdd-2026-11-24-keychain-rebuild-access.md)。
 
 `package-dmg.sh` 默认使用 ad-hoc，或接受显式指定的签名身份。最终 bundle 先签 `liblumen_pdf_core.dylib`，再以同一身份和 `LumenPDF.entitlements` 签主应用，不使用 `codesign --deep` 代替签名顺序。签名后同时执行 strict verification 与 sandbox entitlement 检查。
 

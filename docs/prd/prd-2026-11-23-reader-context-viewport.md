@@ -8,6 +8,8 @@ predecessor:
   - prd/prd-2026-08-05-viewport-restore-overlay-drag.md
   - prd/prd-2026-08-21-llm-extra-config.md
   - prd/prd-2026-09-01-native-translation-popover.md
+successor:
+  - prd/prd-2026-11-24-note-overlay-update.md
 ---
 
 # LumenPDF — 划线入口、选词语境与阅读位置 PRD
@@ -27,7 +29,7 @@ predecessor:
 - 一次划出的连续多行只显示一个笔记按钮，放在这段划线的末端空白处。
 - 已经按行拆开保存的旧划线，只要行与行紧挨着，仍然只显示一个按钮。
 - 中间空开一段的两条划线各自保留按钮。
-- 跨页划线仍是每一页一个入口。
+- 跨页划线仍是每一页一个入口。后续修订：跨页同一段划线只保留一个按钮，空笔记不再显示入口，见 [prd-2026-11-24-note-overlay-update.md](prd-2026-11-24-note-overlay-update.md)。
 
 ### F2 — 选词要带上看得见的语境
 

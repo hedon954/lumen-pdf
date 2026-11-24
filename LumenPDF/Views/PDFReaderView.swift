@@ -131,10 +131,14 @@ struct PDFReaderView: View {
 
     private func openNoteReview(_ anchor: NoteAnchorPosition) {
         let reference = appState.notes.first(where: { $0.id == anchor.noteId })
+        let referenceMarkups = reference.map(notePageMarkups) ?? []
         let notes = appState.notes.filter { note in
-            note.pdfPath == document.filePath &&
-                (note.id == anchor.noteId ||
-                 (note.pageIndex == reference?.pageIndex && note.boundsStr == reference?.boundsStr))
+            guard note.pdfPath == document.filePath else { return false }
+            if note.id == anchor.noteId { return true }
+            return UnderlineNoteMergePolicy.markups(
+                notePageMarkups(note),
+                overlap: referenceMarkups
+            )
         }
         selectionActionBarModel.dismiss()
         if notes.isEmpty {

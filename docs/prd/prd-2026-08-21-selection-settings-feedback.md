@@ -5,6 +5,8 @@ tdd: tdd/tdd-2026-08-21-selection-settings-feedback.md
 predecessor:
   - prd/prd-2026-08-19-markup-diagnostics.md
   - prd/prd-2026-08-20-llm-settings-persistence.md
+successor:
+  - prd/prd-2026-11-24-keychain-rebuild-access.md
 ---
 
 # LumenPDF — 选区标题误入与设置保存反馈 PRD
@@ -37,7 +39,7 @@ predecessor:
 
 ### F3 — ad-hoc 安装也必须能保存 API Key
 
-- 当前发布包是 ad-hoc 签名且不附带 Sandbox / Keychain Sharing entitlement。在这种安装里，data-protection 钥匙串会返回缺少 entitlement，保存必须改写同一条 service/account 的普通钥匙串条目。
+- 当前发布包是 ad-hoc 签名且不附带 Sandbox / Keychain Sharing entitlement。在这种安装里，data-protection 钥匙串会返回缺少 entitlement，保存必须改写同一条 service/account 的普通钥匙串条目。后续修订：普通钥匙串仍会随 ad-hoc 重签弹密码，改为本机加密 vault，见 [prd-2026-11-24-keychain-rebuild-access.md](prd-2026-11-24-keychain-rebuild-access.md)。
 - 不附加 trusted-application ACL，不重新启用 App Sandbox，也不把 API Key 写入 `UserDefaults`。
 - 重新安装同一类包不得再被提示为修复步骤。
 

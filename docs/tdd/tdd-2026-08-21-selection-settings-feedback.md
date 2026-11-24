@@ -5,6 +5,8 @@ prd: prd/prd-2026-08-21-selection-settings-feedback.md
 predecessor:
   - tdd/tdd-2026-08-19-markup-diagnostics.md
   - tdd/tdd-2026-08-20-llm-settings-persistence.md
+successor:
+  - tdd/tdd-2026-11-24-keychain-rebuild-access.md
 ---
 
 # LumenPDF — 选区标题误入与设置保存反馈 TDD
@@ -47,7 +49,7 @@ selectionsByLine / matchingLines
   → 不调用 AppState.showToast
 ```
 
-`errSecMissingEntitlement`（`-34018`）时：先尝试 data-protection 写入；失败则对同一 `com.LumenPDF.app` / `llm_api_key` 写入 file-based 条目，且不得随后删掉刚写入的条目。成功后仍只显示保存栏「设置已保存」。若两种写入都失败，文案说明无法写入，不要求重新安装。解锁相关状态仍映射为先解锁 Mac。
+`errSecMissingEntitlement`（`-34018`）时：先尝试 data-protection 写入；失败则对同一 `com.LumenPDF.app` / `llm_api_key` 写入 file-based 条目，且不得随后删掉刚写入的条目。成功后仍只显示保存栏「设置已保存」。若两种写入都失败，文案说明无法写入，不要求重新安装。解锁相关状态仍映射为先解锁 Mac。后续修订：file-based 登录钥匙串不再作为保存回退，见 [tdd-2026-11-24-keychain-rebuild-access.md](tdd-2026-11-24-keychain-rebuild-access.md)。
 
 ## 5. 验证
 

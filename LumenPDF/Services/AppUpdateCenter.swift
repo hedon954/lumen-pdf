@@ -55,6 +55,8 @@ final class AppUpdateCenter: ObservableObject {
     }
 
     func checkManually() {
+        statusMessage = "正在检查更新…"
+        showsSheet = true
         Task { await self.check(automatic: false) }
     }
 
@@ -136,15 +138,12 @@ final class AppUpdateCenter: ObservableObject {
             )
             if relaunch {
                 activity = .installing
-                NSApp.terminate(nil)
+                statusMessage = "正在退出并替换当前应用…"
+                requestReplacementQuit()
                 Task { @MainActor in
-                    try? await Task.sleep(nanoseconds: 35_000_000_000)
+                    try? await Task.sleep(nanoseconds: 2_000_000_000)
                     guard self.activity == .installing else { return }
-                    self.activity = .idle
-                    self.report(
-                        AppUpdateCopy.installFailure(.replaceFailed),
-                        modal: !self.showsSheet
-                    )
+                    exit(0)
                 }
             }
         } catch let failure as AppUpdateInstallFailure {
@@ -157,10 +156,17 @@ final class AppUpdateCenter: ObservableObject {
         }
     }
 
+    private func requestReplacementQuit() {
+        for window in NSApp.windows {
+            window.attachedSheet?.orderOut(nil)
+        }
+        NSApp.terminate(nil)
+    }
+
     private func report(_ message: String, modal: Bool) {
         statusMessage = message
         guard modal else { return }
-        if NSApp.keyWindow?.frameAutosaveName == "LumenPDFSettings" {
+        if showsSheet {
             return
         }
         let alert = NSAlert()

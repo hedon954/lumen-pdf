@@ -164,28 +164,38 @@ private final class InstallSession: @unchecked Sendable {
 
     private func launchSwap(target: String, staged: URL) throws {
         let script = staged.deletingLastPathComponent().appendingPathComponent("swap.sh")
-        try SwapScript.contents.write(to: script, atomically: true, encoding: .utf8)
+        try AppUpdateSwapScript.contents.write(to: script, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script.path)
         let log = try prepareLog()
-        let handle = try FileHandle(forWritingTo: log)
-        try handle.seekToEnd()
+        // Launch a process-group-detached helper. Keeping an `Process` child would
+        // let the updater die with this app before it can replace the bundle.
+        let command = """
+        /usr/bin/nohup /bin/bash "$1" "$2" "$3" "$4" >> "$5" 2>&1 &
+        """
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/nohup")
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
         process.arguments = [
-            "/bin/bash",
+            "-c",
+            command,
+            "--",
             script.path,
             String(ProcessInfo.processInfo.processIdentifier),
             target,
-            staged.path
+            staged.path,
+            log.path
         ]
-        process.standardOutput = handle
-        process.standardError = handle
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
         process.standardInput = FileHandle.nullDevice
         do {
             try process.run()
+            process.waitUntilExit()
         } catch {
             throw AppUpdateInstallFailure.replaceFailed
         }
-        SwapProcessBox.process = process
+        guard process.terminationStatus == 0 else {
+            throw AppUpdateInstallFailure.replaceFailed
+        }
     }
 
     private func publishDiskImage(at source: URL, name: String) async -> Bool {
@@ -289,48 +299,6 @@ private enum UpdateDigest {
         }
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
-}
-
-private enum SwapScript {
-    static let contents = """
-    #!/bin/bash
-    set -euo pipefail
-    pid="$1"
-    target="$2"
-    staged="$3"
-    backup="${target}.previous"
-
-    echo "waiting for ${pid}"
-    deadline=$((SECONDS + 30))
-    while kill -0 "$pid" 2>/dev/null; do
-        if [ "$SECONDS" -ge "$deadline" ]; then
-            echo "timed out waiting for ${pid}"
-            exit 1
-        fi
-        sleep 0.2
-    done
-    sleep 0.4
-
-    rm -rf "$backup"
-    if [ -d "$target" ]; then
-        mv "$target" "$backup"
-    fi
-    if ! /usr/bin/ditto "$staged" "$target"; then
-        rm -rf "$target"
-        if [ -d "$backup" ]; then
-            mv "$backup" "$target"
-        fi
-        exit 1
-    fi
-    /usr/bin/xattr -dr com.apple.quarantine "$target" || true
-    rm -rf "$backup"
-    echo "relaunching ${target}"
-    /usr/bin/open "$target"
-    """
-}
-
-private enum SwapProcessBox {
-    static var process: Process?
 }
 
 private final class DiskImageDownload: NSObject, URLSessionDownloadDelegate, URLSessionTaskDelegate {

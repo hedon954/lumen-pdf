@@ -6,6 +6,7 @@ predecessor:
   - prd/prd-2026-07-10-note-overlay-optimization.md
 successor:
   - prd/prd-2026-08-05-viewport-restore-overlay-drag.md
+  - prd/prd-2026-11-24-keychain-rebuild-access.md
 ---
 
 # LumenPDF — 阅读选择控件与窗口延续性优化 PRD
@@ -98,7 +99,7 @@ v1.0.16 优化 PDF 阅读页中两类贴近原文的轻量控件：已有笔记�
 
 - API Key 只保存到一个 data-protection Keychain 条目，不再维护带 trusted-application ACL 的 file-based 副本。
 - 旧条目只有在无需认证 UI 即可读取时才迁移；不能安全迁移时由用户重新输入一次，不自动弹出钥匙串密码框。
-- 本机与 Release 均允许使用 ad-hoc 签名；若配置长期稳定身份则用于主应用与嵌套 dylib。ad-hoc 包不保证跨重装 Keychain 延续，系统可再次要求授权。
+- 本机与 Release 均允许使用 ad-hoc 签名；若配置长期稳定身份则用于主应用与嵌套 dylib。ad-hoc 包不保证跨重装 Keychain 延续，系统可再次要求授权。后续修订：ad-hoc 换包改为读本机加密 vault，不再弹钥匙串密码，见 [prd-2026-11-24-keychain-rebuild-access.md](prd-2026-11-24-keychain-rebuild-access.md)。
 - 嵌套 dylib 与主应用必须按同一身份从内到外签名，最终主应用签名必须保留 App Sandbox entitlements。
 
 ## 6. 验收标准

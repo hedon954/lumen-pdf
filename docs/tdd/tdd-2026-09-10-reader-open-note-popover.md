@@ -5,6 +5,8 @@ prd: prd/prd-2026-09-10-reader-open-note-popover.md
 predecessor:
   - tdd/tdd-2026-09-01-native-translation-popover.md
   - tdd/tdd-2026-08-20-note-autosave-overlay-stability.md
+successor:
+  - tdd/tdd-2026-11-24-note-overlay-update.md
 ---
 
 # 系统打开与笔记浮窗实现
@@ -23,9 +25,9 @@ predecessor:
 
 - 原来翻译在根视图、草稿和回顾在 PDF 局部视图，导致可用区域、点外关闭和层级不一致。现在 `ReadingPopoverModel.Presentation` 用枚举持有唯一的翻译/草稿/回顾；`ContentView` 只用一个根 GeometryReader 转换锚点并分发内容。PDFReaderView 仅报告选区、笔记入口与持久化回调，不再持有第二份弹窗状态或绘制局部浮窗。
 - 新呈现使用独立 generation，切换内容时重置编辑器和容器测量；更新同一回顾不改变 generation，避免自动保存打断输入。旧翻译结果按请求 ID 拒绝，关闭后的编辑器刷新也不能重开回顾。
-- 三类内容都通过 `ReadingOverlayWindow` 绘制相同的圆角卡片与箭头。移除局部透明点击遮罩，复用从选区操作栏提取的 `WindowOutsideClickMonitor`；监听覆盖同窗口的正文、目录、Inspector、toolbar，以及窗外点击，事件原样向下传递。关闭同步发生在本次事件处理之前，避免异步回调误关新浮窗；sheet 在场时暂停外点判断。监听的代表视图卸载即移除事件 token，无独立窗口或 NSHostingView 注入。
+- 三类内容都通过 `ReadingOverlayWindow` 绘制相同的圆角卡片与箭头。移除局部透明点击遮罩，复用从选区操作栏提取的 `WindowOutsideClickMonitor`；监听覆盖同窗口的正文、目录、Inspector、toolbar，以及窗外点击，事件原样向下传递。关闭同步发生在本次事件处理之前，避免异步回调误关新浮窗；sheet 在场时暂停外点判断。监听的代表视图卸载即移除事件 token，无独立窗口或 NSHostingView 注入。后续修订：浮窗改由子 `NSPanel` 承载，点到其他应用不再关闭，见 [tdd-2026-11-24-note-overlay-update.md](tdd-2026-11-24-note-overlay-update.md)。
 - 原文与音标改为一段带不同字体的 Text，自然换行；header/footer 采用固有高度。容器宽度由配置显式控制，不再从上一轮测量宽度扣除箭头反向计算，避免箭头换边后的反馈收缩。
-- `NoteAnchorCatalog` 为已保存笔记的每个 page markup 生成入口，并补充可见页面上的自由划线；同一几何已有笔记时避免重复入口。自由划线携带原文和几何用于创建笔记。回顾按 note ID 定位，避免第二页入口被主 pageIndex 过滤掉。
+- `NoteAnchorCatalog` 为已保存笔记的每个 page markup 生成入口，并补充可见页面上的自由划线；同一几何已有笔记时避免重复入口。自由划线携带原文和几何用于创建笔记。回顾按 note ID 定位，避免第二页入口被主 pageIndex 过滤掉。后续修订：空笔记和自由划线不再生成入口，跨页同一划线只留一个按钮，见 [tdd-2026-11-24-note-overlay-update.md](tdd-2026-11-24-note-overlay-update.md)。
 - 迁移保留现有箭头、材质、拖动、内容滚动和尺寸上限；坐标统一为 reader root 后再转 host local。点击、焦点、激活、尺寸变化、关闭和多窗口生命周期按统一容器执行，不持久化瞬时浮层。
 
 ## 验证

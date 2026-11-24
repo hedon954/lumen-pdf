@@ -4,6 +4,7 @@ import Security
 enum KeychainServiceError: LocalizedError, Equatable {
     case encodingFailed
     case saveFailed(OSStatus)
+    case vaultWriteFailed
 
     var errorDescription: String? {
         switch self {
@@ -11,6 +12,8 @@ enum KeychainServiceError: LocalizedError, Equatable {
             return "无法保存 API Key，请重新输入后再试。"
         case let .saveFailed(status):
             return KeychainSaveFailureMessage.userFacing(status)
+        case .vaultWriteFailed:
+            return "无法保存 API Key，请稍后重试。"
         }
     }
 }
@@ -45,18 +48,38 @@ enum KeychainService {
     private static let legacyLLMBaseURLKey = "llm_legacy_api_key_base_url"
 
     static func save(key: String, value: String) throws {
-        let data = Data(value.utf8)
-        let result = upsertProtectedItem(key: key, data: data)
-        guard result.status == errSecSuccess else {
-            throw KeychainServiceError.saveFailed(result.status)
+        do {
+            try CredentialVaultStore.save(value)
+        } catch {
+            throw KeychainServiceError.vaultWriteFailed
         }
-        deleteLegacyItems(
-            key: key,
-            preservingFileBasedServiceItem: result.usedFileBasedKeychain
-        )
+        let data = Data(value.utf8)
+        let result = KeychainInteraction.withoutPrompts {
+            upsertProtectedItem(key: key, data: data)
+        }
+        KeychainInteraction.withoutPrompts {
+            deleteLegacyItems(
+                key: key,
+                preservingFileBasedServiceItem: result.usedFileBasedKeychain
+            )
+        }
     }
 
     static func load(key: String) -> String? {
+        if let value = CredentialVaultStore.load() {
+            return value
+        }
+
+        let migrated = KeychainInteraction.withoutPrompts {
+            loadFromKeychainWithoutPrompting(key: key)
+        }
+        if let migrated {
+            try? CredentialVaultStore.save(migrated)
+        }
+        return migrated
+    }
+
+    private static func loadFromKeychainWithoutPrompting(key: String) -> String? {
         if let value = loadItem(
             key: key,
             service: service,
@@ -66,16 +89,14 @@ enum KeychainService {
         }
 
         // Previous builds wrote file-based keychain items with an ACL tied to
-        // an ad-hoc binary. Never show an authentication dialog during launch:
-        // migrate only when the current stable signature can already read the
-        // old item. Otherwise the user can enter the value once in Settings.
+        // an ad-hoc binary. Never show an authentication dialog: migrate only
+        // when this process can already read the old item.
         for legacy in legacyItemLocations {
             guard let value = loadItem(
                 key: key,
                 service: legacy.service,
                 useDataProtectionKeychain: legacy.useDataProtectionKeychain
             ) else { continue }
-            try? save(key: key, value: value)
             return value
         }
         return nil
@@ -129,23 +150,16 @@ enum KeychainService {
         key: String,
         data: Data
     ) -> (status: OSStatus, usedFileBasedKeychain: Bool) {
-        let dataProtectionStatus = upsertItem(
-            key: key,
-            data: data,
-            useDataProtectionKeychain: true
-        )
-        if dataProtectionStatus == errSecSuccess
-            || !KeychainWriteFallback.shouldUseFileBasedKeychain(after: dataProtectionStatus)
-        {
-            return (dataProtectionStatus, false)
-        }
-        return (
+        // File-based login-keychain items bind an ACL to this binary's
+        // signature. Ad-hoc rebuilds then prompt for the login password.
+        // Durable storage is CredentialVaultStore; data-protection is optional.
+        (
             upsertItem(
                 key: key,
                 data: data,
-                useDataProtectionKeychain: false
+                useDataProtectionKeychain: true
             ),
-            true
+            false
         )
     }
 
@@ -263,6 +277,24 @@ enum KeychainItemQuery {
         }
         return attributes
     }
+}
+
+/// File-based login-keychain ACLs ignore `kSecUseAuthenticationUIFail` and still
+/// open SecurityAgent. Disable user interaction around every SecItem call so a
+/// new ad-hoc signature cannot pop the login-password dialog.
+enum KeychainInteraction {
+    static func withoutPrompts<T>(_ operation: () -> T) -> T {
+        disablePromptsDuring(operation)
+    }
+}
+
+@available(macOS, introduced: 10.0, deprecated: 12.0)
+private func disablePromptsDuring<T>(_ operation: () -> T) -> T {
+    var wasAllowed = DarwinBoolean(true)
+    _ = SecKeychainGetUserInteractionAllowed(&wasAllowed)
+    _ = SecKeychainSetUserInteractionAllowed(false)
+    defer { _ = SecKeychainSetUserInteractionAllowed(wasAllowed.boolValue) }
+    return operation()
 }
 
 struct LLMAPIKeyVault: Codable, Equatable {

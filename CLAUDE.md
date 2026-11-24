@@ -183,8 +183,9 @@ Code should stay simple, understandable, maintainable, iterable, and free of avo
 
 ### Signing and Keychain Security (Strict)
 
-- Persistent credentials use one Keychain item (`com.LumenPDF.app` / `llm_api_key`). Prefer the data-protection keychain when the current signature can use it. If that write returns `errSecMissingEntitlement` (`-34018`), write the same service/account to the file-based keychain without `SecAccess` or trusted-application ACLs. Do not keep a second live store after a successful data-protection write, and do not re-enable App Sandbox just to obtain the entitlement.
-- Packaging may use ad-hoc signing by default. If a stable signing identity is configured, use it consistently for the app and all nested code; do not claim that ad-hoc signing preserves Keychain access across binary replacement.
+- Persistent credentials live in an encrypted vault under `AppDataDirectory` (`llm-api-key.vault`). Prefer the data-protection Keychain as a best-effort extra copy when the current signature can use it. Do not write the login keychain as a fallback: file-based items bind an ACL to this binary and prompt for the login password after every ad-hoc rebuild. Do not re-enable App Sandbox just to obtain a Keychain entitlement.
+- Packaging may use ad-hoc signing by default. If a stable signing identity is configured, use it consistently for the app and all nested code. Ad-hoc replacement must still read the vault without a Keychain password dialog.
+- Disable Keychain user interaction around every `SecItem` call so a signature mismatch cannot present SecurityAgent.
 - After modifying embedded code, sign nested dylibs first and the app last with the same identity. Do not use `codesign --deep` as a signing shortcut.
 - Release packages intentionally omit `com.apple.security.app-sandbox` and must not reattach `LumenPDF.entitlements`: the app's existing SQLite database and `UserDefaults` live in the historical non-container locations. Do not re-enable Sandbox unless the same change includes a tested, non-destructive migration for database and preferences.
 - CI release jobs follow the same configured signing identity as local packaging and must not add identity-presence gates that block ad-hoc release packaging.

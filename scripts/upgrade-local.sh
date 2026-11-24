@@ -4,7 +4,8 @@
 # Intended usage:
 #   make upgrade
 #
-# This script assumes `make dmg` has already produced build/export/LumenPDF.app.
+# This script installs build/export/LumenPDF.app. `make upgrade` produces that
+# app directly and does not build a DMG.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -17,7 +18,7 @@ TMP_TARGET="/Applications/${APP_NAME}.app.tmp.$$"
 
 if [ ! -d "$SOURCE_APP" ]; then
     echo "✗ 未找到 $SOURCE_APP"
-    echo "请先运行 make dmg，或直接运行 make upgrade。"
+    echo "请先运行 make upgrade，或 make dmg。"
     exit 1
 fi
 
@@ -86,6 +87,13 @@ echo "版本: $VERSION"
 echo "来源: $SOURCE_APP"
 echo "目标: $TARGET_APP"
 echo ""
+
+if [[ -d "$TARGET_APP" ]] \
+    && cmp -s "$SOURCE_APP/Contents/MacOS/$APP_NAME" "$TARGET_APP/Contents/MacOS/$APP_NAME" \
+    && cmp -s "$SOURCE_APP/Contents/Frameworks/liblumen_pdf_core.dylib" "$TARGET_APP/Contents/Frameworks/liblumen_pdf_core.dylib"; then
+    echo "→ /Applications 里已是这次构建，跳过替换"
+    exit 0
+fi
 
 terminate_running_app
 

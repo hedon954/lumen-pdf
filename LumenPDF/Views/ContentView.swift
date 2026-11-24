@@ -109,44 +109,57 @@ struct ContentView: View {
                             )
                         )
                     )
-                    switch presentation {
-                    case let .translation(request):
-                        TranslationBubble(
-                            request: request,
-                            isLoading: readingPopoverModel.isLoading,
-                            availableSize: proxy.size,
-                            overlayAnchorRect: anchor,
-                            onSave: { result in
-                                saveTranslation(result: result, request: request)
-                            },
-                            onDelete: { id, savedToNote in
-                                deleteTranslationSave(
-                                    id: id,
-                                    savedToNote: savedToNote,
-                                    request: request
-                                )
-                            },
-                            onExplain: {
-                                startGuideFromTranslation(request)
-                            },
-                            onRetry: readingPopoverModel.retry,
-                            onDismiss: readingPopoverModel.dismiss
-                        )
-                    case let .noteDraft(draft, save):
-                        UnderlineNoteDraftView(
-                            draft: draft, availableSize: proxy.size, overlayAnchorRect: anchor,
-                            onCancel: readingPopoverModel.dismiss, onSave: save
-                        )
-                    case let .noteReview(review, actions):
-                        NoteReviewPopoverView(
-                            review: review, availableSize: proxy.size, overlayAnchorRect: anchor,
-                            onOpenNotes: actions.openNotes, onSaveItem: actions.saveItem,
-                            onAppend: actions.append, onDeleteItem: actions.deleteItem,
-                            onDeleteAll: actions.deleteAll, onClose: readingPopoverModel.dismiss
-                        )
+                    ReadingOverlayPanelHost(
+                        resetID: readingPopoverModel.generation,
+                        anchorRect: anchor,
+                        availableSize: proxy.size,
+                        placementOrder: overlayPlacementOrder(for: presentation),
+                        preferredGap: overlayPreferredGap(for: presentation),
+                        compactVerticalInset: overlayCompactInset(for: presentation)
+                    ) {
+                        switch presentation {
+                        case let .translation(request):
+                            TranslationBubble(
+                                request: request,
+                                isLoading: readingPopoverModel.isLoading,
+                                availableSize: proxy.size,
+                                overlayAnchorRect: anchor,
+                                onSave: { result in
+                                    saveTranslation(result: result, request: request)
+                                },
+                                onDelete: { id, savedToNote in
+                                    deleteTranslationSave(
+                                        id: id,
+                                        savedToNote: savedToNote,
+                                        request: request
+                                    )
+                                },
+                                onExplain: {
+                                    startGuideFromTranslation(request)
+                                },
+                                onToggleHighlight: {
+                                    toggleTranslationHighlight(request)
+                                },
+                                onRetry: readingPopoverModel.retry,
+                                onDismiss: readingPopoverModel.dismiss
+                            )
+                        case let .noteDraft(draft, save):
+                            UnderlineNoteDraftView(
+                                draft: draft, availableSize: proxy.size, overlayAnchorRect: anchor,
+                                onCancel: readingPopoverModel.dismiss, onSave: save
+                            )
+                        case let .noteReview(review, actions):
+                            NoteReviewPopoverView(
+                                review: review, availableSize: proxy.size, overlayAnchorRect: anchor,
+                                onOpenNotes: actions.openNotes, onSaveItem: actions.saveItem,
+                                onAppend: actions.append, onDeleteItem: actions.deleteItem,
+                                onDeleteAll: actions.deleteAll, onClose: readingPopoverModel.dismiss
+                            )
+                        }
                     }
 
                 }
+                .allowsHitTesting(false)
                 .id(readingPopoverModel.generation)
             }
         }
@@ -382,6 +395,43 @@ struct ContentView: View {
             inspectorTransitionID = nil
             viewportTransitionController.end()
         }
+    }
+
+    private func overlayPlacementOrder(
+        for presentation: ReadingPopoverModel.Presentation
+    ) -> [ReadingOverlayPlacement] {
+        switch presentation {
+        case .translation:
+            return ReadingOverlayPlacement.lookUpOrder
+        case .noteDraft, .noteReview:
+            return ReadingOverlayPlacement.defaultOrder
+        }
+    }
+
+    private func overlayPreferredGap(
+        for presentation: ReadingPopoverModel.Presentation
+    ) -> CGFloat {
+        switch presentation {
+        case .translation: return 2
+        case .noteDraft, .noteReview: return 12
+        }
+    }
+
+    private func overlayCompactInset(
+        for presentation: ReadingPopoverModel.Presentation
+    ) -> Bool {
+        switch presentation {
+        case .translation: return true
+        case .noteDraft, .noteReview: return false
+        }
+    }
+
+    private func toggleTranslationHighlight(_ request: TranslationBubbleRequest) {
+        ReaderEventBus.shared.postFreeAnnotations(
+            type: "highlight",
+            markups: request.effectivePageMarkups,
+            filePath: request.pdfPath
+        )
     }
 
     private func startGuideFromTranslation(_ request: TranslationBubbleRequest) {

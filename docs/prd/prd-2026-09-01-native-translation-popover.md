@@ -15,6 +15,7 @@ predecessor:
 successor:
   - prd/prd-2026-09-10-reader-open-note-popover.md
   - prd/prd-2026-11-23-reader-context-viewport.md
+  - prd/prd-2026-11-24-note-overlay-update.md
 ---
 
 # LumenPDF — Look Up 式翻译浮窗 PRD
@@ -29,7 +30,7 @@ successor:
 
 - 翻译存在期间，PDFKit 的真实当前选区继续保留；界面在对应逐行文字几何上绘制系统黄色强调和轻微阴影，形成与 macOS Look Up 相近的抬起感。关闭翻译后临时强调消失，不写入 PDF 或标注存储。后续修订：选区标记改为与 macOS 预览相同的黄色正片叠底荧光笔，见 [prd-2026-11-23-reader-context-viewport.md](prd-2026-11-23-reader-context-viewport.md)。
 - 浮窗使用与 macOS Look Up 接近的圆角、阴影和锚定箭头，内容区域使用完全不透明的系统文本背景，不透出或模糊后方 PDF。选区左侧有空间时优先显示在左侧，靠近左缘时显示在右侧；箭头始终朝向当前选区。 后续修订：背景样式统一以笔记薄材质为准，并补充系统打开和笔记快速追加，见 [prd-2026-09-10-reader-open-note-popover.md](prd-2026-09-10-reader-open-note-popover.md)。
-- 浮窗保留拖拽移动按钮。拖动后浮窗必须限制在阅读区域内，箭头继续表达浮窗与原选区的关系；点击外部或关闭按钮即可关闭，不提供缩放手柄。
+- 浮窗保留拖拽移动按钮。拖动后浮窗必须限制在阅读区域内，箭头继续表达浮窗与原选区的关系；点击外部或关闭按钮即可关闭，不提供缩放手柄。后续修订：可拖出应用窗口；点到其他应用不再关闭；footer 增加高亮，见 [prd-2026-11-24-note-overlay-update.md](prd-2026-11-24-note-overlay-update.md)。
 - 用户滚动或缩放 PDF 时关闭浮窗并清理临时强调，避免选区离开原位置后留下不再指向文字的悬空箭头。
 - 宽度、自动内容高度、滚动和窗口高度上限沿用 `main`：单词 380pt、句子 560pt 起步，按文字长度扩展，宽度不超过 760pt；内容按实际高度展开，整体不超过阅读窗口高度的 80%。
 - 笔记和选区操作栏仍用原来的薄材质阅读浮层，不受影响。 后续修订：背景样式统一以笔记薄材质为准，并补充系统打开和笔记快速追加，见 [prd-2026-09-10-reader-open-note-popover.md](prd-2026-09-10-reader-open-note-popover.md)。
@@ -62,7 +63,7 @@ successor:
 
 - 不接入系统 Translation 框架，也不把翻译结果换成系统译文。
 - 不改变 prompt、缓存、LLM / 兜底链路或保存到单词本 / 笔记的数据。
-- 不把翻译浮窗改成独立 `NSPanel` 或子窗口；浮层仍属于主阅读窗口内同一 SwiftUI 层级。
+- 不把翻译浮窗改成独立 `NSPanel` 或子窗口；浮层仍属于主阅读窗口内同一 SwiftUI 层级。后续修订：为了拖出应用窗口，阅读浮窗改由子面板承载，见 [prd-2026-11-24-note-overlay-update.md](prd-2026-11-24-note-overlay-update.md)。
 - 不增加用户缩放翻译浮窗的手柄。
 - 不改变笔记浮层、选区操作栏的定位和外观。
 
