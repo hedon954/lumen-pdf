@@ -3,6 +3,22 @@
 LumenPDF 的版本记录由人工/AI 维护。每个版本只记录对用户或后续开发有意义的变化，并为具体变更附上对应的 GitHub commit URL。
 
 ---
+## [1.0.35](https://github.com/hedon954/lumen-pdf/compare/v1.0.34..v1.0.35) - 2026-11-24
+
+这一版在导入时保留 PDF 书库副本，记录实际阅读时长，并改善翻译选区、跨行笔记入口和阅读位置恢复。
+
+### 主要变化
+
+- 打开或导入 PDF 时在书库保留副本，按内容识别重复文件，保留原始文件。迁移已有文库前备份数据库，缺失的源文件会保留在列表中并标明状态。([e4fc658](https://github.com/hedon954/lumen-pdf/commit/e4fc65805f46e801cdcd6e3b4c6371f6ef33894d)) ([14e689a](https://github.com/hedon954/lumen-pdf/commit/14e689a2d16b32fd3ece7a3af408dc10a3a393f9))
+- 在阅读窗口处于前台且有近期操作时统计阅读时长，将每段时长追加到本地阅读日志。([84b24ad](https://github.com/hedon954/lumen-pdf/commit/84b24ad25b360e91dd8b64579f815e5554062de6))
+
+### 修复
+
+- 翻译选区改用黄色荧光笔效果，保留文字对比度。选词翻译优先从页面可见文字中提取上下文。([0d6a295](https://github.com/hedon954/lumen-pdf/commit/0d6a295b52d39f9f76d503929a87e686398bc800))
+- 连续跨行划线共用一个笔记入口。目录依据页内阅读位置切换当前章节，关闭后恢复最近的阅读位置。([0d6a295](https://github.com/hedon954/lumen-pdf/commit/0d6a295b52d39f9f76d503929a87e686398bc800))
+- 对齐 Extra Config 编辑器的当前行高亮、文字和行号。([0d6a295](https://github.com/hedon954/lumen-pdf/commit/0d6a295b52d39f9f76d503929a87e686398bc800))
+
+---
 ## [1.0.34](https://github.com/hedon954/lumen-pdf/compare/v1.0.33..v1.0.34) - 2026-10-15
 
 这一版可以在应用内检查官方发布的新版本。确认后会下载安装包、校验后替换当前应用并重新打开；笔记、单词和阅读进度都会保留。

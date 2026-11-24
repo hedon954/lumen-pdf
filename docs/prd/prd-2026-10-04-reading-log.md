@@ -1,5 +1,5 @@
 ---
-version: unreleased
+version: v1.0.35
 date: 2026-10-04
 tdd: tdd/tdd-2026-10-04-reading-log.md
 predecessor:

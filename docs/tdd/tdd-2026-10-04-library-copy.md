@@ -1,5 +1,5 @@
 ---
-version: unreleased
+version: v1.0.35
 date: 2026-10-04
 prd: prd/prd-2026-10-04-library-copy.md
 predecessor:

@@ -1,5 +1,5 @@
 ---
-version: unreleased
+version: v1.0.35
 date: 2026-11-23
 tdd: tdd/tdd-2026-11-23-reader-context-viewport.md
 predecessor:
