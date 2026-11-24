@@ -128,6 +128,22 @@ final class ReaderViewportGeometryTests: XCTestCase {
 
         XCTAssertEqual(origin, .zero)
     }
+
+    func testOutlineFocusSitsOneThirdDownAFlippedViewport() {
+        let visible = CGRect(x: 40, y: 4_000, width: 800, height: 600)
+        let focus = ReaderViewportGeometry.outlineFocusPoint(in: visible, isDocumentFlipped: true)
+
+        XCTAssertEqual(focus.x, 40)
+        XCTAssertEqual(focus.y, 4_200)
+    }
+
+    func testOutlineFocusSitsOneThirdDownAnUnflippedViewport() {
+        let visible = CGRect(x: 40, y: 4_000, width: 800, height: 600)
+        let focus = ReaderViewportGeometry.outlineFocusPoint(in: visible, isDocumentFlipped: false)
+
+        XCTAssertEqual(focus.x, 40)
+        XCTAssertEqual(focus.y, 4_400)
+    }
 }
 
 final class ReadingRestorationViewportCodingTests: XCTestCase {

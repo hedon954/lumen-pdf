@@ -5,24 +5,46 @@ struct PDFOutlineSidebarView: View {
     let document: PDFKit.PDFDocument
     @EnvironmentObject private var appState: AppState
 
-    /// Page index of the deepest outline item that starts on or before the current page.
-    private var activePageIndex: Int {
-        guard let root = document.outlineRoot else { return -1 }
-        var best = -1
-        func traverse(_ item: PDFOutline) {
-            for i in 0 ..< item.numberOfChildren {
-                guard let child = item.child(at: i) else { continue }
+    /// The one outline row for the page being read. Several headings can share that page.
+    private var activeItemID: ObjectIdentifier? {
+        guard let root = document.outlineRoot else { return nil }
+        var order = 0
+        var items: [(id: ObjectIdentifier, candidate: OutlineSectionCandidate)] = []
+        func traverse(_ item: PDFOutline, depth: Int) {
+            for index in 0 ..< item.numberOfChildren {
+                guard let child = item.child(at: index) else { continue }
+                let pageIndex: Int
                 if let page = child.destination?.page {
-                    let idx = document.index(for: page)
-                    if idx != NSNotFound && idx <= appState.currentPageIndex && idx > best {
-                        best = idx
-                    }
+                    let resolved = document.index(for: page)
+                    pageIndex = resolved == NSNotFound ? -1 : resolved
+                } else {
+                    pageIndex = -1
                 }
-                traverse(child)
+                let pageMaxY = child.destination?.page?.bounds(for: .cropBox).maxY ?? 0
+                let destinationY = OutlineDestinationPosition.startY(
+                    point: child.destination.map(\.point),
+                    pageMaxY: pageMaxY
+                )
+                items.append((
+                    ObjectIdentifier(child),
+                    OutlineSectionCandidate(
+                        pageIndex: pageIndex,
+                        order: order,
+                        destinationY: destinationY
+                    )
+                ))
+                order += 1
+                traverse(child, depth: depth + 1)
             }
         }
-        traverse(root)
-        return best
+        traverse(root, depth: 0)
+        let position = appState.outlineReadingPosition
+            ?? OutlineReadingPosition(pageIndex: appState.currentPageIndex, topY: nil)
+        guard let activeOrder = OutlineActiveSection.activeOrder(
+            in: items.map(\.candidate),
+            position: position
+        ) else { return nil }
+        return items.first { $0.candidate.order == activeOrder }?.id
     }
 
     var body: some View {
@@ -35,37 +57,37 @@ struct PDFOutlineSidebarView: View {
                         // that haven't been laid out yet.
                         VStack(alignment: .leading, spacing: 0) {
                             OutlineChildren(item: root, doc: document,
-                                            activePageIndex: activePageIndex, depth: 0)
+                                            activeItemID: activeItemID, depth: 0)
                         }
                         .padding(.vertical, 4)
                     }
                     .onAppear {
                         // Delay long enough for the PDFView to finish restoring its
                         // page position (go(to:) is async) before we scroll the TOC.
-                        let idx = activePageIndex
-                        guard idx >= 0 else { return }
+                        let itemID = activeItemID
+                        guard let itemID else { return }
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                             withAnimation(.easeInOut(duration: 0.3)) {
-                                scrollProxy.scrollTo(idx, anchor: .center)
+                                scrollProxy.scrollTo(itemID, anchor: .center)
                             }
                         }
                     }
-                    .onChange(of: activePageIndex) { newIndex in
-                        guard newIndex >= 0 else { return }
+                    .onChange(of: activeItemID) { _, newID in
+                        guard let newID else { return }
                         withAnimation(.easeInOut(duration: 0.3)) {
-                            scrollProxy.scrollTo(newIndex, anchor: .center)
+                            scrollProxy.scrollTo(newID, anchor: .center)
                         }
                     }
                     // After window un-minimize, PDFView restores page then fires
-                    // pageChanged → currentPageIndex updates → activePageIndex may
+                    // pageChanged → currentPageIndex updates → the active section may
                     // not change (same chapter) → onChange won't fire, so we
                     // explicitly re-scroll here.
                     .onReceive(NotificationCenter.default.publisher(for: .windowDidDeminiaturize)) { _ in
-                        let idx = activePageIndex
-                        guard idx >= 0 else { return }
+                        let itemID = activeItemID
+                        guard let itemID else { return }
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                             withAnimation(.easeInOut(duration: 0.3)) {
-                                scrollProxy.scrollTo(idx, anchor: .center)
+                                scrollProxy.scrollTo(itemID, anchor: .center)
                             }
                         }
                     }
@@ -90,14 +112,14 @@ struct PDFOutlineSidebarView: View {
 private struct OutlineChildren: View {
     let item: PDFOutline
     let doc: PDFKit.PDFDocument
-    let activePageIndex: Int
+    let activeItemID: ObjectIdentifier?
     let depth: Int
 
     var body: some View {
         ForEach(0 ..< item.numberOfChildren, id: \.self) { i in
             if let child = item.child(at: i) {
                 OutlineRow(item: child, doc: doc,
-                           activePageIndex: activePageIndex, depth: depth)
+                           activeItemID: activeItemID, depth: depth)
             }
         }
     }
@@ -108,18 +130,12 @@ private struct OutlineChildren: View {
 private struct OutlineRow: View {
     let item: PDFOutline
     let doc: PDFKit.PDFDocument
-    let activePageIndex: Int
+    let activeItemID: ObjectIdentifier?
     let depth: Int
 
     @State private var isExpanded = true
 
-    private var myPageIndex: Int {
-        guard let page = item.destination?.page else { return -1 }
-        let idx = doc.index(for: page)
-        return idx == NSNotFound ? -1 : idx
-    }
-
-    private var isActive: Bool { myPageIndex == activePageIndex && myPageIndex >= 0 }
+    private var isActive: Bool { ObjectIdentifier(item) == activeItemID }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -162,12 +178,12 @@ private struct OutlineRow: View {
                     : Color.clear,
                 in: RoundedRectangle(cornerRadius: 4)
             )
-            // ID used by ScrollViewReader to scroll to active item
-            .id(myPageIndex)
+            // ID used by ScrollViewReader to scroll to the single active item.
+            .id(ObjectIdentifier(item))
 
             if item.numberOfChildren > 0 && isExpanded {
                 OutlineChildren(item: item, doc: doc,
-                                activePageIndex: activePageIndex, depth: depth + 1)
+                                activeItemID: activeItemID, depth: depth + 1)
             }
         }
     }

@@ -53,6 +53,7 @@ PRD 记录**用户可感知的行为与验收标准**。TDD 记录**如何实现
 | v1.0.33 | 2026-10-04 | 从文件夹导入 PDF | [prd-2026-10-04-library-folder-import.md](prd/prd-2026-10-04-library-folder-import.md) | [tdd-2026-10-04-library-folder-import.md](tdd/tdd-2026-10-04-library-folder-import.md) |
 | unreleased | 2026-10-04 | 阅读日志 | [prd-2026-10-04-reading-log.md](prd/prd-2026-10-04-reading-log.md) | [tdd-2026-10-04-reading-log.md](tdd/tdd-2026-10-04-reading-log.md) |
 | unreleased | 2026-10-04 | 书库副本 | [prd-2026-10-04-library-copy.md](prd/prd-2026-10-04-library-copy.md) | [tdd-2026-10-04-library-copy.md](tdd/tdd-2026-10-04-library-copy.md) |
+| unreleased | 2026-11-23 | 划线入口、选词语境与阅读位置 | [prd-2026-11-23-reader-context-viewport.md](prd/prd-2026-11-23-reader-context-viewport.md) | [tdd-2026-11-23-reader-context-viewport.md](tdd/tdd-2026-11-23-reader-context-viewport.md) |
 
 未单独成对的发布：
 
@@ -73,6 +74,7 @@ v1.0.15 公共窗口外壳
   → unreleased 小节标题不因正文复述而进入翻译原文
   → v1.0.31 单词 / 句子翻译采用 Look Up 式实色锚定浮窗，黄色轻阴影选区并恢复拖拽手柄
   → unreleased 翻译与笔记统一薄材质背景，系统打开文件切回阅读并恢复位置
+  → unreleased 一次连续划线只有一个笔记按钮；选词带上可见句子；关闭不回退到更早的页
 ```
 
 v1.0.21 曾要求内容变高后重新换边避让；2026-08-20 修订为「首次位置固定」，以 v1.0.15 的稳定方向为优先体验。
@@ -117,6 +119,7 @@ v1.0.12 / v1.0.13 导读进入 Inspector
   → unreleased 期望 JSON 的模型输出先 json repair 再解析
   → unreleased Extra Config 显示关 thinking 默认值；去掉 /no_think；JSON 着色，回车缩进，画笔才整段格式化
   → unreleased Extra Config 默认值只在 Rust 计算，设置页不再复制 host/模型规则
+  → unreleased Extra Config 当前行高亮与文字对齐
   → unreleased 调用日志可展开实际发出的完整 HTTP 请求（密钥脱敏）
   → unreleased 服务商菜单增加「其他」，未匹配内置地址时不误标厂商，自定义端点不被预设覆盖
   → unreleased 翻译成功 footer 增加 AI 解释快捷入口，复用当前选区导读

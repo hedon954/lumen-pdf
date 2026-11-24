@@ -76,6 +76,24 @@ enum PDFHighlightAnnotationFactory {
         return annotation
     }
 
+    /// One underline annotation for every line of a single stroke.
+    /// Per-line annotations made a multi-line underline show one note button on each row.
+    static func makeUnderline(
+        lineRects: [CGRect],
+        userName: String?,
+        contents: String?
+    ) -> PDFAnnotation? {
+        let rects = lineRects.filter { !$0.isEmpty && $0 != .zero }
+        guard !rects.isEmpty else { return nil }
+        let union = rects.dropFirst().reduce(rects[0]) { $0.union($1) }
+        let annotation = PDFAnnotation(bounds: union, forType: .underline, withProperties: nil)
+        PDFMarkupAppearance.applyUnderline(to: annotation)
+        annotation.quadrilateralPoints = quadrilateralPoints(for: rects, relativeTo: union.origin)
+        if let userName { annotation.userName = userName }
+        if let contents { annotation.contents = contents }
+        return annotation
+    }
+
     // MARK: - Selection helpers
 
     static func lineRects(from selection: PDFSelection, on page: PDFPage) -> [CGRect] {

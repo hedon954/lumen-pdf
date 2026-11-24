@@ -430,6 +430,22 @@ enum ReaderViewportGeometry {
         )
     }
 
+    /// How far down the visible area the outline treats as the current line.
+    ///
+    /// The top edge often still shows the tail of the previous section after the next
+    /// heading has become the text being read. A heading that has only entered at the
+    /// bottom is not current yet. One third of the way down is that line for every PDF.
+    static let outlineFocusFraction: CGFloat = 1.0 / 3.0
+
+    static func outlineFocusPoint(in visibleRect: CGRect, isDocumentFlipped: Bool) -> CGPoint {
+        let top = visibleTopLeft(of: visibleRect, isDocumentFlipped: isDocumentFlipped)
+        let distance = visibleRect.height * outlineFocusFraction
+        return CGPoint(
+            x: top.x,
+            y: isDocumentFlipped ? top.y + distance : top.y - distance
+        )
+    }
+
     /// Clip view origin that brings `topLeft` back to the top-left corner of the viewport.
     static func scrollOrigin(
         visibleTopLeft topLeft: CGPoint,

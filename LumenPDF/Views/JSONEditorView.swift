@@ -235,6 +235,11 @@ private struct JSONEditorTextView: NSViewRepresentable {
             return true
         }
 
+        func textViewDidChangeSelection(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else { return }
+            textView.needsDisplay = true
+        }
+
         private func applyHighlight(in textView: NSTextView) {
             guard let storage = textView.textStorage, !textView.hasMarkedText() else { return }
             isApplyingHighlight = true
@@ -243,6 +248,7 @@ private struct JSONEditorTextView: NSViewRepresentable {
             JSONSyntaxHighlighter.apply(to: storage, font: font)
             storage.endEditing()
             isApplyingHighlight = false
+            textView.needsDisplay = true
         }
     }
 }
@@ -250,33 +256,43 @@ private struct JSONEditorTextView: NSViewRepresentable {
 private final class JSONCodeTextView: NSTextView {
     override func drawBackground(in rect: NSRect) {
         super.drawBackground(in: rect)
-        guard let layoutManager else { return }
-        let nsText = string as NSString
-        var lineRect: NSRect
-        if nsText.length == 0 || layoutManager.numberOfGlyphs == 0 {
-            lineRect = NSRect(
-                x: 0,
-                y: textContainerInset.height,
-                width: bounds.width,
-                height: layoutManager.defaultLineHeight(
-                    for: font ?? .systemFont(ofSize: NSFont.systemFontSize)
-                )
-            )
-        } else {
-            let location = min(selectedRange().location, nsText.length)
-            let glyphIndex = layoutManager.glyphIndexForCharacter(
-                at: min(location, nsText.length - 1)
-            )
-            lineRect = layoutManager.lineFragmentRect(
-                forGlyphAt: glyphIndex,
-                effectiveRange: nil,
-                withoutAdditionalLayout: true
-            )
-            lineRect.origin.x = 0
-            lineRect.size.width = bounds.width
-        }
+        guard let lineRect = JSONEditorLineHighlight.currentLineRect(in: self) else { return }
         NSColor.selectedTextBackgroundColor.withAlphaComponent(0.22).setFill()
         lineRect.fill()
+    }
+}
+
+enum JSONEditorLineHighlight {
+    /// Line fragment rects are in the text container. The glyphs are drawn below
+    /// `textContainerOrigin`, so a highlight that skips that origin sits between rows.
+    static func currentLineRect(in textView: NSTextView) -> NSRect? {
+        guard let layoutManager = textView.layoutManager,
+              let textContainer = textView.textContainer else { return nil }
+        layoutManager.ensureLayout(for: textContainer)
+        let origin = textView.textContainerOrigin
+        let nsText = textView.string as NSString
+        if nsText.length == 0 || layoutManager.numberOfGlyphs == 0 {
+            return NSRect(
+                x: 0,
+                y: origin.y,
+                width: textView.bounds.width,
+                height: layoutManager.defaultLineHeight(
+                    for: textView.font ?? .systemFont(ofSize: NSFont.systemFontSize)
+                )
+            )
+        }
+        let location = min(textView.selectedRange().location, nsText.length)
+        let character = min(location, nsText.length - 1)
+        let glyphIndex = layoutManager.glyphIndexForCharacter(at: character)
+        var lineRect = layoutManager.lineFragmentRect(
+            forGlyphAt: glyphIndex,
+            effectiveRange: nil,
+            withoutAdditionalLayout: false
+        )
+        lineRect.origin.x = 0
+        lineRect.origin.y += origin.y
+        lineRect.size.width = textView.bounds.width
+        return lineRect
     }
 }
 
@@ -331,7 +347,6 @@ private final class JSONLineNumberRulerView: NSRulerView {
             .font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .regular),
             .foregroundColor: NSColor.secondaryLabelColor
         ]
-        let inset = textView.textContainerInset
         let lineHeight = layoutManager.defaultLineHeight(
             for: textView.font ?? .monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
         )
@@ -351,7 +366,7 @@ private final class JSONLineNumberRulerView: NSRulerView {
                     withoutAdditionalLayout: true
                 )
             }
-            let y = lineRect.minY + inset.height - visible.origin.y
+            let y = lineRect.minY + textView.textContainerOrigin.y - visible.origin.y
             if y + lineRect.height >= 0, y <= visible.height {
                 let label = "\(lineNumber)" as NSString
                 let size = label.size(withAttributes: attributes)

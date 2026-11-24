@@ -35,6 +35,29 @@ final class PDFMarkupAppearanceTests: XCTestCase {
         XCTAssertEqual(annotation.userName, "note-1")
         XCTAssertEqual(annotation.contents, "note:note-1")
     }
+
+    func testMultiLineUnderlineIsOneAnnotation() throws {
+        let document = PDFDocument()
+        let page = PDFPage()
+        page.setBounds(CGRect(x: 0, y: 0, width: 600, height: 800), for: .mediaBox)
+        document.insert(page, at: 0)
+        let rects = [
+            CGRect(x: 48, y: 700, width: 400, height: 14),
+            CGRect(x: 48, y: 682, width: 400, height: 14),
+            CGRect(x: 48, y: 664, width: 300, height: 14)
+        ]
+        let annotation = try XCTUnwrap(
+            PDFHighlightAnnotationFactory.makeUnderline(
+                lineRects: rects,
+                userName: "__fu",
+                contents: "free:underline"
+            )
+        )
+        page.addAnnotation(annotation)
+
+        XCTAssertEqual(page.annotations.filter { $0.userName == "__fu" }.count, 1)
+        XCTAssertEqual(PDFHighlightAnnotationFactory.lineRects(from: annotation).count, 3)
+    }
 }
 
 final class AnnotationBoundsCodecTests: XCTestCase {

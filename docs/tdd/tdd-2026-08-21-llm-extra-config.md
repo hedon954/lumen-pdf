@@ -9,6 +9,7 @@ predecessor:
 successor:
   - tdd/tdd-2026-08-24-codebase-simplification.md
   - tdd/tdd-2026-08-24-llm-provider-other.md
+  - tdd/tdd-2026-11-23-reader-context-viewport.md
 related:
   - tdd/tdd-2026-08-21-llm-call-log-http-request.md
 ---

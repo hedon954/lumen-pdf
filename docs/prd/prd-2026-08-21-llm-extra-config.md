@@ -9,6 +9,7 @@ predecessor:
 successor:
   - prd/prd-2026-08-24-codebase-simplification.md
   - prd/prd-2026-08-24-llm-provider-other.md
+  - prd/prd-2026-11-23-reader-context-viewport.md
 related:
   - prd/prd-2026-08-21-llm-call-log-http-request.md
 ---
@@ -41,7 +42,7 @@ related:
 
 ### F1b — JSON 编辑器
 
-- Extra Config 使用内置轻量 JSON 编辑器：键、字符串、数字、`true`/`false`/`null` 与括号用不同颜色；左侧行号，当前行高亮。
+- Extra Config 使用内置轻量 JSON 编辑器：键、字符串、数字、`true`/`false`/`null` 与括号用不同颜色；左侧行号，当前行高亮。后续修订：当前行高亮与该行文字对齐，见 [prd-2026-11-23-reader-context-viewport.md](prd-2026-11-23-reader-context-viewport.md)。
 - 回车按当前括号层级插入缩进；若光标后紧跟 `}` / `]`，同时把闭合括号放到下一行。输入过程中不整段重排、不排序键。
 - 工具栏画笔才会把合法 JSON 格式化（缩进、键排序）。失焦或保存不得改写正在编辑的文本排版。
 - 不合法时保持原文，方便继续改。

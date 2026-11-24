@@ -24,10 +24,11 @@ enum NoteAnchorCatalog {
         var requests = saved
         for page in visiblePages {
             let pageIndex = document.index(for: page)
+            var freeGroups: [[CGRect]] = []
             for annotation in page.annotations where annotation.userName == "__fu" {
                 let rects = PDFHighlightAnnotationFactory.lineRects(from: annotation)
-                let markup = PDFPageMarkup(pageIndex: pageIndex, lineRects: rects, text: "")
                 guard !rects.isEmpty else { continue }
+                let markup = PDFPageMarkup(pageIndex: pageIndex, lineRects: rects, text: "")
                 let overlapsSaved = saved.contains { request in
                     guard request.pageIndex == pageIndex else { return false }
                     let existing = PDFPageMarkup(
@@ -37,6 +38,10 @@ enum NoteAnchorCatalog {
                     return UnderlineNoteMergePolicy.markups([markup], overlap: [existing])
                 }
                 guard !overlapsSaved else { continue }
+                freeGroups.append(rects)
+            }
+            for group in NoteAnchorGrouping.clustered(freeGroups) {
+                let markup = PDFPageMarkup(pageIndex: pageIndex, lineRects: group, text: "")
                 requests.append(NoteAnchorRequest(
                     id: "underline-note|\(pageIndex)|\(markup.boundsStr)", noteId: "",
                     pageIndex: pageIndex, boundsStr: markup.boundsStr

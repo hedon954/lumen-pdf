@@ -8,6 +8,7 @@ successor:
   - prd/prd-2026-07-13-v1016-reader-selection-overlays.md
   - prd/prd-2026-08-20-note-autosave-overlay-stability.md
   - prd/prd-2026-09-01-native-translation-popover.md
+  - prd/prd-2026-11-23-reader-context-viewport.md
 ---
 
 # LumenPDF — 阅读浮层与划线回顾优化 PRD
@@ -102,7 +103,7 @@ v1.0.15 统一阅读页中的窗口型浮层体验。翻译、添加/追加笔�
 ### F5 — 已有笔记图标与回顾
 
 - 已有笔记划线在原文附近显示轻量 `note.text` 图标。
-- 多行划线优先把图标放在最后一行末端，不覆盖正文主体。
+- 多行划线优先把图标放在最后一行末端，不覆盖正文主体。后续修订：一次连续划线只有这一个按钮，旧的按行标注也合并成一个入口，见 [prd-2026-11-23-reader-context-viewport.md](prd-2026-11-23-reader-context-viewport.md)。
 - 同一选区的多条笔记合并为一个入口，并在回顾浮层中按创建时间展示。
 - 回顾浮层展示原文、笔记内容、创建时间、关闭操作和“打开右侧笔记”。
 - 保存、追加或删除笔记后，图标状态及时刷新。

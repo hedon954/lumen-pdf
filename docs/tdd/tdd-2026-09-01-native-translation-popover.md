@@ -14,6 +14,7 @@ predecessor:
   - tdd/tdd-2026-08-25-reader-overlay-shortcuts-cross-page-notes.md
 successor:
   - tdd/tdd-2026-09-10-reader-open-note-popover.md
+  - tdd/tdd-2026-11-23-reader-context-viewport.md
 ---
 
 # LumenPDF — Look Up 式翻译浮窗 TDD

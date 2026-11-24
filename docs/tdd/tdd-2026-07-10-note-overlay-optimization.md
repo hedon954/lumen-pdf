@@ -8,6 +8,7 @@ successor:
   - tdd/tdd-2026-07-13-v1016-reader-selection-overlays.md
   - tdd/tdd-2026-08-20-note-autosave-overlay-stability.md
   - tdd/tdd-2026-09-01-native-translation-popover.md
+  - tdd/tdd-2026-11-23-reader-context-viewport.md
 ---
 
 # LumenPDF — 阅读浮层与划线回顾优化 TDD

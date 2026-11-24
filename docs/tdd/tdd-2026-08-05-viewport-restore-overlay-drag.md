@@ -7,6 +7,7 @@ predecessor:
 successor:
   - tdd/tdd-2026-08-09-selection-overlay-placement.md
   - tdd/tdd-2026-09-01-native-translation-popover.md
+  - tdd/tdd-2026-11-23-reader-context-viewport.md
 ---
 
 # LumenPDF — 阅读位置恢复与浮窗拖动 TDD

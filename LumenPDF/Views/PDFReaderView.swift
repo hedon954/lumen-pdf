@@ -33,6 +33,10 @@ struct PDFReaderView: View {
                         scrollOffset: offset
                     )
                 },
+                onVisibleTopChanged: { page, topY in
+                    guard document.filePath == appState.selectedDocument?.filePath else { return }
+                    appState.updateOutlineReadingPosition(page: page, topY: topY)
+                },
                 onTextSelected: { selection in
                     guard !selection.word.isEmpty else { return }
                     readingPopoverModel.dismiss()

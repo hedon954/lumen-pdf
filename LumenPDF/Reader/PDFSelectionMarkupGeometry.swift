@@ -335,6 +335,26 @@ enum PDFSelectionMarkupGeometry {
         return markups
     }
 
+    /// Sentence around a selection, taken from the page's visible lines.
+    static func contextSentence(
+        around selection: PDFSelection,
+        on page: PDFPage?,
+        selectedText: String
+    ) -> String? {
+        guard let page else { return nil }
+        let bounds = page.bounds(for: .cropBox)
+        let lines = allTextLines(on: page, bounds: bounds)
+        let selectionBounds = selection.bounds(for: page)
+        let pageArea = bounds.width * bounds.height
+        let selectionArea = selectionBounds.width * selectionBounds.height
+        let rect = pageArea > 0 && selectionArea / pageArea < 0.5 ? selectionBounds : .zero
+        return ReadingSentenceContext.extract(
+            lines: lines,
+            selectionRect: rect,
+            selectedText: selectedText
+        )
+    }
+
     private static func textLayouts(
         around pages: [PDFPage],
         in document: PDFDocument

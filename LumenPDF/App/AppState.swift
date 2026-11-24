@@ -31,6 +31,7 @@ final class AppState: ObservableObject {
                 currentScrollOffset = 0
                 totalPages = 0
             }
+            outlineReadingPosition = nil
             loadKitDocument()
             refreshVocabulary()
             refreshNotes()
@@ -50,8 +51,10 @@ final class AppState: ObservableObject {
 
     /// PDFKit document object – used for TOC sidebar.
     @Published var kitDocument: PDFKit.PDFDocument?
-    /// Current page index (0-based), updated on page change for TOC highlight.
+    /// Current page index (0-based), updated on page change for the toolbar and TOC fallback.
     @Published var currentPageIndex: Int = 0
+    /// Visible top of the PDF page. The outline uses this, not only the page index.
+    @Published var outlineReadingPosition: OutlineReadingPosition?
     /// Normalized vertical scroll (0…1), kept in sync with saves — must not use stale `PdfDocument` after scroll.
     @Published var currentScrollOffset: Double = 0
     /// Total page count of the currently open document (0 = unknown).
@@ -341,6 +344,12 @@ final class AppState: ObservableObject {
         currentPageIndex = Int(page)
         currentScrollOffset = scrollOffset
         // Do not refreshLibrary() here — it is expensive and can fight with PDF restore.
+    }
+
+    func updateOutlineReadingPosition(page: Int, topY: Double) {
+        let next = OutlineReadingPosition(pageIndex: page, topY: topY)
+        guard outlineReadingPosition != next else { return }
+        outlineReadingPosition = next
     }
 
     // MARK: - Private

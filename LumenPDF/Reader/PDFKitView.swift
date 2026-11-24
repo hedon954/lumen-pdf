@@ -16,11 +16,17 @@ enum TranslationSelectionEmphasisGeometry {
     }
 }
 
-/// Draws a transient Look Up-style selection above PDFKit without creating a
-/// persisted PDF annotation. Its owner is `PDFKitView.Coordinator`.
+/// Transient Preview-style highlighter over the selected words.
+///
+/// Each line is its own view filled with Preview's yellow and composited with
+/// multiply, so the paper turns yellow and the glyphs stay black. The view is
+/// not a PDF annotation and does not accept clicks. Its owner is
+/// `PDFKitView.Coordinator`.
 private final class TranslationSelectionEmphasisView: NSView {
     private weak var pdfView: PDFView?
     private var markups: [PDFPageMarkup] = []
+    private var lineViews: [NSView] = []
+    private var isLayingOutHighlights = false
 
     init(pdfView: PDFView) {
         self.pdfView = pdfView
@@ -36,20 +42,30 @@ private final class TranslationSelectionEmphasisView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     func update(markups: [PDFPageMarkup]) {
-        if self.markups != markups {
-            self.markups = markups
-        }
-        needsDisplay = true
+        self.markups = markups
+        layoutHighlights()
     }
 
-    override func draw(_ dirtyRect: NSRect) {
-        guard let pdfView,
-              let document = pdfView.document,
-              let context = NSGraphicsContext.current?.cgContext else { return }
+    func refresh() {
+        layoutHighlights()
+    }
 
-        let fillColor = NSColor.systemYellow.withAlphaComponent(0.82).cgColor
-        let shadowColor = NSColor.black.withAlphaComponent(0.24).cgColor
+    override func layout() {
+        super.layout()
+        layoutHighlights()
+    }
 
+    private func layoutHighlights() {
+        guard !isLayingOutHighlights else { return }
+        isLayingOutHighlights = true
+        defer { isLayingOutHighlights = false }
+
+        guard let pdfView, let document = pdfView.document else {
+            removeLineViews()
+            return
+        }
+
+        var frames: [CGRect] = []
         for markup in markups {
             guard let page = document.page(at: markup.pageIndex) else { continue }
             for lineRect in markup.lineRects where !lineRect.isEmpty && lineRect != .zero {
@@ -57,28 +73,36 @@ private final class TranslationSelectionEmphasisView: NSView {
                 let rect = TranslationSelectionEmphasisGeometry.highlightRect(
                     for: convert(rectInPDFView, from: pdfView)
                 )
-                guard rect.intersects(bounds), rect.intersects(dirtyRect) else { continue }
-
-                context.saveGState()
-                context.setBlendMode(.normal)
-                context.setShadow(
-                    offset: CGSize(width: 0, height: -1),
-                    blur: 2.5,
-                    color: shadowColor
-                )
-                context.setFillColor(fillColor)
-                context.addPath(
-                    CGPath(
-                        roundedRect: rect,
-                        cornerWidth: 1.5,
-                        cornerHeight: 1.5,
-                        transform: nil
-                    )
-                )
-                context.fillPath()
-                context.restoreGState()
+                if rect.intersects(bounds) {
+                    frames.append(rect)
+                }
             }
         }
+
+        while lineViews.count < frames.count {
+            lineViews.append(makeLineView())
+        }
+        while lineViews.count > frames.count {
+            lineViews.removeLast().removeFromSuperview()
+        }
+        for (lineView, frame) in zip(lineViews, frames) where lineView.frame != frame {
+            lineView.frame = frame
+        }
+    }
+
+    private func makeLineView() -> NSView {
+        let lineView = NSView(frame: .zero)
+        lineView.wantsLayer = true
+        lineView.layer?.backgroundColor = PDFHighlightAnnotationFactory.nativeHighlightColor.cgColor
+        lineView.layer?.compositingFilter = "multiplyBlendMode"
+        lineView.layer?.cornerRadius = 1
+        addSubview(lineView)
+        return lineView
+    }
+
+    private func removeLineViews() {
+        lineViews.forEach { $0.removeFromSuperview() }
+        lineViews.removeAll()
     }
 }
 
@@ -125,6 +149,7 @@ struct PDFKitView: NSViewRepresentable {
     let savedPage: Int
     let savedScrollOffset: Double
     let onPageChange: (Int, Double) -> Void
+    let onVisibleTopChanged: (Int, Double) -> Void
     /// word, sentence, overallBounds, perLineBoundsStr, pageIndex, menuAnchor, selectionAnchorRect, pageMarkups
     let onTextSelected: (SelectionInfo) -> Void
     let onClearSelection: () -> Void
@@ -208,7 +233,10 @@ struct PDFKitView: NSViewRepresentable {
         context.coordinator.currentFilePath = filePath
         let storedViewport = ReadingRestorationStore.shared.viewport(for: filePath)
         context.coordinator.beginViewportRestore(
-            pageIndex: storedViewport?.pageIndex ?? savedPage,
+            pageIndex: ReadingViewportCommit.restorePageIndex(
+                viewport: storedViewport,
+                savedPage: savedPage
+            ),
             scrollOffset: savedScrollOffset,
             viewportState: storedViewport
         )
@@ -291,6 +319,11 @@ struct PDFKitView: NSViewRepresentable {
         private var isApplyingLayoutTransitionViewport = false
         /// While non-nil, ignore spurious `pageChanged` / scroll-save until we reach this page (document load).
         var pendingRestoreTargetPage: Int?
+        /// Last time a scroll, key, or scrollbar drag moved the viewport. Momentum shortly
+        /// after that still counts as the user; a later close-time page jump does not.
+        private var lastUserScrollAt: TimeInterval = 0
+        private var lastPublishedOutlinePage: Int = -1
+        private var lastPublishedOutlineY: Double = .nan
         private var pendingRestoreTimeoutWorkItem: DispatchWorkItem?
         /// Reading position is re-applied on this schedule after the document is assigned,
         /// because PDFKit keeps re-laying out until the restored window frame and split widths
@@ -335,6 +368,7 @@ struct PDFKitView: NSViewRepresentable {
         func tearDown() {
             guard !didTearDown else { return }
             didTearDown = true
+            publishCommittedPage()
             clearTranslationSelection()
             annotationSaveDebounce?.invalidate()
             annotationSaveDebounce = nil
@@ -532,11 +566,71 @@ struct PDFKitView: NSViewRepresentable {
         }
 
         func persistViewportState() {
+            noteStableViewportFromLiveView()
+            guard !currentFilePath.isEmpty, let viewport = lastViewportState else { return }
+            ReadingRestorationStore.shared.updateViewport(viewport, for: currentFilePath)
+            if let page = ReadingViewportCommit.pageIndex(of: viewport) {
+                lastKnownPageIndex = page
+            }
+            lastScrollOffset = viewport.verticalOffset
+        }
+
+        /// Writes the stable viewport and the SQLite page for the document this view owns.
+        private func publishCommittedPage() {
+            scrollDebounce?.invalidate()
+            scrollDebounce = nil
+            persistViewportState()
+            guard !currentFilePath.isEmpty else { return }
+            parent.onPageChange(lastKnownPageIndex, lastScrollOffset)
+        }
+
+        private func noteStableViewportFromLiveView() {
             guard let pdfView,
-                  !currentFilePath.isEmpty,
-                  let state = Self.captureViewportState(from: pdfView) else { return }
-            lastViewportState = state
-            ReadingRestorationStore.shared.updateViewport(state, for: currentFilePath)
+                  let live = Self.captureViewportState(from: pdfView) else { return }
+            let flags = viewportUpdateFlags()
+            lastViewportState = ReadingViewportCommit.accepting(
+                stable: lastViewportState,
+                live: live,
+                userScrollEvent: flags.userScrollEvent,
+                recentUserScroll: flags.recentUserScroll
+            )
+            publishOutlinePositionIfNeeded()
+        }
+
+        private func publishOutlinePositionIfNeeded() {
+            guard let pdfView,
+                  let scrollView = Self.scrollView(for: pdfView),
+                  let documentView = scrollView.documentView,
+                  let focus = Self.capturePagePoint(
+                      ReaderViewportGeometry.outlineFocusPoint(
+                          in: scrollView.documentVisibleRect,
+                          isDocumentFlipped: documentView.isFlipped
+                      ),
+                      from: pdfView,
+                      documentView: documentView
+                  ) else { return }
+            if focus.pageIndex == lastPublishedOutlinePage,
+               abs(focus.y - lastPublishedOutlineY) < 1 {
+                return
+            }
+            lastPublishedOutlinePage = focus.pageIndex
+            lastPublishedOutlineY = focus.y
+            parent.onVisibleTopChanged(focus.pageIndex, focus.y)
+        }
+
+        private func viewportUpdateFlags() -> (userScrollEvent: Bool, recentUserScroll: Bool) {
+            let now = ProcessInfo.processInfo.systemUptime
+            var userScrollEvent = false
+            if let type = NSApp.currentEvent?.type {
+                switch type {
+                case .scrollWheel, .magnify, .swipe, .keyDown, .leftMouseDragged:
+                    userScrollEvent = true
+                    lastUserScrollAt = now
+                default:
+                    break
+                }
+            }
+            return (userScrollEvent, now - lastUserScrollAt < 1)
         }
 
         private func finishViewportRestore(in pdfView: PDFView) {
@@ -544,14 +638,8 @@ struct PDFKitView: NSViewRepresentable {
             pendingRestoreTargetPage = nil
             isRestoringViewport = false
 
-            guard let document = pdfView.document,
-                  let currentPage = pdfView.currentPage else { return }
-            let pageIndex = document.index(for: currentPage)
-            let scrollOffset = scrollOffset(for: pdfView)
-            lastKnownPageIndex = pageIndex
-            lastScrollOffset = scrollOffset
-            persistViewportState()
-            parent.onPageChange(pageIndex, scrollOffset)
+            guard pdfView.document != nil, pdfView.currentPage != nil else { return }
+            publishCommittedPage()
             publishNoteAnchors()
         }
 
@@ -596,16 +684,17 @@ struct PDFKitView: NSViewRepresentable {
                   documentView.bounds.height > 1 else { return nil }
             let maxX = max(0, documentView.bounds.width - visibleRect.width)
             let maxY = max(0, documentView.bounds.height - visibleRect.height)
-            let pageIndex = pdfView.currentPage.flatMap { page in
+            let anchor = captureAnchor(from: pdfView, scrollView: scrollView, documentView: documentView)
+            let currentPageIndex = pdfView.currentPage.flatMap { page in
                 pdfView.document?.index(for: page)
             }
             return ReadingRestorationState.PDFViewport(
-                pageIndex: pageIndex,
+                pageIndex: anchor?.pageIndex ?? currentPageIndex,
                 autoScales: pdfView.autoScales,
                 scaleFactor: Double(pdfView.scaleFactor),
                 horizontalOffset: maxX > 0 ? Double(visibleRect.minX / maxX) : 0,
                 verticalOffset: maxY > 0 ? Double(visibleRect.minY / maxY) : 0,
-                anchor: captureAnchor(from: pdfView, scrollView: scrollView, documentView: documentView)
+                anchor: anchor
             )
         }
 
@@ -619,11 +708,20 @@ struct PDFKitView: NSViewRepresentable {
                 of: scrollView.documentVisibleRect,
                 isDocumentFlipped: documentView.isFlipped
             )
-            let topLeftInPDFView = pdfView.convert(topLeftInDocument, from: documentView)
-            guard let page = pdfView.page(for: topLeftInPDFView, nearest: true) else { return nil }
+            return capturePagePoint(topLeftInDocument, from: pdfView, documentView: documentView)
+        }
+
+        private static func capturePagePoint(
+            _ pointInDocument: CGPoint,
+            from pdfView: PDFView,
+            documentView: NSView
+        ) -> ReadingRestorationState.PDFViewport.PageAnchor? {
+            guard let document = pdfView.document else { return nil }
+            let pointInPDFView = pdfView.convert(pointInDocument, from: documentView)
+            guard let page = pdfView.page(for: pointInPDFView, nearest: true) else { return nil }
             let pageIndex = document.index(for: page)
             guard pageIndex != NSNotFound else { return nil }
-            let pointInPage = pdfView.convert(topLeftInPDFView, to: page)
+            let pointInPage = pdfView.convert(pointInPDFView, to: page)
             let anchor = ReadingRestorationState.PDFViewport.PageAnchor(
                 pageIndex: pageIndex,
                 x: Double(pointInPage.x),
@@ -1242,9 +1340,9 @@ struct PDFKitView: NSViewRepresentable {
                     )
                 }
                 if let selection = Self.combinedSelection(selections, in: document) {
-                    // The custom emphasis view supplies the native yellow lift. Keep
-                    // PDFKit's real currentSelection for semantics without drawing a
-                    // second blue/gray selection underneath it.
+                    // Preview's yellow is drawn by the emphasis view. Keep PDFKit's
+                    // real currentSelection for semantics without a second blue or
+                    // gray selection underneath it.
                     selection.color = .clear
                     pdfView.setCurrentSelection(selection, animate: false)
                 }
@@ -1275,7 +1373,7 @@ struct PDFKitView: NSViewRepresentable {
         }
 
         private func refreshTranslationSelectionEmphasis() {
-            translationSelectionView?.needsDisplay = true
+            translationSelectionView?.refresh()
         }
 
         // MARK: Page jump
@@ -1403,14 +1501,8 @@ struct PDFKitView: NSViewRepresentable {
             layoutTransitionViewport = nil
             layoutTransitionMode = nil
 
-            guard let currentPage = pdfView.currentPage,
-                  let document = pdfView.document else { return }
-            let pageIndex = document.index(for: currentPage)
-            let offset = scrollOffset(for: pdfView)
-            lastKnownPageIndex = pageIndex
-            lastScrollOffset = offset
-            persistViewportState()
-            parent.onPageChange(pageIndex, offset)
+            guard pdfView.currentPage != nil, pdfView.document != nil else { return }
+            publishCommittedPage()
             publishNoteAnchors()
         }
 
@@ -1547,16 +1639,16 @@ struct PDFKitView: NSViewRepresentable {
             }
 
             if isRestoringViewport, let target = pendingRestoreTargetPage {
-                if pageIndex != target { return }
+                if pageIndex != target {
+                    guard viewportUpdateFlags().userScrollEvent else { return }
+                    finishViewportRestore(in: pdfView)
+                    return
+                }
                 lastKnownPageIndex = pageIndex
                 return
             }
 
-            let offset = scrollOffset(for: pdfView)
-            lastKnownPageIndex = pageIndex
-            lastScrollOffset = offset
-            persistViewportState()
-            parent.onPageChange(pageIndex, offset)
+            publishCommittedPage()
             publishNoteAnchors()
         }
 
@@ -1573,6 +1665,7 @@ struct PDFKitView: NSViewRepresentable {
             }
             publishNoteAnchors()
             guard !isRestoringViewport else { return }
+            noteStableViewportFromLiveView()
             scheduleViewportPersistence()
         }
 
@@ -1593,6 +1686,7 @@ struct PDFKitView: NSViewRepresentable {
                 scheduleRestorePassAfterLayoutChange()
                 return
             }
+            noteStableViewportFromLiveView()
             scheduleViewportPersistence()
         }
 
@@ -1607,22 +1701,20 @@ struct PDFKitView: NSViewRepresentable {
         /// The reader belongs to the user as soon as they scroll: stop re-applying the saved
         /// position and start recording the new one.
         @objc func userWillStartLiveScroll(_ notification: Notification) {
+            switch NSApp.currentEvent?.type {
+            case .scrollWheel, .magnify, .swipe, .leftMouseDown, .leftMouseDragged:
+                lastUserScrollAt = ProcessInfo.processInfo.systemUptime
+            default:
+                return
+            }
             guard isRestoringViewport, let pdfView else { return }
             finishViewportRestore(in: pdfView)
         }
 
         private func scheduleViewportPersistence() {
             scrollDebounce?.invalidate()
-            scrollDebounce = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
-                guard let self, let pdfView = self.pdfView,
-                      let currentPage = pdfView.currentPage,
-                      let doc = pdfView.document else { return }
-                let pageIndex = doc.index(for: currentPage)
-                let offset = self.scrollOffset(for: pdfView)
-                self.lastKnownPageIndex = pageIndex
-                self.lastScrollOffset = offset
-                self.persistViewportState()
-                self.parent.onPageChange(pageIndex, offset)
+            scrollDebounce = Timer.scheduledTimer(withTimeInterval: 0.35, repeats: false) { [weak self] _ in
+                self?.publishCommittedPage()
             }
         }
 
@@ -1630,20 +1722,8 @@ struct PDFKitView: NSViewRepresentable {
         @objc func windowWillMiniaturize(_ notification: Notification) {
             // Verify this notification belongs to the window that contains our PDFView.
             guard let notifWindow = notification.object as? NSWindow,
-                  let pdfView, pdfView.window === notifWindow,
-                  let currentPage = pdfView.currentPage,
-                  let doc = pdfView.document else { return }
-            scrollDebounce?.invalidate()
-            let pageIndex = doc.index(for: currentPage)
-            let offset = scrollOffset(for: pdfView)
-            lastKnownPageIndex = pageIndex
-            lastScrollOffset = offset
-            persistViewportState()
-            try? ReaderPersistence.shared.saveReadingPosition(
-                filePath: currentFilePath,
-                page: UInt32(pageIndex),
-                scrollOffset: offset
-            )
+                  let pdfView, pdfView.window === notifWindow else { return }
+            publishCommittedPage()
         }
 
         /// PDFKit resets scroll when a window is un-minimized; restore page + vertical offset.
@@ -1673,32 +1753,16 @@ struct PDFKitView: NSViewRepresentable {
             guard let filePath = notification.userInfo?["filePath"] as? String,
                   filePath == currentFilePath,
                   !isRestoringViewport,
-                  let pdfView,
-                  let currentPage = pdfView.currentPage,
-                  let doc = pdfView.document else { return }
-            scrollDebounce?.invalidate()
-            let pageIndex = doc.index(for: currentPage)
-            let offset = scrollOffset(for: pdfView)
-            lastScrollOffset = offset
-            persistViewportState()
-            parent.onPageChange(pageIndex, offset)
+                  pdfView != nil else { return }
+            publishCommittedPage()
         }
 
         /// Called just before the app process terminates — saves position synchronously.
         @objc func appWillTerminate(_ notification: Notification) {
-            guard let pdfView,
-                  let currentPage = pdfView.currentPage,
-                  let doc = pdfView.document else { return }
             scrollDebounce?.invalidate()
             annotationSaveDebounce?.invalidate()
             persistFreeMarkups()
-            persistViewportState()
-            let pageIndex = doc.index(for: currentPage)
-            try? ReaderPersistence.shared.saveReadingPosition(
-                filePath: currentFilePath,
-                page: UInt32(pageIndex),
-                scrollOffset: scrollOffset(for: pdfView)
-            )
+            publishCommittedPage()
         }
 
         // MARK: Text selection
@@ -1745,11 +1809,21 @@ struct PDFKitView: NSViewRepresentable {
                     DispatchQueue.main.async { self.parent.onClearSelection() }
                     return
                 }
-                let sentence = PDFSelectionHeadingLeakFilter.stripEchoedHeadings(
-                    from: PDFExtractedTextCollapser.collapse(
-                        self.extractSentence(from: pdfView, containing: selectionSnapshot) ?? word
-                    )
+                let page = doc.page(at: primary.pageIndex)
+                let visual = PDFSelectionMarkupGeometry.contextSentence(
+                    around: selectionSnapshot,
+                    on: page,
+                    selectedText: word
                 )
+                let indexed = self.extractSentence(
+                    from: pdfView,
+                    containing: selectionSnapshot,
+                    pageIndex: primary.pageIndex
+                )
+                let raw = ReadingSentenceContext.prefer(visual, indexed, selectedText: word) ?? word
+                let collapsed = PDFExtractedTextCollapser.collapse(raw)
+                let stripped = PDFSelectionHeadingLeakFilter.stripEchoedHeadings(from: collapsed)
+                let sentence = ReadingSentenceContext.prefer(stripped, collapsed, selectedText: word) ?? word
                 let currentPage = doc.page(at: primary.pageIndex) ?? pdfView.currentPage
                 guard let currentPage else { return }
                 let overallBounds = primary.bounds
@@ -1867,20 +1941,27 @@ struct PDFKitView: NSViewRepresentable {
 
         // MARK: Sentence extraction
 
-        private func extractSentence(from pdfView: PDFView, containing selection: PDFSelection) -> String? {
-            guard let page = pdfView.currentPage, let pageText = page.string,
+        private func extractSentence(
+            from pdfView: PDFView,
+            containing selection: PDFSelection,
+            pageIndex: Int
+        ) -> String? {
+            guard let page = pdfView.document?.page(at: pageIndex),
+                  let pageText = page.string,
                   !pageText.isEmpty else { return nil }
             let word = (selection.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let widened = ReadingSentenceContext.widen(text: pageText, selectedText: word)
             let ns = pageText as NSString
             let selRange = selection.range(at: 0, on: page)
-            guard selRange.location != NSNotFound, selRange.length > 0 else {
-                return fallbackSentence(word: word, in: pageText)
+            let ranged: String?
+            if selRange.location != NSNotFound, selRange.length > 0, ns.length > 0 {
+                let anchor = min(selRange.location + max(0, selRange.length / 2), ns.length - 1)
+                ranged = extractFullSentence(from: ns, anchorUTF16: anchor)
+                    ?? fallbackSentence(word: word, in: pageText)
+            } else {
+                ranged = fallbackSentence(word: word, in: pageText)
             }
-            let anchor = min(selRange.location + max(0, selRange.length / 2), ns.length - 1)
-            if let extracted = extractFullSentence(from: ns, anchorUTF16: anchor) {
-                return extracted
-            }
-            return fallbackSentence(word: word, in: pageText)
+            return ReadingSentenceContext.prefer(ranged, widened, selectedText: word)
         }
 
         private func extractFullSentence(from ns: NSString, anchorUTF16: Int) -> String? {
@@ -2023,17 +2104,13 @@ struct PDFKitView: NSViewRepresentable {
                 page.addAnnotation(annotation)
                 return [annotation]
             case .underline:
-                return lineRects.compactMap { rect -> PDFAnnotation? in
-                    guard !rect.isEmpty, rect != .zero else { return nil }
-                    return makeAnnotation(
-                        bounds: rect,
-                        type: .underline,
-                        color: color,
-                        tag: tag,
-                        page: page,
-                        contents: contents
-                    )
-                }
+                guard let annotation = PDFHighlightAnnotationFactory.makeUnderline(
+                    lineRects: lineRects,
+                    userName: tag,
+                    contents: contents
+                ) else { return [] }
+                page.addAnnotation(annotation)
+                return [annotation]
             default:
                 return []
             }
