@@ -122,6 +122,7 @@ if [[ "$ARCH_MODE" == "host" ]]; then
     ensure_rust_target "$HOST_TARGET"
     cargo build --release --target "$HOST_TARGET"
     BUILT_DYLIB="$TARGET_DIR/$HOST_TARGET/release/liblumen_pdf_core.dylib"
+    BINDGEN_LIBRARY="$BUILT_DYLIB"
 else
     ensure_rust_target aarch64-apple-darwin
     ensure_rust_target x86_64-apple-darwin
@@ -135,6 +136,8 @@ else
     else
         lipo -create "$ARM_DYLIB" "$X86_DYLIB" -output "$BUILT_DYLIB"
     fi
+    # uniffi-bindgen 不能读 lipo 之后的双架构库，否则会报 Unexpected metadata code。
+    BINDGEN_LIBRARY="$ARM_DYLIB"
 fi
 
 mkdir -p "$BUILD_DIR"
@@ -159,7 +162,7 @@ if [[ "$BINDINGS_READY" == "1" ]]; then
 else
     BINDGEN_TMP="$(mktemp -d)"
     cargo run --bin uniffi-bindgen generate \
-        --library "$STAGE_DYLIB" \
+        --library "$BINDGEN_LIBRARY" \
         --language swift \
         --out-dir "$BINDGEN_TMP"
     CHANGED=0

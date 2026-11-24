@@ -20,7 +20,7 @@ predecessor:
 ## 关键规则
 
 - 本机升级只 `cargo build --release` 当前架构。发布才编 `aarch64` 和 `x86_64`；两份产物都不比已有 universal dylib 新时跳过 `lipo`。
-- UniFFI 用 dylib 的 sha256 做戳。戳没变就不跑 bindgen。生成到临时目录，内容与 `Generated/` 相同则不覆盖，避免 Swift 增量编译失效。
+- UniFFI 用将要嵌入应用的 dylib 的 sha256 做戳。戳没变就不跑 bindgen。生成时只读单架构库：本机用当前架构，发布用 `aarch64`，不读 `lipo` 之后的双架构文件。生成到临时目录，内容与 `Generated/` 相同则不覆盖，避免 Swift 增量编译失效。
 - `xcodegen` 之后若 `project.pbxproj` 字节相同，把修改时间改回去。
 - 本机升级用 `xcodebuild build`，`ONLY_ACTIVE_ARCH=YES`，DerivedData 固定在 `build/DerivedData`。发布仍用 `xcodebuild archive`。
 - 组装 `.app` 前对比未签名产物和 dylib 的哈希。哈希相同且已有签名通过验证时，不重新拷贝、不重新签名。
