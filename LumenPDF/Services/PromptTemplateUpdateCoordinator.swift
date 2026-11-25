@@ -57,7 +57,12 @@ private enum PromptTemplateComponent: String, CaseIterable {
                 PromptTemplateDefaults.legacyWordEnglishWithEmbeddedEtymology
             ]
         case .sentenceUser:
-            return [PromptTemplateDefaults.sentenceChinese, PromptTemplateDefaults.sentenceEnglish]
+            return [
+                PromptTemplateDefaults.sentenceChinese,
+                PromptTemplateDefaults.sentenceEnglish,
+                PromptTemplateDefaults.legacySentenceChinese,
+                PromptTemplateDefaults.legacySentenceEnglish
+            ]
         case .explanationUser:
             return [
                 PromptTemplateDefaults.explanationChinese,

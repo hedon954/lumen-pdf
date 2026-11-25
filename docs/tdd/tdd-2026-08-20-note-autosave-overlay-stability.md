@@ -9,6 +9,7 @@ predecessor:
 successor:
   - tdd/tdd-2026-09-10-reader-open-note-popover.md
   - tdd/tdd-2026-09-01-native-translation-popover.md
+  - tdd/tdd-2026-11-25-notes-context-grammar.md
 ---
 
 # LumenPDF — 笔记自动保存与翻译浮窗位置稳定 TDD
@@ -21,7 +22,7 @@ successor:
 
 | 模块 | 职责 |
 | --- | --- |
-| `AutoSavingNoteEditor.swift` | 多行输入、防抖、失焦/消失时 flush、「保存成功/失败」。 |
+| `AutoSavingNoteEditor.swift` | 多行输入、防抖、失焦/消失时 flush、「保存成功/失败」。后续修订：未聚焦时改由 `MarkdownText` 展示，见 [tdd-2026-11-25-notes-context-grammar.md](tdd-2026-11-25-notes-context-grammar.md)。 |
 | `NoteAutoSavePolicy` | 纯函数：trim、空值跳过、与上次相同则不写。 |
 | `NoteTextList.replacingItem` | 只替换目标下标，保持其余条目。 |
 | `AppState.saveNoteItem` | 查当前 raw → 替换 → `ReaderPersistence.updateNote` → `refreshNotes`。 |

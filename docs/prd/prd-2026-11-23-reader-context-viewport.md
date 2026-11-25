@@ -10,6 +10,7 @@ predecessor:
   - prd/prd-2026-09-01-native-translation-popover.md
 successor:
   - prd/prd-2026-11-24-note-overlay-update.md
+  - prd/prd-2026-11-25-notes-context-grammar.md
 ---
 
 # LumenPDF — 划线入口、选词语境与阅读位置 PRD
@@ -35,7 +36,7 @@ successor:
 
 - 单词翻译的原文语境取自该词所在页面上的可见句子，而不是只发送单词本身。
 - 这一句前后还有紧挨着的文字，且该句几乎只有被选中的词，或句子从该词开头时，原文语境带上相邻句子。
-- 离正文有明显间隔的标题不算进这句语境。
+- 离正文有明显间隔的标题不算进这句语境。后续修订：同一句的句首词必须保留，见 [prd-2026-11-25-notes-context-grammar.md](prd-2026-11-25-notes-context-grammar.md)。
 
 ### F3 — 关闭后回到最后阅读的位置
 
@@ -57,7 +58,7 @@ successor:
 ### F6 — 翻译选区标记
 
 - 打开翻译浮窗时，选中的文字用和 macOS 预览相同的荧光笔：系统黄色，正片叠底，纸变黄、字保持黑色。
-- 不画成带阴影的实色黄块。
+- 不画成带阴影的实色黄块。后续修订：临时选区改为与已保存黄高亮不同的浮起外观，见 [prd-2026-11-25-notes-context-grammar.md](prd-2026-11-25-notes-context-grammar.md)。
 - 关闭翻译后标记消失，不写入 PDF。
 
 ## 4. 非目标

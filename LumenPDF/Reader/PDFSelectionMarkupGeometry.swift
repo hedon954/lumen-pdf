@@ -212,6 +212,7 @@ enum PDFSelectionHeadingLeakFilter {
         for count in 1...maxPrefix {
             let prefix = words[0..<count].joined(separator: " ")
             let remainder = words[count...].joined(separator: " ")
+            guard remainder.first?.isUppercase == true else { continue }
             let normalizedPrefix = PDFSelectionTextMatcher.normalize(prefix)
             guard normalizedPrefix.count >= minimumEchoLength, isHeadingLike(prefix) else {
                 continue
@@ -336,6 +337,10 @@ enum PDFSelectionMarkupGeometry {
     }
 
     /// Sentence around a selection, taken from the page's visible lines.
+    static func contextLines(on page: PDFPage) -> [PDFTextLine] {
+        allTextLines(on: page, bounds: page.bounds(for: .cropBox))
+    }
+
     static func contextSentence(
         around selection: PDFSelection,
         on page: PDFPage?,

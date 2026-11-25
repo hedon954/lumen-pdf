@@ -292,9 +292,17 @@ struct TranslationBubble: View {
         if !result.sentenceBreakdown.isEmpty {
             Divider()
             TranslationPopoverDetailSection("拆解") {
-                VStack(alignment: .leading, spacing: 14) {
-                    ForEach(Array(result.sentenceBreakdown.enumerated()), id: \.offset) { index, chunk in
-                        breakdownChunkView(index: index + 1, chunk: chunk)
+                if GrammarBreakdownLayout.hasNestedStructure(result.sentenceBreakdown) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(Array(result.sentenceBreakdown.enumerated()), id: \.offset) { _, chunk in
+                            GrammarTreeBlock(chunk: chunk, depth: 0)
+                        }
+                    }
+                } else {
+                    VStack(alignment: .leading, spacing: 14) {
+                        ForEach(Array(result.sentenceBreakdown.enumerated()), id: \.offset) { index, chunk in
+                            breakdownChunkView(index: index + 1, chunk: chunk)
+                        }
                     }
                 }
             }

@@ -464,7 +464,7 @@ enum PromptTemplateDefaults {
         wordSystemEnglish, sentenceSystemEnglish, explanationSystemEnglish
     ]
 
-    static let templateRevision = 2
+    static let templateRevision = 3
 
     static let legacyExplanationSystem = "You are a professional reading tutor. Always respond with valid JSON only."
     static let legacyMarkdownExplanationSystem = "You are a professional reading tutor. Return clear Markdown/plain text only; never return JSON for explanations."
@@ -570,7 +570,7 @@ Rules:
 Return ONLY the Markdown explanation text. Do not wrap it in JSON, code fences, or quotes.
 """#
 
-    static let sentenceEnglish = #"""
+    static let legacySentenceEnglish = #"""
 You are a professional translator and language tutor. Translate the following English text to {lang} and, if it is a long or complex sentence, also break it down so the reader can understand each fragment.
 
 Text: "{sentence}"
@@ -640,7 +640,7 @@ Respond with ONLY valid JSON in this exact format:
 }
 """#
 
-    static let sentenceChinese = #"""
+    static let legacySentenceChinese = #"""
 你是专业翻译和语言导师。请将下面的英文文本翻译成{lang}；如果它是长句或复杂句，还要拆解句子，让读者理解每个片段。
 
 文本：「{sentence}」
@@ -666,6 +666,68 @@ Respond with ONLY valid JSON in this exact format:
       "translation": "<该片段的{lang}译文>",
       "explanation": "<{lang}解释>",
       "grammar": "<{lang}语法分析，或空字符串>"
+    }
+  ]
+}
+"""#
+
+    static let sentenceEnglish = #"""
+You are a professional translator and language tutor. Translate the following English text to {lang}. If it is a long or complex sentence, also return a recursive grammar tree so the reader can see how the clauses nest.
+
+Text: "{sentence}"
+
+Rules:
+1. Provide a natural, fluent translation in `translation`.
+2. Preserve meaning and tone of the original; fix OCR errors or broken words if present.
+3. SHORT / SIMPLE (≤10 words, no clauses, plain SVO) → set `breakdown` to `[]`.
+4. LONG / COMPLEX → `breakdown` is a one-element array whose node is the whole sentence. Nest clauses inside `children`. Do not return a flat list of numbered fragments.
+5. Each node has:
+   - `role`: a short {lang} name for this layer, such as 整句, 主干, 宾语, 定语从句, 状语从句.
+   - `original`: a contiguous verbatim span of the parent text. The root `original` is the whole sentence. A child's `original` must occur inside its parent.
+   - `explanation`: ONE sentence in {lang} saying what this layer does inside its parent.
+   - `children`: further complex constituents only (clauses, coordination, complements). A plain noun or simple prepositional phrase has `children: []`.
+6. Stop nesting once a part is simple. Do not split into 2–5 sibling fragments.
+
+Respond with ONLY valid JSON:
+{
+  "translation": "<full translation in {lang}>",
+  "breakdown": [
+    {
+      "role": "<{lang} role>",
+      "original": "<contiguous source span>",
+      "explanation": "<one {lang} sentence>",
+      "children": []
+    }
+  ]
+}
+"""#
+
+    static let sentenceChinese = #"""
+你是专业翻译和语言导师。请将下面的英文文本翻译成{lang}。如果它是长句或复杂句，同时返回一棵递归语法树，让读者看见从句如何套在一起。
+
+文本：「{sentence}」
+
+规则：
+1. 在 `translation` 中给出自然、流畅的译文。
+2. 保留原文含义和语气；如有 OCR 错误或断词，请静默修复。
+3. 短句或简单句（≤10 个词、无从句、普通主谓宾）把 `breakdown` 设为 `[]`。
+4. 长句或复杂句的 `breakdown` 只有一个元素，那就是整句。从句放进 `children`。不要返回互不隶属的编号片段。
+5. 每个节点包含：
+   - `role`：这一层的短名称，例如整句、主干、宾语、定语从句、状语从句。
+   - `original`：父层原文中的连续片段。根节点的 `original` 是整句。子节点的 `original` 必须出现在父节点原文里。
+   - `explanation`：用{lang}写一句话，说明这一层在父层里起什么作用。
+   - `children`：只继续拆自身仍复杂的部分（从句、并列、补语）。普通名词或简单介词短语的 `children` 为 `[]`。
+6. 简单部分就停。不要拆成 2 到 5 个并列片段。
+
+只输出符合以下格式的有效 JSON：
+{
+  "translation": "<完整{lang}译文>",
+  "breakdown": [
+    {
+      "role": "<角色>",
+      "original": "<连续原文>",
+      "explanation": "<一句{lang}说明>",
+      "children": []
     }
   ]
 }

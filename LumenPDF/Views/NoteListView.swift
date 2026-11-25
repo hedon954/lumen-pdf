@@ -128,10 +128,8 @@ struct NoteCardView: View {
             if !noteItems.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(Array(noteItems.enumerated()), id: \.offset) { index, item in
-                        AutoSavingNoteEditor(
-                            initialText: item,
-                            minLineLimit: 2,
-                            maxLineLimit: 12,
+                        ReadableNoteBody(
+                            markdown: item,
                             onSave: { text in
                                 onSaveItem(index, text)
                             }

@@ -15,6 +15,8 @@ enum NoteAutoSavePolicy {
 struct AutoSavingNoteEditor: View {
     let minLineLimit: Int
     let maxLineLimit: Int
+    let focusOnAppear: Bool
+    let onResignFocus: (() -> Void)?
     let onSave: (String, String) -> Bool
 
     @State private var text: String
@@ -28,10 +30,14 @@ struct AutoSavingNoteEditor: View {
         initialText: String,
         minLineLimit: Int = 2,
         maxLineLimit: Int = 12,
+        focusOnAppear: Bool = false,
+        onResignFocus: (() -> Void)? = nil,
         onSave: @escaping (String) -> Bool
     ) {
         self.minLineLimit = minLineLimit
         self.maxLineLimit = maxLineLimit
+        self.focusOnAppear = focusOnAppear
+        self.onResignFocus = onResignFocus
         self.onSave = { text, _ in onSave(text) }
         _text = State(initialValue: initialText)
         _lastSavedText = State(initialValue: initialText)
@@ -41,10 +47,14 @@ struct AutoSavingNoteEditor: View {
         initialText: String,
         minLineLimit: Int = 2,
         maxLineLimit: Int = 12,
+        focusOnAppear: Bool = false,
+        onResignFocus: (() -> Void)? = nil,
         onSaveWithPreviousText: @escaping (String, String) -> Bool
     ) {
         self.minLineLimit = minLineLimit
         self.maxLineLimit = maxLineLimit
+        self.focusOnAppear = focusOnAppear
+        self.onResignFocus = onResignFocus
         self.onSave = onSaveWithPreviousText
         _text = State(initialValue: initialText)
         _lastSavedText = State(initialValue: initialText)
@@ -55,8 +65,13 @@ struct AutoSavingNoteEditor: View {
             TextField("输入笔记", text: $text, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(.callout)
-                .lineLimit(minLineLimit...maxLineLimit)
+                .lineLimit(minLineLimit...max(maxLineLimit, 10_000))
                 .focused($isFocused)
+                .onExitCommand {
+                    if onResignFocus != nil {
+                        finishEditing()
+                    }
+                }
                 .padding(8)
                 .background(.background.opacity(0.72), in: RoundedRectangle(cornerRadius: 8))
                 .overlay(
@@ -82,20 +97,36 @@ struct AutoSavingNoteEditor: View {
                         .padding(.vertical, 3)
                         .background(.green.opacity(0.12), in: Capsule())
                 }
+                if onResignFocus != nil {
+                    Button("完成", action: finishEditing)
+                        .buttonStyle(.bordered)
+                        .controlSize(.mini)
+                }
             }
         }
         .onChange(of: text) { _, newValue in
             scheduleSave(newValue)
         }
+        .onAppear {
+            if focusOnAppear {
+                isFocused = true
+            }
+        }
         .onChange(of: isFocused) { _, focused in
             guard !focused else { return }
-            saveTask?.cancel()
-            persistIfNeeded(text)
+            finishEditing()
         }
         .onDisappear {
             saveTask?.cancel()
             persistIfNeeded(text)
         }
+    }
+
+    private func finishEditing() {
+        saveTask?.cancel()
+        persistIfNeeded(text)
+        isFocused = false
+        onResignFocus?()
     }
 
     private func scheduleSave(_ newValue: String) {
@@ -120,6 +151,54 @@ struct AutoSavingNoteEditor: View {
         } else {
             saveFailed = true
             didSaveSuccessfully = false
+        }
+    }
+}
+
+struct ReadableNoteBody: View {
+    let markdown: String
+    let minLineLimit: Int
+    let onSave: (String, String) -> Bool
+
+    @State private var isEditing = false
+
+    init(
+        markdown: String,
+        minLineLimit: Int = 2,
+        onSave: @escaping (String) -> Bool
+    ) {
+        self.markdown = markdown
+        self.minLineLimit = minLineLimit
+        self.onSave = { text, _ in onSave(text) }
+    }
+
+    init(
+        markdown: String,
+        minLineLimit: Int = 2,
+        onSaveWithPreviousText: @escaping (String, String) -> Bool
+    ) {
+        self.markdown = markdown
+        self.minLineLimit = minLineLimit
+        self.onSave = onSaveWithPreviousText
+    }
+
+    var body: some View {
+        if isEditing {
+            AutoSavingNoteEditor(
+                initialText: markdown,
+                minLineLimit: minLineLimit,
+                focusOnAppear: true,
+                onResignFocus: { isEditing = false },
+                onSaveWithPreviousText: onSave
+            )
+        } else {
+            Button {
+                isEditing = true
+            } label: {
+                MarkdownText(markdown: markdown)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
         }
     }
 }

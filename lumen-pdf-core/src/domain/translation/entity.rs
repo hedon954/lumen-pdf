@@ -68,11 +68,17 @@ pub struct SentenceChunk {
     pub translation: String,
     /// Why this fragment is translated this way (word choices / context).
     pub explanation: String,
+    /// One sentence on this layer's role inside its parent. Empty for old caches.
+    #[serde(default)]
+    pub role: String,
     /// Optional grammar analysis (in target language). Empty when the fragment
     /// has no grammatically noteworthy structure — UI hides this section in
     /// that case.
     #[serde(default)]
     pub grammar: String,
+    /// Nested constituents whose `original` is a contiguous span of this node.
+    #[serde(default)]
+    pub children: Vec<SentenceChunk>,
 }
 
 #[derive(Debug, Clone, Default, uniffi::Record, serde::Serialize, serde::Deserialize)]

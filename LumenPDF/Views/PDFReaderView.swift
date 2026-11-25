@@ -541,12 +541,13 @@ struct PDFReaderView: View {
 
         // Determine if this is sentence mode (multi-word selection)
         let isSentenceMode = word.split(separator: " ").count > 3 || word.count > 25
+        let analysisWord = isSentenceMode && !sentence.isEmpty ? sentence : word
 
         // Resolve the "already saved" state up front (synchronously) so the bubble renders the
         // correct saved/unsaved state on its very first frame. An entry is the *same word at the
         // same position* — keyed by word + context (sentence hash) — so the same spelling in a
         // different context (different sentence) is a separate entry and can still be added.
-        let sentenceHash = ReadingSessionService.sentenceHash(sentence)
+        let sentenceHash = ReadingSessionService.sentenceHash(isSentenceMode ? analysisWord : sentence)
         var existingEntryId: String?
         if !isSentenceMode {
             if let existing = try? ReaderPersistence.shared.getVocabularyByWordAndHash(
@@ -561,7 +562,7 @@ struct PDFReaderView: View {
         let request = TranslationBubbleRequest(
             pdfPath: document.filePath,
             pdfName: document.fileName,
-            word: word, sentence: sentence,
+            word: analysisWord, sentence: sentence,
             sentenceHash: sentenceHash,
             bounds: bounds, boundsStr: boundsStr,
             page: page, pageMarkups: pageMarkups,

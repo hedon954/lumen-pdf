@@ -125,10 +125,9 @@ struct NoteReviewPopoverView: View {
                         .buttonStyle(.plain)
                         .help("删除这条笔记")
                     }
-                    AutoSavingNoteEditor(
-                        initialText: item.markdown,
+                    ReadableNoteBody(
+                        markdown: item.markdown,
                         minLineLimit: 3,
-                        maxLineLimit: 16,
                         onSaveWithPreviousText: { text, previousText in
                             onSaveItem(item.noteId, item.itemIndex, text, previousText, item.itemCount)
                         }

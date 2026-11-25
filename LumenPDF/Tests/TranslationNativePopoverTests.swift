@@ -62,7 +62,7 @@ final class TranslationPopoverGeometryTests: XCTestCase {
             TranslationSelectionEmphasisGeometry.highlightRect(
                 for: CGRect(x: 40, y: 60, width: 80, height: 16)
             ),
-            CGRect(x: 38.5, y: 59.25, width: 83, height: 17.5)
+            CGRect(x: 37.5, y: 58.75, width: 85, height: 18.5)
         )
     }
 }

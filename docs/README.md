@@ -58,6 +58,7 @@ PRD 记录**用户可感知的行为与验收标准**。TDD 记录**如何实现
 | v1.0.36 | 2026-11-24 | 笔记入口、浮窗拖出窗口与检查更新 | [prd-2026-11-24-note-overlay-update.md](prd/prd-2026-11-24-note-overlay-update.md) | [tdd-2026-11-24-note-overlay-update.md](tdd/tdd-2026-11-24-note-overlay-update.md) |
 | v1.0.36 | 2026-11-24 | 换包后 API Key 不再要钥匙串密码 | [prd-2026-11-24-keychain-rebuild-access.md](prd/prd-2026-11-24-keychain-rebuild-access.md) | [tdd-2026-11-24-keychain-rebuild-access.md](tdd/tdd-2026-11-24-keychain-rebuild-access.md) |
 | v1.0.36 | 2026-11-24 | 本机升级只做有变化的步骤 | [prd-2026-11-24-local-upgrade.md](prd/prd-2026-11-24-local-upgrade.md) | [tdd-2026-11-24-local-upgrade.md](tdd/tdd-2026-11-24-local-upgrade.md) |
+| unreleased | 2026-11-25 | 笔记展示、临时选区、完整语境与语法树 | [prd-2026-11-25-notes-context-grammar.md](prd/prd-2026-11-25-notes-context-grammar.md) | [tdd-2026-11-25-notes-context-grammar.md](tdd/tdd-2026-11-25-notes-context-grammar.md) |
 
 未单独成对的发布：
 
@@ -80,6 +81,7 @@ v1.0.15 公共窗口外壳
   → unreleased 翻译与笔记统一薄材质背景，系统打开文件切回阅读并恢复位置
   → v1.0.35 一次连续划线只有一个笔记按钮；选词带上可见句子；关闭不回退到更早的页
   → v1.0.36 空笔记不再显示按钮；跨页同一划线一个按钮；浮窗可拖出窗口；点其他应用不关闭
+  → unreleased 临时翻译选区改为浮起外观，不再与已保存黄高亮共用系统黄
 ```
 
 v1.0.21 曾要求内容变高后重新换边避让；2026-08-20 修订为「首次位置固定」，以 v1.0.15 的稳定方向为优先体验。
@@ -94,6 +96,7 @@ v1.0.2 笔记 + 划线
   → v1.0.26 Inspector、回顾浮窗、笔记列表可编辑并自动保存
   → unreleased 回顾浮窗快速追加，编辑删除读取最新内容并防止旧编辑器错写
   → v1.0.36 空笔记不显示按钮；跨页同一划线只留一个入口
+  → unreleased 未编辑时渲染 Markdown，长笔记可滚到末尾
   → v1.0.30 ⌘F 搜索自动聚焦，笔记结果恢复完整单页或跨页选区
   → unreleased 邻近新划线不再抹掉未选中的旧行
   → unreleased 笔记保存逐页选区，跨页划线可重启恢复
@@ -132,6 +135,7 @@ v1.0.12 / v1.0.13 导读进入 Inspector
   → unreleased 翻译成功 footer 增加 AI 解释快捷入口，复用当前选区导读
   → v1.0.36 翻译 footer 增加高亮 / 取消高亮
   → v1.0.31 译文 JSON 闭合或 finish_reason / [DONE] 后结束流式，词典音标最多等 1.5 秒
+  → unreleased 残缺选区先补成整句再分析；语法按递归结构一次展开整棵树
 ```
 
 ### 文库

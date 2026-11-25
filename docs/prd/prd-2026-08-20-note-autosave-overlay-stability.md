@@ -10,6 +10,7 @@ predecessor:
 successor:
   - prd/prd-2026-09-10-reader-open-note-popover.md
   - prd/prd-2026-09-01-native-translation-popover.md
+  - prd/prd-2026-11-25-notes-context-grammar.md
 ---
 
 # LumenPDF — 笔记自动保存与翻译浮窗位置稳定 PRD
@@ -57,7 +58,7 @@ successor:
 ## 4. 非目标
 
 - 不改笔记 JSON 存储格式。
-- 编辑时不要求实时渲染 Markdown 预览。
+- 编辑时不要求实时渲染 Markdown 预览。后续修订：未在编辑时按 Markdown 渲染，且长笔记可滚到末尾，见 [prd-2026-11-25-notes-context-grammar.md](prd-2026-11-25-notes-context-grammar.md)。
 - 不改变选区操作栏的首次定位优先级（仍为下、上、右、左）。
 
 ## 5. 验收标准

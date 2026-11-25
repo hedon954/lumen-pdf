@@ -307,6 +307,16 @@ final class PDFSelectionMarkupGeometryTests: XCTestCase {
         )
     }
 
+    func testSentenceStartingWithRepeatedCapitalizedWordIsNotStripped() {
+        let sentence =
+            "Engineering management is responsible not only for what the organization produces, but for the engineering capability the organization becomes."
+
+        XCTAssertEqual(
+            PDFSelectionHeadingLeakFilter.stripEchoedHeadings(from: sentence),
+            sentence
+        )
+    }
+
     private func uniqueBody(prefix: String, y0: CGFloat, count: Int) -> [PDFTextLine] {
         (0..<count).map { index in
             PDFTextLine(

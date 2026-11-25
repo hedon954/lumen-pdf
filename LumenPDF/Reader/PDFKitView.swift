@@ -7,30 +7,59 @@ enum ReaderViewportTransitionMode {
     case interactiveResize
 }
 
+enum TranslationSelectionEmphasisStyle {
+    /// Luminous Preview-style lookup yellow with a subtle top-to-bottom sheen.
+    static let fillTop = NSColor(srgbRed: 1.0, green: 0.985, blue: 0.22, alpha: 1.0)
+    static let fillBottom = NSColor(srgbRed: 1.0, green: 0.945, blue: 0.0, alpha: 1.0)
+    static let shadow = NSColor(srgbRed: 0, green: 0, blue: 0, alpha: 0.24)
+    static let gradient = NSGradient(starting: fillTop, ending: fillBottom)
+}
+
 enum TranslationSelectionEmphasisGeometry {
-    static let horizontalLift: CGFloat = 1.5
-    static let verticalLift: CGFloat = 0.75
+    /// Pill padding around the glyph bounds, matching macOS Preview's lookup badge.
+    static let horizontalLift: CGFloat = 2.5
+    static let verticalLift: CGFloat = 1.25
+    static let cornerRadius: CGFloat = 3.5
+    static let shadowBlur: CGFloat = 4.5
+    static let shadowDepth: CGFloat = 1.5
+    static let shadowMargin: CGFloat = 10
 
     static func highlightRect(for textRect: CGRect) -> CGRect {
         textRect.insetBy(dx: -horizontalLift, dy: -verticalLift)
     }
+
+    /// Pill plus margin to hold its painted Gaussian drop shadow without clipping.
+    static func viewFrame(for textRect: CGRect) -> CGRect {
+        highlightRect(for: textRect).insetBy(dx: -shadowMargin, dy: -shadowMargin)
+    }
 }
 
-/// Transient Preview-style highlighter over the selected words.
+/// Transient Preview-style lifted yellow pill over the user's selected words.
 ///
-/// Each line is its own view filled with Preview's yellow and composited with
-/// multiply, so the paper turns yellow and the glyphs stay black. The view is
-/// not a PDF annotation and does not accept clicks. Its owner is
-/// `PDFKitView.Coordinator`.
+/// Draws an opaque yellow pill with a native CoreGraphics Gaussian shadow,
+/// then renders the underlying PDF vector glyphs inside the clipped pill using
+/// `.multiply` blend mode. Because the pill is opaque on top of its own shadow,
+/// there is no `destinationOut` anti-aliasing halo, no `compositingFilter`
+/// interference, and no bleed-through from saved highlights underneath.
+/// Its owner is `PDFKitView.Coordinator`.
 private final class TranslationSelectionEmphasisView: NSView {
+    private struct Pill {
+        let plateInPDFView: CGRect
+        let page: PDFPage
+        let pageToPDFView: CGAffineTransform
+    }
+
     private weak var pdfView: PDFView?
     private var markups: [PDFPageMarkup] = []
-    private var lineViews: [NSView] = []
+    private var pills: [Pill] = []
     private var isLayingOutHighlights = false
 
     init(pdfView: PDFView) {
         self.pdfView = pdfView
-        super.init(frame: pdfView.bounds)
+        super.init(frame: .zero)
+        wantsLayer = true
+        layerContentsRedrawPolicy = .onSetNeedsDisplay
+        layer?.masksToBounds = false
         setAccessibilityElement(false)
     }
 
@@ -50,59 +79,122 @@ private final class TranslationSelectionEmphasisView: NSView {
         layoutHighlights()
     }
 
-    override func layout() {
-        super.layout()
-        layoutHighlights()
-    }
-
     private func layoutHighlights() {
         guard !isLayingOutHighlights else { return }
         isLayingOutHighlights = true
         defer { isLayingOutHighlights = false }
 
         guard let pdfView, let document = pdfView.document else {
-            removeLineViews()
+            pills = []
+            isHidden = true
+            frame = .zero
             return
         }
 
-        var frames: [CGRect] = []
+        let visibleBounds = pdfView.bounds
+        var nextPills: [Pill] = []
+        var unionFrame = CGRect.null
+
         for markup in markups {
             guard let page = document.page(at: markup.pageIndex) else { continue }
+            let transform = Self.pageToPDFViewTransform(for: page, in: pdfView)
             for lineRect in markup.lineRects where !lineRect.isEmpty && lineRect != .zero {
                 let rectInPDFView = pdfView.convert(lineRect, from: page)
-                let rect = TranslationSelectionEmphasisGeometry.highlightRect(
-                    for: convert(rectInPDFView, from: pdfView)
+                let plate = TranslationSelectionEmphasisGeometry.highlightRect(for: rectInPDFView)
+                let padded = TranslationSelectionEmphasisGeometry.viewFrame(for: rectInPDFView)
+                guard padded.intersects(visibleBounds) else { continue }
+                nextPills.append(
+                    Pill(plateInPDFView: plate, page: page, pageToPDFView: transform)
                 )
-                if rect.intersects(bounds) {
-                    frames.append(rect)
-                }
+                unionFrame = unionFrame.isNull ? padded : unionFrame.union(padded)
             }
         }
 
-        while lineViews.count < frames.count {
-            lineViews.append(makeLineView())
+        pills = nextPills
+        guard !nextPills.isEmpty, !unionFrame.isNull else {
+            isHidden = true
+            frame = .zero
+            return
         }
-        while lineViews.count > frames.count {
-            lineViews.removeLast().removeFromSuperview()
+
+        isHidden = false
+        let snappedFrame = unionFrame.integral
+        if frame != snappedFrame {
+            frame = snappedFrame
         }
-        for (lineView, frame) in zip(lineViews, frames) where lineView.frame != frame {
-            lineView.frame = frame
+        needsDisplay = true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard !pills.isEmpty, let context = NSGraphicsContext.current else { return }
+        let cg = context.cgContext
+        let originOffset = frame.origin
+        let radius = TranslationSelectionEmphasisGeometry.cornerRadius
+
+        // Pass 1: Opaque yellow bases + soft Gaussian shadows underneath.
+        // Drawing all shadows before the fills prevents a multi-line pill's
+        // shadow from darkening an adjacent line's yellow plate.
+        for pill in pills {
+            let plate = pill.plateInPDFView.offsetBy(dx: -originOffset.x, dy: -originOffset.y)
+            let path = NSBezierPath(roundedRect: plate, xRadius: radius, yRadius: radius)
+            cg.saveGState()
+            cg.setShadow(
+                offset: CGSize(width: 0, height: -TranslationSelectionEmphasisGeometry.shadowDepth),
+                blur: TranslationSelectionEmphasisGeometry.shadowBlur,
+                color: TranslationSelectionEmphasisStyle.shadow.cgColor
+            )
+            TranslationSelectionEmphasisStyle.fillBottom.setFill()
+            path.fill()
+            cg.restoreGState()
+        }
+
+        // Pass 2: Clean yellow sheen + crisp vector PDF glyphs multiplied on top.
+        for pill in pills {
+            let plate = pill.plateInPDFView.offsetBy(dx: -originOffset.x, dy: -originOffset.y)
+            let path = NSBezierPath(roundedRect: plate, xRadius: radius, yRadius: radius)
+            cg.saveGState()
+            path.addClip()
+            if let gradient = TranslationSelectionEmphasisStyle.gradient {
+                gradient.draw(in: plate, angle: -90)
+            } else {
+                TranslationSelectionEmphasisStyle.fillBottom.setFill()
+                plate.fill()
+            }
+
+            cg.setBlendMode(.multiply)
+            cg.interpolationQuality = .high
+            cg.setShouldAntialias(true)
+            cg.setAllowsAntialiasing(true)
+            cg.setShouldSmoothFonts(true)
+
+            let pageToView = pill.pageToPDFView.concatenating(
+                CGAffineTransform(translationX: -originOffset.x, y: -originOffset.y)
+            )
+            cg.concatenate(pageToView)
+            if let pageRef = pill.page.pageRef {
+                cg.drawPDFPage(pageRef)
+            } else if let pdfView {
+                pill.page.draw(with: pdfView.displayBox, to: cg)
+            }
+            cg.restoreGState()
         }
     }
 
-    private func makeLineView() -> NSView {
-        let lineView = NSView(frame: .zero)
-        lineView.wantsLayer = true
-        lineView.layer?.backgroundColor = PDFHighlightAnnotationFactory.nativeHighlightColor.cgColor
-        lineView.layer?.compositingFilter = "multiplyBlendMode"
-        lineView.layer?.cornerRadius = 1
-        addSubview(lineView)
-        return lineView
-    }
-
-    private func removeLineViews() {
-        lineViews.forEach { $0.removeFromSuperview() }
-        lineViews.removeAll()
+    private static func pageToPDFViewTransform(
+        for page: PDFPage,
+        in pdfView: PDFView
+    ) -> CGAffineTransform {
+        let p0 = pdfView.convert(CGPoint(x: 0, y: 0), from: page)
+        let px = pdfView.convert(CGPoint(x: 1, y: 0), from: page)
+        let py = pdfView.convert(CGPoint(x: 0, y: 1), from: page)
+        return CGAffineTransform(
+            a: px.x - p0.x,
+            b: px.y - p0.y,
+            c: py.x - p0.x,
+            d: py.y - p0.y,
+            tx: p0.x,
+            ty: p0.y
+        )
     }
 }
 
@@ -294,6 +386,10 @@ struct PDFKitView: NSViewRepresentable {
         private var annotationSaveDebounce: Timer?
         private var activeTranslationSelectionID: UUID?
         private weak var translationSelectionView: TranslationSelectionEmphasisView?
+        /// True while this coordinator is writing PDFKit's selection. That write
+        /// posts selection and bounds notifications, which are not user actions.
+        private var isApplyingTranslationSelection = false
+        private var translationSelectionApplyToken = 0
         private weak var observedViewport: NSClipView?
         private weak var observedScrollView: NSScrollView?
         private weak var managedUndoManager: UndoManager?
@@ -1330,36 +1426,36 @@ struct PDFKitView: NSViewRepresentable {
                 return
             }
 
-            if activeTranslationSelectionID != emphasis.id {
-                activeTranslationSelectionID = emphasis.id
-                let selections = emphasis.pageMarkups.compactMap { markup -> PDFSelection? in
-                    guard let page = document.page(at: markup.pageIndex) else { return nil }
-                    return PDFHighlightAnnotationFactory.selection(
-                        from: markup.lineRects,
-                        on: page
-                    )
-                }
-                if let selection = Self.combinedSelection(selections, in: document) {
-                    // Preview's yellow is drawn by the emphasis view. Keep PDFKit's
-                    // real currentSelection for semantics without a second blue or
-                    // gray selection underneath it.
-                    selection.color = .clear
-                    pdfView.setCurrentSelection(selection, animate: false)
-                }
-            }
-
             let emphasisView: TranslationSelectionEmphasisView
             if let current = translationSelectionView {
                 emphasisView = current
             } else {
                 let created = TranslationSelectionEmphasisView(pdfView: pdfView)
-                created.frame = pdfView.bounds
-                created.autoresizingMask = [.width, .height]
-                pdfView.addSubview(created, positioned: .above, relativeTo: nil)
                 translationSelectionView = created
                 emphasisView = created
             }
+            pdfView.addSubview(emphasisView, positioned: .above, relativeTo: nil)
             emphasisView.update(markups: emphasis.pageMarkups)
+
+            guard activeTranslationSelectionID != emphasis.id else { return }
+            activeTranslationSelectionID = emphasis.id
+            let selections = emphasis.pageMarkups.compactMap { markup -> PDFSelection? in
+                guard let page = document.page(at: markup.pageIndex) else { return nil }
+                return PDFHighlightAnnotationFactory.selection(
+                    from: markup.lineRects,
+                    on: page
+                )
+            }
+            guard let selection = Self.combinedSelection(selections, in: document) else { return }
+            selection.color = .clear
+            translationSelectionApplyToken += 1
+            let token = translationSelectionApplyToken
+            isApplyingTranslationSelection = true
+            pdfView.setCurrentSelection(selection, animate: false)
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.translationSelectionApplyToken == token else { return }
+                self.isApplyingTranslationSelection = false
+            }
         }
 
         private func clearTranslationSelection() {
@@ -1691,6 +1787,7 @@ struct PDFKitView: NSViewRepresentable {
         }
 
         private func dismissTranslationForViewportChange() {
+            guard !isApplyingTranslationSelection else { return }
             guard activeTranslationSelectionID != nil else { return }
             clearTranslationSelection()
             DispatchQueue.main.async { [weak self] in
@@ -1768,6 +1865,7 @@ struct PDFKitView: NSViewRepresentable {
         // MARK: Text selection
 
         @objc func selectionChanged(_ notification: Notification) {
+            guard !isApplyingTranslationSelection else { return }
             guard !isJumping else { return }
             guard let pdfView = notification.object as? PDFView else { return }
             guard activeTranslationSelectionID == nil else { return }
@@ -1782,8 +1880,9 @@ struct PDFKitView: NSViewRepresentable {
             let selectionSnapshot = (selection.copy() as? PDFSelection) ?? selection
             selectionDebounce?.invalidate()
             selectionDebounce = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self, weak pdfView] _ in
-                guard let self, let pdfView,
-                      let doc = pdfView.document else { return }
+                guard let self, self.activeTranslationSelectionID == nil,
+                      !self.isApplyingTranslationSelection,
+                      let pdfView, let doc = pdfView.document else { return }
                 let rawWord = selectedStr.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !rawWord.isEmpty else { return }
 
@@ -1810,9 +1909,12 @@ struct PDFKitView: NSViewRepresentable {
                     return
                 }
                 let page = doc.page(at: primary.pageIndex)
-                let visual = PDFSelectionMarkupGeometry.contextSentence(
-                    around: selectionSnapshot,
-                    on: page,
+                let pageLines = page.flatMap { page in
+                    PDFSelectionMarkupGeometry.contextLines(on: page)
+                } ?? []
+                let resolved = ReadingSentenceContext.resolve(
+                    lines: pageLines,
+                    selectionRect: page.flatMap { selectionSnapshot.bounds(for: $0) } ?? .zero,
                     selectedText: word
                 )
                 let indexed = self.extractSentence(
@@ -1820,10 +1922,8 @@ struct PDFKitView: NSViewRepresentable {
                     containing: selectionSnapshot,
                     pageIndex: primary.pageIndex
                 )
-                let raw = ReadingSentenceContext.prefer(visual, indexed, selectedText: word) ?? word
-                let collapsed = PDFExtractedTextCollapser.collapse(raw)
-                let stripped = PDFSelectionHeadingLeakFilter.stripEchoedHeadings(from: collapsed)
-                let sentence = ReadingSentenceContext.prefer(stripped, collapsed, selectedText: word) ?? word
+                let sentence = resolved?.sentence ?? indexed ?? word
+                let resolvedWord = resolved?.word ?? word
                 let currentPage = doc.page(at: primary.pageIndex) ?? pdfView.currentPage
                 guard let currentPage else { return }
                 let overallBounds = primary.bounds
@@ -1831,7 +1931,7 @@ struct PDFKitView: NSViewRepresentable {
                                                  page: currentPage, pdfView: pdfView)
                 let selectionAnchorRect = Self.swiftUIRect(boundsInPage: overallBounds, page: currentPage, pdfView: pdfView)
                 let info = SelectionInfo(
-                    word: word,
+                    word: resolvedWord.isEmpty ? word : resolvedWord,
                     sentence: sentence,
                     bounds: overallBounds,
                     boundsStr: primary.boundsStr,
@@ -1950,18 +2050,11 @@ struct PDFKitView: NSViewRepresentable {
                   let pageText = page.string,
                   !pageText.isEmpty else { return nil }
             let word = (selection.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            let widened = ReadingSentenceContext.widen(text: pageText, selectedText: word)
             let ns = pageText as NSString
             let selRange = selection.range(at: 0, on: page)
-            let ranged: String?
-            if selRange.location != NSNotFound, selRange.length > 0, ns.length > 0 {
-                let anchor = min(selRange.location + max(0, selRange.length / 2), ns.length - 1)
-                ranged = extractFullSentence(from: ns, anchorUTF16: anchor)
-                    ?? fallbackSentence(word: word, in: pageText)
-            } else {
-                ranged = fallbackSentence(word: word, in: pageText)
-            }
-            return ReadingSentenceContext.prefer(ranged, widened, selectedText: word)
+            guard selRange.location != NSNotFound, selRange.length > 0, ns.length > 0 else { return nil }
+            let anchor = min(selRange.location + max(0, selRange.length / 2), ns.length - 1)
+            return extractFullSentence(from: ns, anchorUTF16: anchor)
         }
 
         private func extractFullSentence(from ns: NSString, anchorUTF16: Int) -> String? {
@@ -1980,9 +2073,7 @@ struct PDFKitView: NSViewRepresentable {
                 end += 1
             }
             let r = NSRange(location: start, length: end - start)
-            let sentence = PDFSelectionHeadingLeakFilter.stripEchoedHeadings(
-                from: ns.substring(with: r)
-            )
+            let sentence = ns.substring(with: r).trimmingCharacters(in: .whitespacesAndNewlines)
             if sentence.count >= 2, sentence.count <= 2000 { return sentence }
             return nil
         }
@@ -1999,9 +2090,7 @@ struct PDFKitView: NSViewRepresentable {
             guard !word.isEmpty else { return nil }
             let seps = CharacterSet(charactersIn: ".!?。！？")
             for part in pageText.components(separatedBy: seps) {
-                let t = PDFSelectionHeadingLeakFilter.stripEchoedHeadings(
-                    from: part.trimmingCharacters(in: .whitespacesAndNewlines)
-                )
+                let t = part.trimmingCharacters(in: .whitespacesAndNewlines)
                 if t.contains(word), t.count >= 4, t.count <= 2000 { return t }
             }
             return nil

@@ -180,10 +180,9 @@ private struct ReadingInspectorNoteCard: View {
                             .font(.caption2.monospacedDigit())
                             .foregroundStyle(.tertiary)
                     }
-                    AutoSavingNoteEditor(
-                        initialText: note.markdown,
+                    ReadableNoteBody(
+                        markdown: note.markdown,
                         minLineLimit: isExpanded ? 4 : 2,
-                        maxLineLimit: isExpanded ? 16 : 8,
                         onSave: { text in
                             onSaveItem(note.noteId, note.itemIndex, text)
                         }

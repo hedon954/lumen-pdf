@@ -10,6 +10,7 @@ predecessor:
   - tdd/tdd-2026-09-01-native-translation-popover.md
 successor:
   - tdd/tdd-2026-11-24-note-overlay-update.md
+  - tdd/tdd-2026-11-25-notes-context-grammar.md
 ---
 
 # LumenPDF — 划线入口、选词语境与阅读位置 TDD
@@ -45,7 +46,7 @@ SwiftUI 视图仍不调用 `BridgeService`。本次不改 Rust、数据库或 Un
 
 `ReadingSentenceContext.extract` 按 PDF 纵坐标从上到下排列行，从与选区相交的行向两侧扩展，直到行距超过约一行。拼成段落后按句号切句。包含选中词的那一句如果词数不超过选中词数加 2，或句子的第一个词就是选中词，则带上前一句；过短时再带上后一句。结果超过 800 字时以选中词为中心截断。
 
-`PDFPage.string` 路径仍保留。字符范围抽出的句子若比可见行结果更「瘦」（几乎只剩选中词），使用更完整的那一份。标题过滤如果把语境滤成只剩该词，同样退回过滤前的文本。
+`PDFPage.string` 路径仍保留。字符范围抽出的句子若比可见行结果更「瘦」（几乎只剩选中词），使用更完整的那一份。标题过滤如果把语境滤成只剩该词，同样退回过滤前的文本。后续修订：标题过滤不得删掉同一句的句首词，见 [tdd-2026-11-25-notes-context-grammar.md](tdd-2026-11-25-notes-context-grammar.md)。
 
 ### 3.3 阅读位置
 
@@ -72,7 +73,7 @@ SwiftUI 视图仍不调用 `BridgeService`。本次不改 Rust、数据库或 Un
 
 一条书签已经到达：目的页更早，或者与阅读线同一页且起点 y 大于或等于阅读线的 y。已经到达的书签里，页码更大的在后；同一页上 y 更小的在后；页码和 y 都相同则大纲里更后的条目在后。目录行的外观保持浅色底和强调色文字。还没有测到阅读线时，只按页码比较，当前页上的书签都算已经到达。
 
-翻译选区由 `TranslationSelectionEmphasisView` 盖在 PDF 上，每一行一个子视图。填充色是 `PDFHighlightAnnotationFactory.nativeHighlightColor`（预览同款系统黄），图层用 `multiplyBlendMode` 与底下的页面合成，所以白纸变黄、黑字不变。不写阴影，不写入 PDF 标注。点击穿透到 PDF。几何仍是逐行字框略向外扩。关闭浮窗后视图移除。
+翻译选区由 `TranslationSelectionEmphasisView` 盖在 PDF 上，每一行一个子视图。填充色是 `PDFHighlightAnnotationFactory.nativeHighlightColor`（预览同款系统黄），图层用 `multiplyBlendMode` 与底下的页面合成，所以白纸变黄、黑字不变。不写阴影，不写入 PDF 标注。点击穿透到 PDF。几何仍是逐行字框略向外扩。关闭浮窗后视图移除。后续修订：临时选区不再共用这支黄色，见 [tdd-2026-11-25-notes-context-grammar.md](tdd-2026-11-25-notes-context-grammar.md)。
 
 ## 4. 测试
 

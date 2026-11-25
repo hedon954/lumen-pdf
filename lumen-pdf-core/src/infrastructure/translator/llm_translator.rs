@@ -102,31 +102,31 @@ Rules / 规则:
 
 Return ONLY the explanation text in {lang}. Do not wrap it in JSON, code fences, or quotes."#;
 
-pub const DEFAULT_SENTENCE_PROMPT_TEMPLATE: &str = r#"You are a professional translator and language tutor. Translate the following English text to {lang} and, if it is a long or complex sentence, also break it down so the reader can understand each fragment.
+pub const DEFAULT_SENTENCE_PROMPT_TEMPLATE: &str = r#"You are a professional translator and language tutor. Translate the following English text to {lang}. If it is a long or complex sentence, also return a recursive grammar tree so the reader can see how the clauses nest.
 
 Text: "{sentence}"
 
 Rules:
 1. Provide a natural, fluent translation in `translation`.
-2. Preserve meaning and tone of the original; fix OCR errors / broken words if present.
-3. Decide whether the sentence is "long or complex":
-   - SHORT / SIMPLE (≤10 words, no clauses, plain SVO) → set `breakdown` to an empty array `[]`.
-   - LONG / COMPLEX (multiple clauses, inversion, parallel structure, complex adverbials, etc.) → split it into 2–5 logical fragments.
-4. For each fragment in `breakdown`, output an object with EXACTLY these fields:
-   - `original`: the English fragment, copied verbatim from the source.
-   - `translation`: that fragment's translation in {lang}.
-   - `explanation`: in {lang}, briefly explain word choices / contextual meaning. ≤2 sentences.
-   - `grammar`: ONLY fill this when the fragment contains a grammatically noteworthy structure (subordinate clause, inversion, subjunctive mood, parallel structure, participle clause, nested complex structures, etc.). Leave it as an EMPTY STRING for plain SVO fragments. Be concise — 1 to 3 sentences in {lang}, naming the structure and explaining its role.
+2. Preserve meaning and tone of the original; fix OCR errors or broken words if present.
+3. SHORT / SIMPLE (≤10 words, no clauses, plain SVO) → set `breakdown` to `[]`.
+4. LONG / COMPLEX → `breakdown` is a one-element array whose node is the whole sentence. Nest clauses inside `children`. Do not return a flat list of numbered fragments.
+5. Each node has:
+   - `role`: a short {lang} name for this layer, such as 整句, 主干, 宾语, 定语从句, 状语从句.
+   - `original`: a contiguous verbatim span of the parent text. The root `original` is the whole sentence. A child's `original` must occur inside its parent.
+   - `explanation`: ONE sentence in {lang} saying what this layer does inside its parent.
+   - `children`: further complex constituents only (clauses, coordination, complements). A plain noun or simple prepositional phrase has `children: []`.
+6. Stop nesting once a part is simple. Do not split into 2–5 sibling fragments.
 
-Respond with ONLY valid JSON in this exact format:
+Respond with ONLY valid JSON:
 {
   "translation": "<full translation in {lang}>",
   "breakdown": [
     {
-      "original": "<English fragment>",
-      "translation": "<{lang} translation of the fragment>",
-      "explanation": "<{lang} explanation>",
-      "grammar": "<{lang} grammar analysis OR empty string>"
+      "role": "<{lang} role>",
+      "original": "<contiguous source span>",
+      "explanation": "<one {lang} sentence>",
+      "children": []
     }
   ]
 }"#;
@@ -1073,11 +1073,28 @@ struct SentencePromptJson {
 
 #[derive(Deserialize)]
 struct SentenceChunkJson {
+    #[serde(default)]
+    role: String,
     original: Option<String>,
     translation: Option<String>,
     explanation: Option<String>,
     #[serde(default)]
     grammar: String,
+    #[serde(default)]
+    children: Vec<SentenceChunkJson>,
+}
+
+impl SentenceChunkJson {
+    fn into_chunk(self) -> SentenceChunk {
+        SentenceChunk {
+            original: self.original.unwrap_or_default(),
+            translation: self.translation.unwrap_or_default(),
+            explanation: self.explanation.unwrap_or_default(),
+            role: self.role,
+            grammar: self.grammar,
+            children: self.children.into_iter().map(Self::into_chunk).collect(),
+        }
+    }
 }
 
 impl SentencePromptJson {
@@ -1085,19 +1102,12 @@ impl SentencePromptJson {
     /// mode. `original_sentence` is stored in `word` so callers can correlate
     /// the result with the user's selection (consistent with v1.0.4).
     fn into_result(self, original_sentence: &str, usage: TokenUsage) -> TranslationResult {
-        let breakdown: Vec<SentenceChunk> = self
-            .breakdown
-            .into_iter()
-            .map(|c| SentenceChunk {
-                original: c.original.unwrap_or_default(),
-                translation: c.translation.unwrap_or_default(),
-                explanation: c.explanation.unwrap_or_default(),
-                grammar: c.grammar,
-            })
-            // Drop entirely-empty chunks defensively in case the model emits
-            // a stray `{}` placeholder when it decides not to break down.
-            .filter(|c| !c.original.is_empty() || !c.translation.is_empty())
-            .collect();
+        let breakdown = crate::domain::translation::grammar::GrammarTree::normalize(
+            self.breakdown
+                .into_iter()
+                .map(SentenceChunkJson::into_chunk)
+                .collect(),
+        );
 
         TranslationResult {
             word: original_sentence.to_string(),

@@ -29,7 +29,7 @@ jsonrepair-rs = "0.2"
 sha2 = "0.10"
 hex = "0.4"
 thiserror = "1"
-async-trait = "0.1"
+async-trait = "0.1.92"
 once_cell = "1"
 uuid = { version = "1", features = ["v4"] }
 chrono = "0.4"

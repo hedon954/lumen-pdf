@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import NaturalLanguage
 
 /// Builds the sentence context shown for a selected word from the lines actually on the page.
 ///
@@ -7,32 +8,70 @@ import Foundation
 /// around the caret, so the translation request used to contain only the word. Line geometry
 /// follows the paragraph the reader can see.
 enum ReadingSentenceContext {
+    struct Resolved {
+        let word: String
+        let sentence: String
+        let lines: [PDFTextLine]
+    }
+
     static func extract(
         lines: [PDFTextLine],
         selectionRect: CGRect,
         selectedText: String
     ) -> String? {
-        let ordered = lines
-            .map { PDFTextLine(rect: $0.rect, text: $0.text.trimmingCharacters(in: .whitespacesAndNewlines)) }
-            .filter { !$0.text.isEmpty }
-            .sorted { lhs, rhs in
-                if abs(lhs.rect.midY - rhs.rect.midY) > 1 {
-                    return lhs.rect.midY > rhs.rect.midY
-                }
-                return lhs.rect.minX < rhs.rect.minX
-            }
-        guard let anchor = anchorIndex(in: ordered, selectionRect: selectionRect, selectedText: selectedText) else {
+        resolve(lines: lines, selectionRect: selectionRect, selectedText: selectedText)?.sentence
+    }
+
+    static func resolve(
+        lines: [PDFTextLine],
+        selectionRect: CGRect,
+        selectedText: String
+    ) -> Resolved? {
+        guard let hit = ParagraphJoiner.paragraph(around: lines, selectionRect: selectionRect) else {
             return nil
         }
+        let joined = JoinedLines.make(hit.lines)
+        let anchorLine = hit.lines[hit.anchorIndex]
+        let localIndex = characterIndex(in: anchorLine, selectionRect: selectionRect)
+        let lineSpan = joined.lineRanges[hit.anchorIndex]
+        let anchored = joined.text.index(
+            lineSpan.lowerBound,
+            offsetBy: min(localIndex, joined.text.distance(from: lineSpan.lowerBound, to: lineSpan.upperBound)),
+            limitedBy: lineSpan.upperBound
+        ) ?? lineSpan.lowerBound
+        guard let sentenceRange = sentenceRange(containing: anchored, in: joined.text) else { return nil }
+        let sentence = widenedRange(around: sentenceRange, anchor: anchored, in: joined.text, selectedText: selectedText)
+        let word = token(on: anchorLine, at: localIndex, selectedText: selectedText)
+        guard sentence.count >= 2 else { return nil }
+        return Resolved(word: word, sentence: sentence, lines: [anchorLine])
+    }
 
-        let range = paragraphRange(around: anchor, in: ordered)
-        let joined = ContextSentenceFormatting.displayParagraph(
-            ordered[range].map(\.text).joined(separator: "\n")
-        )
-        let sentence = widenedSentence(in: joined, selectedText: selectedText) ?? joined
-        let capped = cap(sentence, around: selectedText)
-        guard capped.count >= 2 else { return nil }
-        return capped
+    /// The token under the selection on this line. A cut-off drag (`exer`) becomes the token
+    /// it sits inside. A finished word is never replaced by a different word on another line.
+    static func token(on line: PDFTextLine, at characterIndex: Int, selectedText: String) -> String {
+        let text = line.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let selected = selectedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if selected.contains(where: { $0.isWhitespace || $0.isNewline }) {
+            return selected
+        }
+        guard !text.isEmpty else { return selected }
+        let clamped = min(max(characterIndex, 0), text.count - 1)
+        let index = text.index(text.startIndex, offsetBy: clamped)
+        let tokens = tokenRanges(in: text)
+        guard let token = tokens.first(where: { $0.contains(index) }) else {
+            return selected
+        }
+        let value = String(text[token])
+        let selectedCore = core(selected)
+        let tokenCore = core(value)
+        if selectedCore.isEmpty { return tokenCore }
+        if tokenCore.compare(selectedCore, options: .caseInsensitive) == .orderedSame {
+            return tokenCore
+        }
+        if tokenCore.lowercased().hasPrefix(selectedCore.lowercased()), tokenCore.count > selectedCore.count {
+            return tokenCore
+        }
+        return selected.isEmpty ? tokenCore : selected
     }
 
     /// Same widening rules for a page string that has already been extracted.
@@ -78,64 +117,78 @@ enum ReadingSentenceContext {
         return sentenceWords.count <= selectedWords.count + 2
     }
 
-    private static func anchorIndex(
-        in lines: [PDFTextLine],
-        selectionRect: CGRect,
+    private static func core(_ word: String) -> String {
+        word.trimmingCharacters(in: .punctuationCharacters)
+    }
+
+    private struct JoinedLines {
+        let text: String
+        let lineRanges: [Range<String.Index>]
+
+        static func make(_ lines: [PDFTextLine]) -> JoinedLines {
+            var text = ""
+            var ranges: [Range<String.Index>] = []
+            for line in lines {
+                let piece = line.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !piece.isEmpty else {
+                    let empty = text.endIndex..<text.endIndex
+                    ranges.append(empty)
+                    continue
+                }
+                if text.isEmpty {
+                    text = piece
+                    ranges.append(text.startIndex..<text.endIndex)
+                    continue
+                }
+                let start: String.Index
+                if text.hasSuffix("-"), let next = piece.first, next.isLowercase {
+                    text.removeLast()
+                    start = text.endIndex
+                    text += piece
+                } else {
+                    text += " "
+                    start = text.endIndex
+                    text += piece
+                }
+                ranges.append(start..<text.endIndex)
+            }
+            return JoinedLines(text: text, lineRanges: ranges)
+        }
+    }
+
+    private static func characterIndex(in line: PDFTextLine, selectionRect: CGRect) -> Int {
+        let piece = line.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard piece.count > 1, line.rect.width > 1 else { return 0 }
+        let fraction = (selectionRect.midX - line.rect.minX) / line.rect.width
+        let clamped = min(max(fraction, 0), 0.999)
+        return min(piece.count - 1, Int((CGFloat(piece.count) * clamped).rounded(.down)))
+    }
+
+    private static func sentenceRange(containing index: String.Index, in text: String) -> Range<String.Index>? {
+        sentenceRanges(in: text).first { $0.contains(index) || $0.upperBound == index }
+    }
+
+    private static func widenedRange(
+        around sentence: Range<String.Index>,
+        anchor: String.Index,
+        in text: String,
         selectedText: String
-    ) -> Int? {
-        if !selectionRect.isNull, !selectionRect.isEmpty {
-            let hits = lines.enumerated().filter {
-                selectionRect.intersects($0.element.rect.insetBy(dx: -1, dy: -1))
-            }
-            if let best = hits.max(by: { lhs, rhs in
-                intersectionArea(lhs.element.rect, selectionRect)
-                    < intersectionArea(rhs.element.rect, selectionRect)
-            }) {
-                return best.offset
-            }
+    ) -> String {
+        let ranges = sentenceRanges(in: text)
+        guard let index = ranges.firstIndex(where: { $0 == sentence || $0.contains(anchor) }) else {
+            return String(text[sentence])
         }
-        let needle = selectedText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !needle.isEmpty else { return nil }
-        return lines.firstIndex { $0.text.range(of: needle, options: .caseInsensitive) != nil }
-    }
-
-    private static func paragraphRange(around anchor: Int, in lines: [PDFTextLine]) -> Range<Int> {
-        var start = anchor
-        while start > 0, isSameParagraph(lines[start - 1], lines[start]) {
-            start -= 1
-        }
-        var end = anchor
-        while end + 1 < lines.count, isSameParagraph(lines[end], lines[end + 1]) {
-            end += 1
-        }
-        return start..<(end + 1)
-    }
-
-    private static func isSameParagraph(_ upper: PDFTextLine, _ lower: PDFTextLine) -> Bool {
-        let gap = upper.rect.minY - lower.rect.maxY
-        let lineHeight = max(upper.rect.height, lower.rect.height, 8)
-        if gap > lineHeight * 0.95 { return false }
-        if abs(upper.rect.minX - lower.rect.minX) > 96, gap > lineHeight * 0.35 { return false }
-        return true
-    }
-
-    private static func widenedSentence(in paragraph: String, selectedText: String) -> String? {
-        let sentences = splitSentences(paragraph)
-        guard let index = sentences.firstIndex(where: { containsSelection($0, selectedText: selectedText) }) else {
-            return nil
-        }
-        let sentence = sentences[index]
-        let thin = isThin(sentence, selectedText: selectedText)
-        // A sentence that opens on the selected word still hides its subject in the previous one.
-        let opensOnSelection = startsWithSelection(sentence, selectedText: selectedText)
+        let current = String(text[ranges[index]])
+        let thin = isThin(current, selectedText: selectedText)
+        let opensOnSelection = startsWithSelection(current, selectedText: selectedText)
         if !thin && !opensOnSelection {
-            return sentence
+            return current.trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        var parts: [String] = []
-        if index > 0 { parts.append(sentences[index - 1]) }
-        parts.append(sentence)
-        if thin, index + 1 < sentences.count { parts.append(sentences[index + 1]) }
-        return parts.joined(separator: " ")
+        var lower = ranges[index].lowerBound
+        var upper = ranges[index].upperBound
+        if index > 0 { lower = ranges[index - 1].lowerBound }
+        if thin, index + 1 < ranges.count { upper = ranges[index + 1].upperBound }
+        return String(text[lower..<upper]).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private static func startsWithSelection(_ sentence: String, selectedText: String) -> Bool {
@@ -148,26 +201,72 @@ enum ReadingSentenceContext {
         return opening.compare(needle, options: .caseInsensitive) == .orderedSame
     }
 
-    private static func splitSentences(_ text: String) -> [String] {
-        var sentences: [String] = []
-        var current = ""
-        for character in text {
-            current.append(character)
-            if ".!?。！？".contains(character) {
-                let trimmed = current.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !trimmed.isEmpty { sentences.append(trimmed) }
-                current = ""
-            }
+    private static func sentenceRanges(in text: String) -> [Range<String.Index>] {
+        let tokenizer = NLTokenizer(unit: .sentence)
+        tokenizer.string = text
+        var ranges: [Range<String.Index>] = []
+        tokenizer.enumerateTokens(in: text.startIndex..<text.endIndex) { range, _ in
+            let trimmed = trim(range, in: text)
+            if !trimmed.isEmpty { ranges.append(trimmed) }
+            return true
         }
-        let tail = current.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !tail.isEmpty { sentences.append(tail) }
-        return sentences
+        if ranges.isEmpty, !text.isEmpty {
+            return [text.startIndex..<text.endIndex]
+        }
+        return mergeContinuationRanges(ranges, in: text)
     }
 
-    private static func containsSelection(_ sentence: String, selectedText: String) -> Bool {
-        let needle = selectedText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !needle.isEmpty else { return false }
-        return sentence.range(of: needle, options: .caseInsensitive) != nil
+    private static func trim(_ range: Range<String.Index>, in text: String) -> Range<String.Index> {
+        var lower = range.lowerBound
+        var upper = range.upperBound
+        while lower < upper, text[lower].isWhitespace || text[lower].isNewline { lower = text.index(after: lower) }
+        while upper > lower, text[text.index(before: upper)].isWhitespace { upper = text.index(before: upper) }
+        return lower..<upper
+    }
+
+    /// `NLTokenizer` still breaks after `Mr.` and `3.`. Those fragments belong to the next sentence.
+    private static func mergeContinuationRanges(
+        _ ranges: [Range<String.Index>],
+        in text: String
+    ) -> [Range<String.Index>] {
+        var merged: [Range<String.Index>] = []
+        var index = 0
+        while index < ranges.count {
+            var current = ranges[index]
+            while continues(String(text[current])), index + 1 < ranges.count {
+                index += 1
+                current = current.lowerBound..<ranges[index].upperBound
+            }
+            merged.append(current)
+            index += 1
+        }
+        return merged
+    }
+
+    private static func continues(_ sentence: String) -> Bool {
+        let parts = words(sentence)
+        guard parts.count == 1, let token = parts.first else { return false }
+        let core = token.trimmingCharacters(in: .punctuationCharacters).lowercased()
+        if core.isEmpty { return false }
+        if core.allSatisfy(\.isNumber) { return true }
+        return ["mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st", "vs", "etc", "eg", "ie"].contains(core)
+    }
+
+    private static func tokenRanges(in text: String) -> [Range<String.Index>] {
+        var ranges: [Range<String.Index>] = []
+        var index = text.startIndex
+        while index < text.endIndex {
+            while index < text.endIndex, text[index].isWhitespace || text[index].isNewline {
+                index = text.index(after: index)
+            }
+            guard index < text.endIndex else { break }
+            let start = index
+            while index < text.endIndex, !text[index].isWhitespace, !text[index].isNewline {
+                index = text.index(after: index)
+            }
+            ranges.append(start..<index)
+        }
+        return ranges
     }
 
     private static func cap(_ text: String, around selectedText: String) -> String {
@@ -185,9 +284,5 @@ enum ReadingSentenceContext {
 
     private static func words(_ text: String) -> [String] {
         text.split { $0.isWhitespace || $0.isNewline }.map(String.init)
-    }
-
-    private static func intersectionArea(_ lhs: CGRect, _ rhs: CGRect) -> CGFloat {
-        lhs.intersection(rhs).area
     }
 }
