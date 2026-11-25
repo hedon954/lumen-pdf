@@ -3,6 +3,18 @@
 LumenPDF 的版本记录由人工/AI 维护。每个版本只记录对用户或后续开发有意义的变化，并为具体变更附上对应的 GitHub commit URL。
 
 ---
+## [1.0.37](https://github.com/hedon954/lumen-pdf/compare/v1.0.36..v1.0.37) - 2026-11-25
+
+这一版把笔记渲染成 Markdown，查词带上完整原句，临时翻译选区从纸面浮起，长句语法按从属关系展开成树。
+
+### 主要变化
+
+- 阅读 Inspector、原文回顾和笔记列表在未编辑时按 Markdown 显示加粗、标题和分隔线。点进笔记仍改源码并自动保存，按 Esc 或「完成」回到渲染结果。长笔记可以滚到末尾（[f2b2755](https://github.com/hedon954/lumen-pdf/commit/f2b2755876b210fff51bc42f4095a6dca5219cdb)）。
+- 查词语境按选区位置取页面上的完整原句。句首专名、句首已高亮、跨行和目标词是第二个词时都保留句首。完整单词不会被改成旁边更长的词（[f2b2755](https://github.com/hedon954/lumen-pdf/commit/f2b2755876b210fff51bc42f4095a6dca5219cdb)）。
+- 临时翻译选区是浮起的亮黄标牌，只盖住实际选中的文字，黑字保持可读。已保存高亮仍是贴在纸上的黄色。翻译完成后浮窗保持打开（[f2b2755](https://github.com/hedon954/lumen-pdf/commit/f2b2755876b210fff51bc42f4095a6dca5219cdb)）。
+- 长句语法先看整句，再按主干、从句和修饰成分嵌套展开。每一层有一句作用说明，默认展开整句和主干，更深的从句先收着。标点和单独的 and / or / but 不单独占一行（[f2b2755](https://github.com/hedon954/lumen-pdf/commit/f2b2755876b210fff51bc42f4095a6dca5219cdb)）。
+
+---
 ## [1.0.36](https://github.com/hedon954/lumen-pdf/compare/v1.0.35..v1.0.36) - 2026-11-24
 
 这一版收紧笔记入口，让阅读浮窗可以拖出窗口，并让检查更新和换包后的 API Key 不再反复打断阅读。

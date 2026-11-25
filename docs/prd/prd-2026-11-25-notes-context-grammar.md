@@ -1,5 +1,5 @@
 ---
-version: unreleased
+version: v1.0.37
 date: 2026-11-25
 tdd: tdd/tdd-2026-11-25-notes-context-grammar.md
 predecessor:
