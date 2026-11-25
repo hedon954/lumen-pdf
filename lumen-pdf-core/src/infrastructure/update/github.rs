@@ -43,7 +43,7 @@ impl GithubReleaseFeed {
 impl ReleaseFeed for GithubReleaseFeed {
     async fn list_releases(&self) -> Result<Vec<RemoteRelease>, ReleaseFeedError> {
         if !is_github_releases_api_url(RELEASES_URL) {
-            return Err(ReleaseFeedError::Unavailable);
+            return Err(unavailable("更新地址不在官方发布接口上"));
         }
         let response = self
             .client
@@ -52,18 +52,19 @@ impl ReleaseFeed for GithubReleaseFeed {
             .header("X-GitHub-Api-Version", "2022-11-28")
             .send()
             .await
-            .map_err(|_| ReleaseFeedError::Unavailable)?;
+            .map_err(|error| unavailable(error.to_string()))?;
         let bytes = read_limited(response, RELEASE_LIST_LIMIT).await?;
-        let text = String::from_utf8(bytes).map_err(|_| ReleaseFeedError::Unavailable)?;
+        let text =
+            String::from_utf8(bytes).map_err(|_| unavailable("更新服务返回的内容不是文本"))?;
         parse_release_list(&text)
     }
 
     async fn read_checksum(&self, url: &str) -> Result<String, ReleaseFeedError> {
         let Some(file_name) = file_name_from_url(url) else {
-            return Err(ReleaseFeedError::Unavailable);
+            return Err(unavailable("校验地址里没有文件名"));
         };
         if !is_official_release_asset_url(url, &file_name) {
-            return Err(ReleaseFeedError::Unavailable);
+            return Err(unavailable("校验地址不在官方发布资源上"));
         }
         let response = self
             .client
@@ -71,15 +72,15 @@ impl ReleaseFeed for GithubReleaseFeed {
             .header("Accept", "application/octet-stream")
             .send()
             .await
-            .map_err(|_| ReleaseFeedError::Unavailable)?;
+            .map_err(|error| unavailable(error.to_string()))?;
         let bytes = read_limited(response, CHECKSUM_LIMIT).await?;
-        String::from_utf8(bytes).map_err(|_| ReleaseFeedError::Unavailable)
+        String::from_utf8(bytes).map_err(|_| unavailable("校验文件不是文本"))
     }
 }
 
 pub fn parse_release_list(body: &str) -> Result<Vec<RemoteRelease>, ReleaseFeedError> {
-    let values: Vec<serde_json::Value> =
-        serde_json::from_str(body).map_err(|_| ReleaseFeedError::Unavailable)?;
+    let values: Vec<serde_json::Value> = serde_json::from_str(body)
+        .map_err(|_| unavailable(format!("更新服务返回的内容无法解析：{}", clip_detail(body))))?;
     Ok(values.iter().filter_map(parse_release).collect())
 }
 
@@ -119,6 +120,57 @@ fn parse_asset(value: &serde_json::Value) -> Option<RemoteAsset> {
     })
 }
 
+const ERROR_BODY_LIMIT: usize = 1024;
+const DETAIL_CHAR_LIMIT: usize = 400;
+
+fn unavailable(detail: impl Into<String>) -> ReleaseFeedError {
+    ReleaseFeedError::Unavailable(clip_detail(detail.into()))
+}
+
+fn clip_detail(text: impl AsRef<str>) -> String {
+    text.as_ref()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(DETAIL_CHAR_LIMIT)
+        .collect()
+}
+
+/// GitHub's own `message`, prefixed with the HTTP status. Empty bodies keep the status.
+pub(crate) fn api_error_detail(status: StatusCode, body: &[u8]) -> String {
+    let text = String::from_utf8_lossy(body);
+    let message = serde_json::from_str::<serde_json::Value>(&text)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("message")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string)
+        })
+        .filter(|message| !message.is_empty())
+        .unwrap_or_else(|| text.trim().to_string());
+    let message = clip_detail(message);
+    if message.is_empty() {
+        format!("HTTP {}", status.as_u16())
+    } else {
+        format!("HTTP {}: {}", status.as_u16(), message)
+    }
+}
+
+/// A reached host that refuses the call for quota is not a connection failure.
+/// GitHub signals that with 429, or with 403 once `x-ratelimit-remaining` is 0
+/// or `retry-after` is present.
+pub(crate) fn is_rate_limited(status: StatusCode, headers: &reqwest::header::HeaderMap) -> bool {
+    let remaining_is_zero = headers
+        .get("x-ratelimit-remaining")
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.trim() == "0");
+    let asked_to_wait = headers.get("retry-after").is_some();
+    status == StatusCode::TOO_MANY_REQUESTS
+        || (status == StatusCode::FORBIDDEN && (remaining_is_zero || asked_to_wait))
+}
+
 fn file_name_from_url(url: &str) -> Option<String> {
     let path = url.split('?').next()?;
     let segment = path.rsplit('/').next()?;
@@ -138,18 +190,41 @@ async fn read_limited(
         return Err(ReleaseFeedError::NotFound);
     }
     if !response.status().is_success() {
-        return Err(ReleaseFeedError::Unavailable);
+        let status = response.status();
+        let limited = is_rate_limited(status, response.headers());
+        let body = read_error_body(response).await;
+        let detail = api_error_detail(status, &body);
+        return Err(if limited {
+            ReleaseFeedError::RateLimited(detail)
+        } else {
+            unavailable(detail)
+        });
     }
     let mut body = Vec::new();
     let mut stream = response.bytes_stream();
     while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|_| ReleaseFeedError::Unavailable)?;
+        let chunk = chunk.map_err(|error| unavailable(error.to_string()))?;
         if body.len().saturating_add(chunk.len()) > max_bytes {
-            return Err(ReleaseFeedError::Unavailable);
+            return Err(unavailable("更新服务返回的内容过长"));
         }
         body.extend_from_slice(&chunk);
     }
     Ok(body)
+}
+
+async fn read_error_body(response: reqwest::Response) -> Vec<u8> {
+    let mut body = Vec::new();
+    let mut stream = response.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let Ok(chunk) = chunk else { break };
+        let room = ERROR_BODY_LIMIT.saturating_sub(body.len());
+        if room == 0 {
+            break;
+        }
+        let take = chunk.len().min(room);
+        body.extend_from_slice(&chunk[..take]);
+    }
+    body
 }
 
 #[derive(Debug)]
@@ -165,8 +240,37 @@ impl Error for RejectedRedirect {}
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_release_list, RELEASES_URL};
+    use super::{api_error_detail, is_rate_limited, parse_release_list, RELEASES_URL};
     use crate::domain::update::is_github_releases_api_url;
+    use reqwest::StatusCode;
+
+    #[test]
+    fn exhausted_quota_is_not_a_connection_failure() {
+        use reqwest::header::{HeaderMap, HeaderValue};
+
+        let mut exhausted = HeaderMap::new();
+        exhausted.insert("x-ratelimit-remaining", HeaderValue::from_static("0"));
+        assert!(is_rate_limited(StatusCode::FORBIDDEN, &exhausted));
+
+        let mut waiting = HeaderMap::new();
+        waiting.insert("retry-after", HeaderValue::from_static("60"));
+        assert!(is_rate_limited(StatusCode::TOO_MANY_REQUESTS, &waiting));
+
+        let mut forbidden = HeaderMap::new();
+        forbidden.insert("x-ratelimit-remaining", HeaderValue::from_static("12"));
+        assert!(!is_rate_limited(StatusCode::FORBIDDEN, &forbidden));
+        assert!(!is_rate_limited(StatusCode::BAD_GATEWAY, &HeaderMap::new()));
+    }
+
+    #[test]
+    fn api_error_keeps_the_server_message() {
+        let body = br#"{"message":"API rate limit exceeded for 74.2.4.80.","documentation_url":"https://docs.github.com"}"#;
+        assert_eq!(
+            api_error_detail(StatusCode::FORBIDDEN, body),
+            "HTTP 403: API rate limit exceeded for 74.2.4.80."
+        );
+        assert_eq!(api_error_detail(StatusCode::BAD_GATEWAY, b""), "HTTP 502");
+    }
 
     #[test]
     fn releases_endpoint_stays_on_the_official_api() {

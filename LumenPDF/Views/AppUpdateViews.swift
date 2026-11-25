@@ -5,25 +5,31 @@ enum AppUpdateCopy {
         "已是最新版本 \(version)。"
     }
 
-    static func failure(_ reason: AppUpdateFailure) -> String {
+    static func failure(_ reason: AppUpdateFailure, detail: String) -> String {
+        let summary: String
         switch reason {
         case .unparseableCurrentVersion:
-            return "当前版本号无法识别。"
+            summary = "当前版本号无法识别。"
         case .feedUnavailable:
-            return "无法连接更新服务。请稍后再试。"
+            summary = "无法连接更新服务。请稍后再试。"
+        case .rateLimited:
+            summary = "更新服务的请求次数已用完，请稍后再试。"
         case .noStableRelease:
-            return "没有找到可用的发布版本。"
+            summary = "没有找到可用的发布版本。"
         case .missingDiskImage:
-            return "最新版本没有可安装的磁盘映像。"
+            summary = "最新版本没有可安装的磁盘映像。"
         case .missingChecksum:
-            return "最新版本没有校验文件，已取消更新。"
+            summary = "最新版本没有校验文件，已取消更新。"
         case .untrustedAssetUrl:
-            return "更新地址不受信任，已取消更新。"
+            summary = "更新地址不受信任，已取消更新。"
         case .checksumUnavailable:
-            return "无法读取更新校验。"
+            summary = "无法读取更新校验。"
         case .invalidChecksum:
-            return "更新校验无效，已取消更新。"
+            summary = "更新校验无效，已取消更新。"
         }
+        let trimmed = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return summary }
+        return summary + "\n\n" + trimmed
     }
 
     static func installFailure(_ failure: AppUpdateInstallFailure) -> String {
@@ -106,6 +112,7 @@ struct AppUpdateSheet: View {
             if !updates.statusMessage.isEmpty {
                 Text(updates.statusMessage)
                     .foregroundStyle(.orange)
+                    .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Toggle("启动时检查更新", isOn: $updates.checksOnLaunch)
@@ -122,6 +129,11 @@ struct AppUpdateSheet: View {
                 }
                 if updates.activity == .downloading {
                     Button("取消", action: updates.cancelInstall)
+                }
+                if updates.canRetryCheck {
+                    Button("重试", action: updates.checkManually)
+                        .disabled(updates.isBusy)
+                        .accessibilityIdentifier("update.retry")
                 }
                 if updates.offer != nil {
                     Button("立即更新", action: updates.installCurrentOffer)
@@ -227,6 +239,7 @@ struct AppUpdateSettingsPage: View {
                 if !updates.statusMessage.isEmpty {
                     Text(updates.statusMessage)
                         .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }

@@ -59,6 +59,7 @@ PRD 记录**用户可感知的行为与验收标准**。TDD 记录**如何实现
 | v1.0.36 | 2026-11-24 | 换包后 API Key 不再要钥匙串密码 | [prd-2026-11-24-keychain-rebuild-access.md](prd/prd-2026-11-24-keychain-rebuild-access.md) | [tdd-2026-11-24-keychain-rebuild-access.md](tdd/tdd-2026-11-24-keychain-rebuild-access.md) |
 | v1.0.36 | 2026-11-24 | 本机升级只做有变化的步骤 | [prd-2026-11-24-local-upgrade.md](prd/prd-2026-11-24-local-upgrade.md) | [tdd-2026-11-24-local-upgrade.md](tdd/tdd-2026-11-24-local-upgrade.md) |
 | v1.0.37 | 2026-11-25 | 笔记展示、临时选区、完整语境与语法树 | [prd-2026-11-25-notes-context-grammar.md](prd/prd-2026-11-25-notes-context-grammar.md) | [tdd-2026-11-25-notes-context-grammar.md](tdd/tdd-2026-11-25-notes-context-grammar.md) |
+| unreleased | 2026-11-25 | 检查更新失败时附上接口错误并可重试 | [prd-2026-11-25-update-rate-limit.md](prd/prd-2026-11-25-update-rate-limit.md) | [tdd-2026-11-25-update-rate-limit.md](tdd/tdd-2026-11-25-update-rate-limit.md) |
 
 未单独成对的发布：
 
@@ -153,6 +154,7 @@ v1.0.9 开发者 make upgrade 替换 /Applications
   → v1.0.34 已安装的应用启动时检查官方发布，确认后原地替换当前副本并重新打开
   → v1.0.36 手动检查立即给出面板反馈；发布说明渲染 Markdown；退出后再由脱离的助手替换 bundle
   → v1.0.36 开发者 make upgrade 只编本机架构，未变化的步骤直接跳过，不再每次打 DMG
+  → unreleased 检查失败时附上接口原文，并可以重试
 ```
 
 ## 其他文档

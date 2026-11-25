@@ -415,6 +415,7 @@ pub async fn check_app_update(current_version: String) -> AppUpdateStatus {
     let Some(feed) = GithubReleaseFeed::new() else {
         return AppUpdateStatus::Failed {
             reason: AppUpdateFailure::FeedUnavailable,
+            detail: String::new(),
         };
     };
     AppUpdateUseCase::new(feed).check(current_version).await

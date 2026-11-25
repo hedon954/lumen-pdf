@@ -15,6 +15,7 @@ final class AppUpdateCenter: ObservableObject {
     @Published private(set) var offer: AppUpdateOffer?
     @Published private(set) var downloadFraction: Double = 0
     @Published private(set) var statusMessage = ""
+    @Published private(set) var canRetryCheck = false
     @Published var showsBanner = false
     @Published var showsSheet = false
     @Published var checksOnLaunch: Bool {
@@ -94,12 +95,14 @@ final class AppUpdateCenter: ObservableObject {
         case .upToDate:
             recordSuccess()
             offer = nil
+            canRetryCheck = false
             showsBanner = false
             if !automatic {
                 report(AppUpdateCopy.upToDate(version), modal: true)
             }
         case .available(let offer):
             recordSuccess()
+            canRetryCheck = false
             self.offer = offer
             if automatic {
                 showsBanner = deferredVersion != offer.version
@@ -107,10 +110,11 @@ final class AppUpdateCenter: ObservableObject {
                 showsBanner = true
                 presentDetails()
             }
-        case .failed(let reason):
+        case .failed(let reason, let detail):
             recordFailure()
+            canRetryCheck = true
             if !automatic {
-                report(AppUpdateCopy.failure(reason), modal: true)
+                report(AppUpdateCopy.failure(reason, detail: detail), modal: true)
             }
         }
     }

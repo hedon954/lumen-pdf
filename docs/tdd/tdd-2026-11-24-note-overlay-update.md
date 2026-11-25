@@ -7,6 +7,8 @@ predecessor:
   - tdd/tdd-2026-09-10-reader-open-note-popover.md
   - tdd/tdd-2026-10-13-app-update.md
   - tdd/tdd-2026-11-23-reader-context-viewport.md
+successor:
+  - tdd/tdd-2026-11-25-update-rate-limit.md
 ---
 
 # 笔记入口、翻译浮窗与检查更新

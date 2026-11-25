@@ -22,10 +22,13 @@ impl RemoteRelease {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReleaseFeedError {
-    Unavailable,
+    Unavailable(String),
     NotFound,
+    /// The update host accepted the connection and then refused it for quota.
+    /// The string is the host's own error text.
+    RateLimited(String),
 }
 
 #[async_trait::async_trait]

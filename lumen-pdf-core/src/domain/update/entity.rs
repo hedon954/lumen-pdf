@@ -17,11 +17,17 @@ pub enum AppUpdateFailure {
     UntrustedAssetUrl,
     ChecksumUnavailable,
     InvalidChecksum,
+    RateLimited,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
 pub enum AppUpdateStatus {
     UpToDate,
-    Available { offer: AppUpdateOffer },
-    Failed { reason: AppUpdateFailure },
+    Available {
+        offer: AppUpdateOffer,
+    },
+    Failed {
+        reason: AppUpdateFailure,
+        detail: String,
+    },
 }

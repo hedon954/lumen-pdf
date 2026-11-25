@@ -21,12 +21,7 @@ impl<F: ReleaseFeed> UpdateDomainService<F> {
         };
         let releases = match self.feed.list_releases().await {
             Ok(releases) => releases,
-            Err(ReleaseFeedError::NotFound) => {
-                return failed(AppUpdateFailure::NoStableRelease);
-            }
-            Err(ReleaseFeedError::Unavailable) => {
-                return failed(AppUpdateFailure::FeedUnavailable);
-            }
+            Err(error) => return status_for_list(error),
         };
         let Some(release) = newest_stable(&releases) else {
             return failed(AppUpdateFailure::NoStableRelease);
@@ -52,7 +47,21 @@ impl<F: ReleaseFeed> UpdateDomainService<F> {
 
         let body = match self.feed.read_checksum(&checksum.download_url).await {
             Ok(body) => body,
-            Err(_) => return failed(AppUpdateFailure::ChecksumUnavailable),
+            Err(ReleaseFeedError::RateLimited(detail)) => {
+                return AppUpdateStatus::Failed {
+                    reason: AppUpdateFailure::RateLimited,
+                    detail,
+                };
+            }
+            Err(ReleaseFeedError::Unavailable(detail)) => {
+                return AppUpdateStatus::Failed {
+                    reason: AppUpdateFailure::ChecksumUnavailable,
+                    detail,
+                };
+            }
+            Err(ReleaseFeedError::NotFound) => {
+                return failed(AppUpdateFailure::ChecksumUnavailable);
+            }
         };
         let Some(digest) = parse_checksum_body(&body, &image_name) else {
             return failed(AppUpdateFailure::InvalidChecksum);
@@ -82,7 +91,24 @@ fn limit_notes(notes: &str) -> String {
 }
 
 fn failed(reason: AppUpdateFailure) -> AppUpdateStatus {
-    AppUpdateStatus::Failed { reason }
+    AppUpdateStatus::Failed {
+        reason,
+        detail: String::new(),
+    }
+}
+
+fn status_for_list(error: ReleaseFeedError) -> AppUpdateStatus {
+    match error {
+        ReleaseFeedError::NotFound => failed(AppUpdateFailure::NoStableRelease),
+        ReleaseFeedError::RateLimited(detail) => AppUpdateStatus::Failed {
+            reason: AppUpdateFailure::RateLimited,
+            detail,
+        },
+        ReleaseFeedError::Unavailable(detail) => AppUpdateStatus::Failed {
+            reason: AppUpdateFailure::FeedUnavailable,
+            detail,
+        },
+    }
 }
 
 #[cfg(test)]
@@ -109,7 +135,7 @@ mod tests {
             self.checksums
                 .get(url)
                 .cloned()
-                .unwrap_or(Err(ReleaseFeedError::Unavailable))
+                .unwrap_or(Err(ReleaseFeedError::Unavailable(String::new())))
         }
     }
 
@@ -220,7 +246,8 @@ mod tests {
         assert_eq!(
             image_service.check("1.0.33").await,
             AppUpdateStatus::Failed {
-                reason: AppUpdateFailure::MissingChecksum
+                reason: AppUpdateFailure::MissingChecksum,
+                detail: String::new(),
             }
         );
 
@@ -230,7 +257,8 @@ mod tests {
         assert_eq!(
             checksum_service.check("1.0.33").await,
             AppUpdateStatus::Failed {
-                reason: AppUpdateFailure::MissingDiskImage
+                reason: AppUpdateFailure::MissingDiskImage,
+                detail: String::new(),
             }
         );
     }
@@ -244,7 +272,8 @@ mod tests {
         assert_eq!(
             service.check("1.0.33").await,
             AppUpdateStatus::Failed {
-                reason: AppUpdateFailure::UntrustedAssetUrl
+                reason: AppUpdateFailure::UntrustedAssetUrl,
+                detail: String::new(),
             }
         );
     }
@@ -259,33 +288,50 @@ mod tests {
         assert_eq!(
             invalid.check("1.0.33").await,
             AppUpdateStatus::Failed {
-                reason: AppUpdateFailure::InvalidChecksum
+                reason: AppUpdateFailure::InvalidChecksum,
+                detail: String::new(),
             }
         );
 
         let mut missing = feed_for(vec![release]);
         missing
             .checksums
-            .insert(url, Err(ReleaseFeedError::Unavailable));
+            .insert(url, Err(ReleaseFeedError::Unavailable(String::new())));
         let unavailable = UpdateDomainService::new(missing);
         assert_eq!(
             unavailable.check("1.0.33").await,
             AppUpdateStatus::Failed {
-                reason: AppUpdateFailure::ChecksumUnavailable
+                reason: AppUpdateFailure::ChecksumUnavailable,
+                detail: String::new(),
             }
         );
     }
 
     #[tokio::test]
     async fn feed_and_version_errors_are_distinct() {
+        let limited = UpdateDomainService::new(FakeFeed {
+            releases: Mutex::new(Err(ReleaseFeedError::RateLimited(
+                "HTTP 403: API rate limit exceeded".to_string(),
+            ))),
+            checksums: HashMap::new(),
+        });
+        assert_eq!(
+            limited.check("1.0.33").await,
+            AppUpdateStatus::Failed {
+                reason: AppUpdateFailure::RateLimited,
+                detail: "HTTP 403: API rate limit exceeded".to_string(),
+            }
+        );
+
         let unavailable = UpdateDomainService::new(FakeFeed {
-            releases: Mutex::new(Err(ReleaseFeedError::Unavailable)),
+            releases: Mutex::new(Err(ReleaseFeedError::Unavailable(String::new()))),
             checksums: HashMap::new(),
         });
         assert_eq!(
             unavailable.check("1.0.33").await,
             AppUpdateStatus::Failed {
-                reason: AppUpdateFailure::FeedUnavailable
+                reason: AppUpdateFailure::FeedUnavailable,
+                detail: String::new(),
             }
         );
 
@@ -293,13 +339,15 @@ mod tests {
         assert_eq!(
             empty.check("1.0.33").await,
             AppUpdateStatus::Failed {
-                reason: AppUpdateFailure::NoStableRelease
+                reason: AppUpdateFailure::NoStableRelease,
+                detail: String::new(),
             }
         );
         assert_eq!(
             empty.check("beta").await,
             AppUpdateStatus::Failed {
-                reason: AppUpdateFailure::UnparseableCurrentVersion
+                reason: AppUpdateFailure::UnparseableCurrentVersion,
+                detail: String::new(),
             }
         );
     }
