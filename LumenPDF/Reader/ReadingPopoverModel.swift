@@ -115,6 +115,13 @@ final class ReadingPopoverModel: ObservableObject {
         isLoading = false
     }
 
+    /// The selection stayed the same and only moved on screen.
+    func moveAnchor(_ rect: CGRect) {
+        guard var request, request.selectionAnchorRect != rect else { return }
+        request.selectionAnchorRect = rect
+        presentation = .translation(request)
+    }
+
     func dismiss() {
         cancelInFlight()
         retryHandler = nil

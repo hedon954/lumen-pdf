@@ -64,8 +64,11 @@ struct PDFReaderView: View {
                     handleDocumentLoaded(totalPages: total)
                 },
                 translationSelection: translationSelectionEmphasis,
-                onTranslationViewportChanged: {
-                    readingPopoverModel.dismiss()
+                onTranslationAnchorMoved: { localRect in
+                    let readerFrame = proxy.frame(in: .named(ReaderRootCoordinateSpace.name))
+                    readingPopoverModel.moveAnchor(
+                        localRect.offsetBy(dx: readerFrame.minX, dy: readerFrame.minY)
+                    )
                 },
                 noteAnchorRequests: noteAnchorRequests,
                 onNoteAnchorsChanged: { anchors in

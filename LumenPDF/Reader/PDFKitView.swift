@@ -235,6 +235,51 @@ final class ReaderViewportTransitionController: ObservableObject {
     }
 }
 
+/// Records the drag that produced a selection. PDFKit posts the selection
+/// from inside `mouseDragged` / `mouseUp`, so the points are stored before
+/// `super` runs.
+private final class SelectionTrackingPDFView: PDFView {
+    var onGesture: ((PDFSelectionGesture?) -> Void)?
+    private var anchor: (page: Int, point: CGPoint)?
+
+    override func mouseDown(with event: NSEvent) {
+        anchor = pagePoint(for: event)
+        onGesture?(nil)
+        super.mouseDown(with: event)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        publishGesture(to: event)
+        super.mouseDragged(with: event)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        publishGesture(to: event)
+        super.mouseUp(with: event)
+    }
+
+    private func publishGesture(to event: NSEvent) {
+        guard let anchor, let current = pagePoint(for: event) else { return }
+        onGesture?(
+            PDFSelectionGesture(
+                startPage: anchor.page,
+                startPoint: anchor.point,
+                endPage: current.page,
+                endPoint: current.point
+            )
+        )
+    }
+
+    private func pagePoint(for event: NSEvent) -> (page: Int, point: CGPoint)? {
+        let viewPoint = convert(event.locationInWindow, from: nil)
+        guard let page = page(for: viewPoint, nearest: true),
+              let document else { return nil }
+        let index = document.index(for: page)
+        guard index != NSNotFound else { return nil }
+        return (index, convert(viewPoint, to: page))
+    }
+}
+
 // MARK: - PDFKit NSViewRepresentable
 struct PDFKitView: NSViewRepresentable {
     let filePath: String
@@ -247,7 +292,8 @@ struct PDFKitView: NSViewRepresentable {
     let onClearSelection: () -> Void
     let onDocumentLoaded: (Int) -> Void
     let translationSelection: TranslationSelectionEmphasis?
-    let onTranslationViewportChanged: () -> Void
+    /// The selection moved on screen. The translation itself is unchanged.
+    let onTranslationAnchorMoved: (CGRect) -> Void
     let noteAnchorRequests: [NoteAnchorRequest]
     let onNoteAnchorsChanged: ([NoteAnchorPosition]) -> Void
     let viewportTransitionController: ReaderViewportTransitionController
@@ -255,7 +301,10 @@ struct PDFKitView: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     func makeNSView(context: Context) -> PDFView {
-        let pdfView = PDFView()
+        let pdfView = SelectionTrackingPDFView()
+        pdfView.onGesture = { [weak coordinator = context.coordinator] gesture in
+            coordinator?.selectionGesture = gesture
+        }
         pdfView.autoScales = true
         pdfView.displayMode = .singlePageContinuous
         pdfView.displayDirection = .vertical
@@ -381,7 +430,9 @@ struct PDFKitView: NSViewRepresentable {
     final class Coordinator: NSObject, ReaderViewportTransitionHandling {
         var parent: PDFKitView
         weak var pdfView: PDFView?
+        var selectionGesture: PDFSelectionGesture?
         private var selectionDebounce: Timer?
+        private var anchorFollowScheduled = false
         private var scrollDebounce: Timer?
         private var annotationSaveDebounce: Timer?
         private var activeTranslationSelectionID: UUID?
@@ -1751,7 +1802,7 @@ struct PDFKitView: NSViewRepresentable {
         /// The PDFKit clip view is the authoritative viewport signal. Unlike
         /// `didLiveScroll`, this also covers momentum and programmatic scrolling.
         @objc func viewportBoundsChanged(_ notification: Notification) {
-            dismissTranslationForViewportChange()
+            followTranslationAnchor()
             refreshTranslationSelectionEmphasis()
             if let layoutTransitionMode {
                 if layoutTransitionMode == .animatedChrome, let pdfView {
@@ -1767,7 +1818,7 @@ struct PDFKitView: NSViewRepresentable {
 
         @objc func viewportGeometryChanged(_ notification: Notification) {
             attachViewportObserverIfNeeded()
-            dismissTranslationForViewportChange()
+            followTranslationAnchor()
             refreshTranslationSelectionEmphasis()
             if let layoutTransitionMode {
                 if layoutTransitionMode == .animatedChrome, let pdfView {
@@ -1786,12 +1837,25 @@ struct PDFKitView: NSViewRepresentable {
             scheduleViewportPersistence()
         }
 
-        private func dismissTranslationForViewportChange() {
+        /// Scrolling and zooming move the page under the popover. They do not
+        /// cancel the translation. The popover is anchored to the selection's
+        /// page rects, so it follows those rects into their new screen position.
+        private func followTranslationAnchor() {
             guard !isApplyingTranslationSelection else { return }
             guard activeTranslationSelectionID != nil else { return }
-            clearTranslationSelection()
+            guard !anchorFollowScheduled else { return }
+            anchorFollowScheduled = true
             DispatchQueue.main.async { [weak self] in
-                self?.parent.onTranslationViewportChanged()
+                guard let self else { return }
+                self.anchorFollowScheduled = false
+                guard self.activeTranslationSelectionID != nil,
+                      let pdfView = self.pdfView,
+                      let document = pdfView.document,
+                      let markups = self.parent.translationSelection?.pageMarkups,
+                      !markups.isEmpty else { return }
+                let rect = Self.swiftUIUnion(of: markups, document: document, pdfView: pdfView)
+                guard !rect.isNull, !rect.isEmpty else { return }
+                self.parent.onTranslationAnchorMoved(rect)
             }
         }
 
@@ -1872,6 +1936,7 @@ struct PDFKitView: NSViewRepresentable {
 
             guard let selection = pdfView.currentSelection,
                   let selectedStr = selection.string, !selectedStr.isEmpty else {
+                selectionGesture = nil
                 selectionDebounce?.invalidate()
                 DispatchQueue.main.async { self.parent.onClearSelection() }
                 return
@@ -1886,52 +1951,41 @@ struct PDFKitView: NSViewRepresentable {
                 let rawWord = selectedStr.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !rawWord.isEmpty else { return }
 
-                let markups = PDFSelectionMarkupGeometry.make(
+                let gesture = self.selectionGesture
+                self.selectionGesture = nil
+                let captured = PDFSelectionMarkupGeometry.capture(
                     selection: selectionSnapshot,
-                    document: doc
+                    document: doc,
+                    gesture: gesture
                 )
-                let preferredIndex = pdfView.currentPage.map { doc.index(for: $0) }
-                guard let primary = markups.first(where: { $0.pageIndex == preferredIndex }) ?? markups.first else {
+                let markups = captured.markups
+                guard let primary = markups.first else {
                     DispatchQueue.main.async { self.parent.onClearSelection() }
                     return
                 }
 
-                let word = PDFSelectionHeadingLeakFilter.stripEchoedHeadings(
-                    from: PDFExtractedTextCollapser.collapse(
-                        markups
-                            .map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
-                            .filter { !$0.isEmpty }
-                            .joined(separator: "\n")
-                    )
+                let fallback = PDFExtractedTextCollapser.collapse(
+                    markups
+                        .map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
+                        .filter { !$0.isEmpty }
+                        .joined(separator: " ")
                 )
-                guard !word.isEmpty else {
+                let resolved = ReadingSentenceContext.resolve(lines: captured.lines)
+                let word = resolved?.word ?? fallback
+                let sentence = resolved?.sentence ?? fallback
+                guard !word.isEmpty, !sentence.isEmpty else {
                     DispatchQueue.main.async { self.parent.onClearSelection() }
                     return
                 }
-                let page = doc.page(at: primary.pageIndex)
-                let pageLines = page.flatMap { page in
-                    PDFSelectionMarkupGeometry.contextLines(on: page)
-                } ?? []
-                let resolved = ReadingSentenceContext.resolve(
-                    lines: pageLines,
-                    selectionRect: page.flatMap { selectionSnapshot.bounds(for: $0) } ?? .zero,
-                    selectedText: word
-                )
-                let indexed = self.extractSentence(
-                    from: pdfView,
-                    containing: selectionSnapshot,
-                    pageIndex: primary.pageIndex
-                )
-                let sentence = resolved?.sentence ?? indexed ?? word
-                let resolvedWord = resolved?.word ?? word
-                let currentPage = doc.page(at: primary.pageIndex) ?? pdfView.currentPage
-                guard let currentPage else { return }
+                guard let currentPage = doc.page(at: primary.pageIndex) ?? pdfView.currentPage else { return }
                 let overallBounds = primary.bounds
-                let menuAnchor = Self.menuAnchor(boundsInPage: overallBounds,
-                                                 page: currentPage, pdfView: pdfView)
-                let selectionAnchorRect = Self.swiftUIRect(boundsInPage: overallBounds, page: currentPage, pdfView: pdfView)
+                let union = Self.swiftUIUnion(of: markups, document: doc, pdfView: pdfView)
+                let selectionAnchorRect = union.isNull || union.isEmpty
+                    ? Self.swiftUIRect(boundsInPage: overallBounds, page: currentPage, pdfView: pdfView)
+                    : union
+                let menuAnchor = Self.menuAnchor(boundsInPage: overallBounds, page: currentPage, pdfView: pdfView)
                 let info = SelectionInfo(
-                    word: resolvedWord.isEmpty ? word : resolvedWord,
+                    word: word,
                     sentence: sentence,
                     bounds: overallBounds,
                     boundsStr: primary.boundsStr,
@@ -1960,6 +2014,31 @@ struct PDFKitView: NSViewRepresentable {
             let menuY = max(selTopSwiftUI - 8 - menuH / 2, menuH / 2 + 4)
             let menuX = min(max(swiftUICenterX, 120), pdfView.bounds.width - 120)
             return CGPoint(x: menuX, y: menuY)
+        }
+
+        /// Visible lines when any of the selection is on screen, otherwise the
+        /// whole span. A cross-page selection must not become one giant anchor.
+        private static func swiftUIUnion(
+            of markups: [PDFPageMarkup],
+            document: PDFDocument,
+            pdfView: PDFView
+        ) -> CGRect {
+            var visibleUnion = CGRect.null
+            var all = CGRect.null
+            let visible = pdfView.bounds
+            for markup in markups {
+                guard let page = document.page(at: markup.pageIndex) else { continue }
+                for rect in markup.lineRects where !rect.isNull && !rect.isEmpty {
+                    let inView = pdfView.convert(rect, from: page)
+                    let converted = swiftUIRect(boundsInPage: rect, page: page, pdfView: pdfView)
+                    guard converted.width > 0, converted.height > 0 else { continue }
+                    all = all.isNull ? converted : all.union(converted)
+                    if inView.intersects(visible) {
+                        visibleUnion = visibleUnion.isNull ? converted : visibleUnion.union(converted)
+                    }
+                }
+            }
+            return visibleUnion.isNull ? all : visibleUnion
         }
 
         private static func swiftUIRect(boundsInPage: CGRect, page: PDFPage, pdfView: PDFView) -> CGRect {
@@ -2037,63 +2116,6 @@ struct PDFKitView: NSViewRepresentable {
                 )
             }
             DispatchQueue.main.async { self.parent.onNoteAnchorsChanged(anchors) }
-        }
-
-        // MARK: Sentence extraction
-
-        private func extractSentence(
-            from pdfView: PDFView,
-            containing selection: PDFSelection,
-            pageIndex: Int
-        ) -> String? {
-            guard let page = pdfView.document?.page(at: pageIndex),
-                  let pageText = page.string,
-                  !pageText.isEmpty else { return nil }
-            let word = (selection.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            let ns = pageText as NSString
-            let selRange = selection.range(at: 0, on: page)
-            guard selRange.location != NSNotFound, selRange.length > 0, ns.length > 0 else { return nil }
-            let anchor = min(selRange.location + max(0, selRange.length / 2), ns.length - 1)
-            return extractFullSentence(from: ns, anchorUTF16: anchor)
-        }
-
-        private func extractFullSentence(from ns: NSString, anchorUTF16: Int) -> String? {
-            let len = ns.length
-            guard len > 0, anchorUTF16 >= 0, anchorUTF16 < len else { return nil }
-            var start = anchorUTF16
-            while start > 0 {
-                let c = ns.character(at: start - 1)
-                if isSentenceTerminatorUTF16(c) { break }
-                start -= 1
-            }
-            var end = anchorUTF16
-            while end < len {
-                let c = ns.character(at: end)
-                if isSentenceTerminatorUTF16(c) { end += 1; break }
-                end += 1
-            }
-            let r = NSRange(location: start, length: end - start)
-            let sentence = ns.substring(with: r).trimmingCharacters(in: .whitespacesAndNewlines)
-            if sentence.count >= 2, sentence.count <= 2000 { return sentence }
-            return nil
-        }
-
-        private func isSentenceTerminatorUTF16(_ c: UInt16) -> Bool {
-            switch c {
-            case 0x002E, 0x0021, 0x003F: return true // . ! ?
-            case 0x3002, 0xFF01, 0xFF1F: return true // 。！？
-            default: return false
-            }
-        }
-
-        private func fallbackSentence(word: String, in pageText: String) -> String? {
-            guard !word.isEmpty else { return nil }
-            let seps = CharacterSet(charactersIn: ".!?。！？")
-            for part in pageText.components(separatedBy: seps) {
-                let t = part.trimmingCharacters(in: .whitespacesAndNewlines)
-                if t.contains(word), t.count >= 4, t.count <= 2000 { return t }
-            }
-            return nil
         }
 
         // MARK: Scroll offset

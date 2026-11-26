@@ -81,6 +81,34 @@ enum ParagraphJoiner {
         return hit.width * hit.height
     }
 
+    /// Whether `earlier` continues into `later` in reading order.
+    /// `pageGap` is `later.pageIndex - earlier.pageIndex` for the caller that has pages;
+    /// pass 0 for two lines already known to share a page.
+    static func continuesInReadingOrder(
+        _ earlier: PDFTextLine,
+        to later: PDFTextLine,
+        pageGap: Int
+    ) -> Bool {
+        if pageGap == 0 {
+            if later.rect.midY > earlier.rect.midY + 1 { return false }
+            return joinsDownward(earlier, to: later, allowingShortUpper: true)
+        }
+        guard pageGap == 1 else { return false }
+        return joinsAcrossPage(earlier, to: later)
+    }
+
+    /// A page break has no shared vertical pitch. Join only when the last line
+    /// still looks like an unfinished body line, not the short end of a paragraph.
+    private static func joinsAcrossPage(_ upper: PDFTextLine, to lower: PDFTextLine) -> Bool {
+        let height = max(upper.rect.height, lower.rect.height, 8)
+        guard abs(upper.rect.height - lower.rect.height) <= height * 0.35 else { return false }
+        guard abs(upper.rect.minX - lower.rect.minX) < height * 4 else { return false }
+        if upper.text.hasSuffix("-"), let next = lower.text.first, next.isLowercase {
+            return true
+        }
+        return upper.rect.width >= lower.rect.width * 0.9 || upper.rect.width >= height * 12
+    }
+
     /// `upper` is the line above `lower` in PDF coordinates.
     /// A short upper line may start a paragraph, but a short upper line must not swallow the next paragraph.
     private static func joinsDownward(

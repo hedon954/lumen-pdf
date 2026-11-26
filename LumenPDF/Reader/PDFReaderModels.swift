@@ -628,7 +628,7 @@ struct TranslationBubbleRequest: Identifiable, Equatable {
     let pageMarkups: [PDFPageMarkup]
     /// Selection bounds in the reader-root coordinate space. The root overlay
     /// converts this to its local space before placing the pointer.
-    let selectionAnchorRect: CGRect
+    var selectionAnchorRect: CGRect
     var result: TranslationResult?
     var translationError: String?
     /// Existing saved entry for the same word in the same context (word + sentence hash).

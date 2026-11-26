@@ -11,6 +11,7 @@ predecessor:
 successor:
   - tdd/tdd-2026-11-24-note-overlay-update.md
   - tdd/tdd-2026-11-25-notes-context-grammar.md
+  - tdd/tdd-2026-11-26-selection-span.md
 ---
 
 # LumenPDF — 划线入口、选词语境与阅读位置 TDD
@@ -26,7 +27,7 @@ successor:
 | `PDFHighlightAnnotationFactory.makeUnderline` | 一次划线的全部行写入同一个 underline 标注的 QuadPoints。 |
 | `NoteAnchorGrouping` | 把紧挨着的旧划线行合成一组，段落间隔则分开。 |
 | `NoteAnchorCatalog` | 自由划线先分组，再各生成一个笔记入口。后续修订：空笔记和自由划线不再生成入口，跨页同一划线只留一个按钮，见 [tdd-2026-11-24-note-overlay-update.md](tdd-2026-11-24-note-overlay-update.md)。 |
-| `ReadingSentenceContext` | 从可见行抽出包含选中词的句子；句子过短或从该词开头时带上相邻句。 |
+| `ReadingSentenceContext` | 从可见行抽出包含选中词的句子；句子过短或从该词开头时带上相邻句。后续修订：不再并入选区没有碰到的相邻句，见 [tdd-2026-11-26-selection-span.md](tdd-2026-11-26-selection-span.md)。 |
 | `PDFSelectionMarkupGeometry.contextSentence` | 从选区所在页收集行，交给上面的纯函数。 |
 | `ReadingViewportCommit` | 决定新的视口采集能否替换已记住的位置；恢复页码优先用锚点页。 |
 | `PDFKitView.Coordinator` | 滚动时立刻记住稳定视口；关闭、退出、拆掉视图时写出这份位置，而不是关闭瞬间的回跳。 |
@@ -44,7 +45,7 @@ SwiftUI 视图仍不调用 `BridgeService`。本次不改 Rust、数据库或 Un
 
 ### 3.2 选词语境
 
-`ReadingSentenceContext.extract` 按 PDF 纵坐标从上到下排列行，从与选区相交的行向两侧扩展，直到行距超过约一行。拼成段落后按句号切句。包含选中词的那一句如果词数不超过选中词数加 2，或句子的第一个词就是选中词，则带上前一句；过短时再带上后一句。结果超过 800 字时以选中词为中心截断。
+`ReadingSentenceContext.extract` 按 PDF 纵坐标从上到下排列行，从与选区相交的行向两侧扩展，直到行距超过约一行。拼成段落后按句号切句。包含选中词的那一句如果词数不超过选中词数加 2，或句子的第一个词就是选中词，则带上前一句；过短时再带上后一句。结果超过 800 字时以选中词为中心截断。后续修订：选区是一段字符，句子只取这段字符碰到的句，见 [tdd-2026-11-26-selection-span.md](tdd-2026-11-26-selection-span.md)。
 
 `PDFPage.string` 路径仍保留。字符范围抽出的句子若比可见行结果更「瘦」（几乎只剩选中词），使用更完整的那一份。标题过滤如果把语境滤成只剩该词，同样退回过滤前的文本。后续修订：标题过滤不得删掉同一句的句首词，见 [tdd-2026-11-25-notes-context-grammar.md](tdd-2026-11-25-notes-context-grammar.md)。
 

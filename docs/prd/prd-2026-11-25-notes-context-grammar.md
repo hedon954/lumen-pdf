@@ -6,6 +6,8 @@ predecessor:
   - prd/prd-2026-05-06-v105.md
   - prd/prd-2026-08-20-note-autosave-overlay-stability.md
   - prd/prd-2026-11-23-reader-context-viewport.md
+successor:
+  - prd/prd-2026-11-26-selection-span.md
 ---
 
 # 笔记展示、临时选区、完整语境与语法树
@@ -52,7 +54,7 @@ predecessor:
 
 - 句子翻译和语法分析不使用残缺选区。半个词先补成页面上的那个词，半句补成它所在的整句，然后再分析这一整句。
 - 已经是一个完整单词时，查词就用这个词，不会改成旁边更长的词。只有选区停在词的中间时，才补成这一行上的那个词。
-- 语境是包含这个词的那一句，按整词匹配。`observation` 不会因为上一句有 `observations` 就改用上一句。
+- 语境是包含这个词的那一句，按整词匹配。`observation` 不会因为上一句有 `observations` 就改用上一句。后续修订：选区已经覆盖一整句时，不再因为「句子从选中词开头」或「句子和选区差不多长」把相邻句并进来，见 [prd-2026-11-26-selection-span.md](prd-2026-11-26-selection-span.md)。
 
 ### 长句语法按递归结构一次展开
 

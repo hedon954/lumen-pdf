@@ -336,28 +336,152 @@ enum PDFSelectionMarkupGeometry {
         return markups
     }
 
-    /// Sentence around a selection, taken from the page's visible lines.
-    static func contextLines(on page: PDFPage) -> [PDFTextLine] {
-        allTextLines(on: page, bounds: page.bounds(for: .cropBox))
+    /// Markups for what the user selected, and the lines those characters sit in.
+    /// Neighboring lines are included unmarked so a sentence can finish across a wrap or a page break.
+    static func capture(
+        selection: PDFSelection,
+        document: PDFDocument,
+        gesture: PDFSelectionGesture?
+    ) -> (markups: [PDFPageMarkup], lines: [ReadingLine]) {
+        let selection = PDFReadingSelection.materialize(
+            reported: selection,
+            document: document,
+            gesture: gesture
+        )
+        return (
+            markups: make(selection: selection, document: document),
+            lines: readingLines(for: selection, document: document)
+        )
     }
 
-    static func contextSentence(
-        around selection: PDFSelection,
-        on page: PDFPage?,
-        selectedText: String
-    ) -> String? {
-        guard let page else { return nil }
-        let bounds = page.bounds(for: .cropBox)
-        let lines = allTextLines(on: page, bounds: bounds)
-        let selectionBounds = selection.bounds(for: page)
-        let pageArea = bounds.width * bounds.height
-        let selectionArea = selectionBounds.width * selectionBounds.height
-        let rect = pageArea > 0 && selectionArea / pageArea < 0.5 ? selectionBounds : .zero
-        return ReadingSentenceContext.extract(
-            lines: lines,
-            selectionRect: rect,
-            selectedText: selectedText
+    private static func readingLines(
+        for selection: PDFSelection,
+        document: PDFDocument
+    ) -> [ReadingLine] {
+        let pages = pagesCovered(by: selection, in: document)
+        guard !pages.isEmpty else { return [] }
+        let layouts = textLayouts(around: pages, in: document)
+        var lines: [ReadingLine] = []
+        for (index, layout) in layouts.sorted(by: { $0.key < $1.key }) {
+            guard let page = document.page(at: index) else { continue }
+            let neighbors = (-2...2).compactMap { delta -> PDFPageTextLayout? in
+                guard delta != 0 else { return nil }
+                return layouts[index + delta]
+            }
+            let body = PDFPageChromeFilter.bodyLines(
+                selected: layout.lines,
+                pageBounds: layout.bounds,
+                neighbors: neighbors
+            )
+            let fragments = fragments(
+                on: page,
+                pageBounds: layout.bounds,
+                selection: selection,
+                coveredPages: pages,
+                cachedPageLines: layout.lines
+            )
+            for line in body {
+                lines.append(
+                    ReadingLine(
+                        pageIndex: index,
+                        rect: line.rect,
+                        text: line.text,
+                        selected: selectedOffsets(on: line, fragments: fragments)
+                    )
+                )
+            }
+        }
+        return lines
+    }
+
+    /// Lines the selection actually covers. A neighboring page kept only so a
+    /// sentence can finish is not searched by string: the same words often
+    /// occur on the previous page.
+    private static func fragments(
+        on page: PDFPage,
+        pageBounds: CGRect,
+        selection: PDFSelection,
+        coveredPages: [PDFPage],
+        cachedPageLines: [PDFTextLine]
+    ) -> [PDFTextLine] {
+        if let ranged = lines(fromTextRangesOf: selection, on: page, pageBounds: pageBounds),
+           !ranged.isEmpty {
+            return ranged
+        }
+        guard coveredPages.contains(where: { $0 === page }) else { return [] }
+        return selectedLines(
+            from: selection,
+            on: page,
+            pageBounds: pageBounds,
+            cachedPageLines: cachedPageLines
         )
+    }
+
+    /// Character offsets of `fragments` inside one visual line.
+    /// The fragment's own string is the selection; the line rect is only how we find that line.
+    private static func selectedOffsets(on line: PDFTextLine, fragments: [PDFTextLine]) -> Range<Int>? {
+        let text = line.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+        var lower = text.count
+        var upper = 0
+        var matched = false
+        for fragment in fragments {
+            guard intersectsLine(line.rect, fragment.rect) else { continue }
+            matched = true
+            let range = range(of: fragment, in: text, lineRect: line.rect)
+            lower = min(lower, range.lowerBound)
+            upper = max(upper, range.upperBound)
+        }
+        guard matched, lower < upper else { return nil }
+        return lower..<upper
+    }
+
+    private static func intersectsLine(_ line: CGRect, _ fragment: CGRect) -> Bool {
+        let hit = line.intersection(fragment)
+        guard !hit.isNull, hit.width > 1, hit.height > 1 else { return false }
+        return hit.height > line.height * 0.45
+    }
+
+    private static func range(of fragment: PDFTextLine, in text: String, lineRect: CGRect) -> Range<Int> {
+        let needle = fragment.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if needle.isEmpty || needle == text { return 0..<text.count }
+        let found = occurrences(of: needle, in: text)
+        if found.count == 1, let only = found.first { return only }
+        if found.count > 1, lineRect.width > 1 {
+            let overlap = lineRect.intersection(fragment.rect)
+            let center = overlap.isNull ? fragment.rect.midX : overlap.midX
+            let fraction = min(max((center - lineRect.minX) / lineRect.width, 0), 1)
+            let target = Int((fraction * CGFloat(text.count)).rounded())
+            if let nearest = found.min(by: { abs(midpoint($0) - target) < abs(midpoint($1) - target) }) {
+                return nearest
+            }
+        }
+        guard lineRect.width > 1 else { return 0..<text.count }
+        let overlap = lineRect.intersection(fragment.rect)
+        let span = overlap.isNull ? fragment.rect : overlap
+        let startFraction = min(max((span.minX - lineRect.minX) / lineRect.width, 0), 1)
+        let endFraction = min(max((span.maxX - lineRect.minX) / lineRect.width, 0), 1)
+        let start = min(text.count, Int((startFraction * CGFloat(text.count)).rounded(.down)))
+        let end = min(text.count, max(start + 1, Int((endFraction * CGFloat(text.count)).rounded(.up))))
+        return start..<end
+    }
+
+    private static func occurrences(of needle: String, in text: String) -> [Range<Int>] {
+        guard !needle.isEmpty else { return [] }
+        var found: [Range<Int>] = []
+        var search = text.startIndex
+        while let match = text.range(of: needle, options: [.caseInsensitive], range: search..<text.endIndex) {
+            let lower = text.distance(from: text.startIndex, to: match.lowerBound)
+            let upper = text.distance(from: text.startIndex, to: match.upperBound)
+            found.append(lower..<upper)
+            if match.upperBound == search { break }
+            search = match.upperBound
+        }
+        return found
+    }
+
+    private static func midpoint(_ range: Range<Int>) -> Int {
+        range.lowerBound + range.count / 2
     }
 
     private static func textLayouts(
@@ -403,50 +527,21 @@ enum PDFSelectionMarkupGeometry {
             line.pages.forEach(insert)
         }
 
-        func pageLooksSelected(_ index: Int) -> Bool {
+        func hasTextRange(_ index: Int) -> Bool {
             guard let page = document.page(at: index) else { return false }
-            let pageBounds = page.bounds(for: .cropBox)
-            if !selectedLines(from: selection, on: page, pageBounds: pageBounds).isEmpty {
-                return true
-            }
-            return hasVisibleSelectionBounds(selection, page: page, pageBounds: pageBounds)
+            return selection.numberOfTextRanges(on: page) > 0
         }
 
-        if indexes.isEmpty {
-            for index in 0..<document.pageCount {
-                guard let page = document.page(at: index) else { continue }
-                let pageBounds = page.bounds(for: .cropBox)
-                if hasVisibleSelectionBounds(selection, page: page, pageBounds: pageBounds) {
-                    indexes.insert(index)
-                }
+        if var lower = indexes.min() {
+            while lower > 0, hasTextRange(lower - 1) {
+                lower -= 1
+                indexes.insert(lower)
             }
-        } else {
-            let seedMin = indexes.min() ?? 0
-            let seedMax = indexes.max() ?? 0
-            if seedMin > 0, pageLooksSelected(seedMin - 1) {
-                indexes.insert(seedMin - 1)
-            }
-            if seedMax + 1 < document.pageCount, pageLooksSelected(seedMax + 1) {
-                indexes.insert(seedMax + 1)
-            }
-
-            var grew = true
-            var hops = 0
-            while grew, hops < 32 {
-                grew = false
-                hops += 1
-                if let maxIndex = indexes.max(),
-                   maxIndex + 1 < document.pageCount,
-                   pageLooksSelected(maxIndex + 1) {
-                    indexes.insert(maxIndex + 1)
-                    grew = true
-                }
-                if let minIndex = indexes.min(),
-                   minIndex > 0,
-                   pageLooksSelected(minIndex - 1) {
-                    indexes.insert(minIndex - 1)
-                    grew = true
-                }
+        }
+        if var upper = indexes.max() {
+            while upper + 1 < document.pageCount, hasTextRange(upper + 1) {
+                upper += 1
+                indexes.insert(upper)
             }
         }
 
@@ -476,6 +571,11 @@ enum PDFSelectionMarkupGeometry {
         pageBounds: CGRect,
         cachedPageLines: [PDFTextLine]? = nil
     ) -> [PDFTextLine] {
+        if let ranged = lines(fromTextRangesOf: selection, on: page, pageBounds: pageBounds),
+           !ranged.isEmpty {
+            return ranged
+        }
+
         let rawLines = selection.selectionsByLine()
         let lineSelections = rawLines.isEmpty ? [selection] : rawLines
         let belonging = lineSelections.compactMap { line -> PDFTextLine? in
@@ -502,6 +602,45 @@ enum PDFSelectionMarkupGeometry {
         let localLines = local.selectionsByLine()
         let source = localLines.isEmpty ? [local] : localLines
         return source.compactMap { textLine(from: $0, on: page, pageBounds: pageBounds) }
+    }
+
+    /// Character ranges are the selection. `selectionsByLine()` on the original
+    /// selection drops the first page of a cross-page drag, and its `string`
+    /// is the whole selection rather than that page.
+    private static func lines(
+        fromTextRangesOf selection: PDFSelection,
+        on page: PDFPage,
+        pageBounds: CGRect
+    ) -> [PDFTextLine]? {
+        let count = selection.numberOfTextRanges(on: page)
+        guard count > 0 else { return nil }
+        let pageText = page.string as NSString?
+        var lines: [PDFTextLine] = []
+        for index in 0..<count {
+            let range = selection.range(at: index, on: page)
+            guard range.location != NSNotFound,
+                  range.length > 0,
+                  let pageText,
+                  range.location + range.length <= pageText.length,
+                  let ranged = page.selection(for: range) else { continue }
+            let pieces = ranged.selectionsByLine()
+            let source = pieces.isEmpty ? [ranged] : pieces
+            let rangeText = pageText.substring(with: range)
+            if source.count == 1, let only = source.first {
+                let rect = only.bounds(for: page)
+                guard isUsableLineRect(rect, pageBounds: pageBounds) else { continue }
+                let piece = (only.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                let text = piece.isEmpty ? rangeText : piece
+                guard !text.isEmpty else { continue }
+                lines.append(PDFTextLine(rect: rect, text: text))
+                continue
+            }
+            for piece in source {
+                guard let line = textLine(from: piece, on: page, pageBounds: pageBounds) else { continue }
+                lines.append(line)
+            }
+        }
+        return lines
     }
 
     private static func textLine(
