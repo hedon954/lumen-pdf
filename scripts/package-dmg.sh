@@ -270,7 +270,10 @@ else
         install_name_tool -change "$OLD_REF" "@rpath/liblumen_pdf_core.dylib" "$BINARY"
         echo "   ✓ 修正 binary 引用: $OLD_REF → @rpath/liblumen_pdf_core.dylib"
     fi
-    if ! otool -l "$BINARY" | grep -q "@executable_path/../Frameworks"; then
+    # 不要用 `otool | grep -q`：grep 一匹配就退出，otool 收到 SIGPIPE，
+    # 在 pipefail 下整条管道变成失败，脚本会把「已经有 rpath」误判成没有。
+    LOAD_COMMANDS="$(otool -l "$BINARY")"
+    if [[ "$LOAD_COMMANDS" != *"@executable_path/../Frameworks"* ]]; then
         install_name_tool -add_rpath "@executable_path/../Frameworks" "$BINARY"
     fi
 
