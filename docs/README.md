@@ -59,8 +59,8 @@ PRD 记录**用户可感知的行为与验收标准**。TDD 记录**如何实现
 | v1.0.36 | 2026-11-24 | 换包后 API Key 不再要钥匙串密码 | [prd-2026-11-24-keychain-rebuild-access.md](prd/prd-2026-11-24-keychain-rebuild-access.md) | [tdd-2026-11-24-keychain-rebuild-access.md](tdd/tdd-2026-11-24-keychain-rebuild-access.md) |
 | v1.0.36 | 2026-11-24 | 本机升级只做有变化的步骤 | [prd-2026-11-24-local-upgrade.md](prd/prd-2026-11-24-local-upgrade.md) | [tdd-2026-11-24-local-upgrade.md](tdd/tdd-2026-11-24-local-upgrade.md) |
 | v1.0.37 | 2026-11-25 | 笔记展示、临时选区、完整语境与语法树 | [prd-2026-11-25-notes-context-grammar.md](prd/prd-2026-11-25-notes-context-grammar.md) | [tdd-2026-11-25-notes-context-grammar.md](tdd/tdd-2026-11-25-notes-context-grammar.md) |
-| unreleased | 2026-11-26 | 选区即语境，滚动不关掉翻译 | [prd-2026-11-26-selection-span.md](prd/prd-2026-11-26-selection-span.md) | [tdd-2026-11-26-selection-span.md](tdd/tdd-2026-11-26-selection-span.md) |
-| unreleased | 2026-11-25 | 检查更新失败时附上接口错误并可重试 | [prd-2026-11-25-update-rate-limit.md](prd/prd-2026-11-25-update-rate-limit.md) | [tdd-2026-11-25-update-rate-limit.md](tdd/tdd-2026-11-25-update-rate-limit.md) |
+| v1.0.38 | 2026-11-26 | 选区即语境，滚动不关掉翻译 | [prd-2026-11-26-selection-span.md](prd/prd-2026-11-26-selection-span.md) | [tdd-2026-11-26-selection-span.md](tdd/tdd-2026-11-26-selection-span.md) |
+| v1.0.38 | 2026-11-25 | 检查更新失败时附上接口错误并可重试 | [prd-2026-11-25-update-rate-limit.md](prd/prd-2026-11-25-update-rate-limit.md) | [tdd-2026-11-25-update-rate-limit.md](tdd/tdd-2026-11-25-update-rate-limit.md) |
 
 未单独成对的发布：
 
@@ -84,7 +84,7 @@ v1.0.15 公共窗口外壳
   → v1.0.35 一次连续划线只有一个笔记按钮；选词带上可见句子；关闭不回退到更早的页
   → v1.0.36 空笔记不再显示按钮；跨页同一划线一个按钮；浮窗可拖出窗口；点其他应用不关闭
   → v1.0.37 临时翻译选区改为浮起的亮黄标牌，不再与已保存黄高亮共用系统黄
-  → unreleased 语境只覆盖选区碰到的句子；滚动和缩放时翻译浮窗跟着选区走
+  → v1.0.38 语境只覆盖选区碰到的句子；滚动和缩放时翻译浮窗跟着选区走
 ```
 
 v1.0.21 曾要求内容变高后重新换边避让；2026-08-20 修订为「首次位置固定」，以 v1.0.15 的稳定方向为优先体验。
@@ -139,7 +139,7 @@ v1.0.12 / v1.0.13 导读进入 Inspector
   → v1.0.36 翻译 footer 增加高亮 / 取消高亮
   → v1.0.31 译文 JSON 闭合或 finish_reason / [DONE] 后结束流式，词典音标最多等 1.5 秒
   → v1.0.37 残缺选区先补成整句再分析；语法按递归结构一次展开整棵树
-  → unreleased 整句选区不再并进相邻句；跨页选区保留上一页文字
+  → v1.0.38 整句选区不再并进相邻句；跨页选区保留上一页文字
 ```
 
 ### 文库
@@ -157,7 +157,7 @@ v1.0.9 开发者 make upgrade 替换 /Applications
   → v1.0.34 已安装的应用启动时检查官方发布，确认后原地替换当前副本并重新打开
   → v1.0.36 手动检查立即给出面板反馈；发布说明渲染 Markdown；退出后再由脱离的助手替换 bundle
   → v1.0.36 开发者 make upgrade 只编本机架构，未变化的步骤直接跳过，不再每次打 DMG
-  → unreleased 检查失败时附上接口原文，并可以重试
+  → v1.0.38 检查失败时附上接口原文，并可以重试
 ```
 
 ## 其他文档

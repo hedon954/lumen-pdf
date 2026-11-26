@@ -3,6 +3,17 @@
 LumenPDF 的版本记录由人工/AI 维护。每个版本只记录对用户或后续开发有意义的变化，并为具体变更附上对应的 GitHub commit URL。
 
 ---
+## [1.0.38](https://github.com/hedon954/lumen-pdf/compare/v1.0.37..v1.0.38) - 2026-11-27
+
+这一版让翻译跟着用户实际选中的文字走。滚动和缩放不再关掉翻译浮窗。检查更新失败时会显示接口返回的错误，并可以重试。
+
+### 主要变化
+
+- 选中一整句时，译文和语法只分析这一句。页面停在两句或两页交界时，语境用选中的那一句。从上一页拖到下一页时，上一页的文字仍在，并且排在前面（[767f095](https://github.com/hedon954/lumen-pdf/commit/767f095cede2ac374a66714226aaf8f3b1d34eaa)）。
+- 翻译浮窗打开后，双指滚动和缩放不再关闭浮窗，浮窗跟着选区移动（[767f095](https://github.com/hedon954/lumen-pdf/commit/767f095cede2ac374a66714226aaf8f3b1d34eaa)）。
+- 检查更新失败时，面板保留失败说明，并附上接口返回的原文。额度用尽和其他失败不再都写成无法连接，失败后可以直接重试（[7a14a8c](https://github.com/hedon954/lumen-pdf/commit/7a14a8cf071c6a337d34a7b0221b08001e2b0241)）。
+
+---
 ## [1.0.37](https://github.com/hedon954/lumen-pdf/compare/v1.0.36..v1.0.37) - 2026-11-25
 
 这一版把笔记渲染成 Markdown，查词带上完整原句，临时翻译选区从纸面浮起，长句语法按从属关系展开成树。

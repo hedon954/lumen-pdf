@@ -1,5 +1,5 @@
 ---
-version: unreleased
+version: v1.0.38
 date: 2026-11-25
 prd: prd/prd-2026-11-25-update-rate-limit.md
 predecessor:

@@ -1,5 +1,5 @@
 ---
-version: unreleased
+version: v1.0.38
 date: 2026-11-26
 tdd: tdd/tdd-2026-11-26-selection-span.md
 predecessor:
