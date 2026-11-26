@@ -24,14 +24,14 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-          targets: aarch64-apple-darwin, x86_64-apple-darwin
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: lumen-pdf-core
+          shared-key: ci-rust
+          cache-all-crates: true
+          cache-on-failure: true
 
       - name: fmt
         run: cargo fmt --all -- --check
@@ -57,13 +57,14 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-darwin
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: lumen-pdf-core
+          shared-key: ci-swift
+          cache-all-crates: true
+          cache-on-failure: true
 
       - name: Install xcodegen
         run: brew install xcodegen

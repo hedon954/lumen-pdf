@@ -29,7 +29,7 @@ DMG_STAGING="$BUILD_DIR/dmg-staging"
 DMG_PATH="$BUILD_DIR/${APP_NAME}-${VERSION}.dmg"
 DERIVED_DATA="$BUILD_DIR/DerivedData"
 STAGE_DYLIB="$BUILD_DIR/liblumen_pdf_core.dylib"
-BINDGEN_STAMP="$GENERATED_DIR/.source-dylib.sha256"
+BINDGEN_STAMP="$GENERATED_DIR/.bindgen-sources.sha256"
 ASSEMBLED_STAMP="$EXPORT_DIR/.assembled.sha256"
 
 ARCH_MODE="${LUMEN_ARCH:-universal}"
@@ -148,17 +148,24 @@ if [[ "$CURRENT_ID" != "@rpath/liblumen_pdf_core.dylib" ]]; then
 fi
 echo "   ✓ dylib: $STAGE_DYLIB"
 
-# ── 2. UniFFI 绑定：dylib 内容没变就不重跑，生成结果没变就不改时间戳 ─────────
+# ── 2. UniFFI 绑定：Rust 源码没变就不重跑，生成结果没变就不改时间戳 ─────────
+# 用源码哈希，不用 dylib 字节。干净的 CI 每次都会编出不同的二进制，
+# 按 dylib 判断会把 uniffi-bindgen 也重新编译一遍。
 echo "→ [2] 检查 UniFFI Swift 绑定..."
 mkdir -p "$GENERATED_DIR"
-DYLIB_HASH="$(shasum -a 256 "$STAGE_DYLIB" | awk '{ print $1 }')"
+SOURCE_HASH="$(
+    {
+        shasum -a 256 "$CRATE_DIR/Cargo.toml" "$CRATE_DIR/Cargo.lock" "$CRATE_DIR/uniffi-bindgen.rs"
+        find "$CRATE_DIR/src" -type f -print0 | sort -z | xargs -0 shasum -a 256
+    } | shasum -a 256 | awk '{ print $1 }'
+)"
 BINDINGS_READY=0
 if [[ -f "$GENERATED_DIR/lumen_pdf_core.swift" && -f "$BINDGEN_STAMP" ]] \
-    && [[ "$(cat "$BINDGEN_STAMP")" == "$DYLIB_HASH" ]]; then
+    && [[ "$(cat "$BINDGEN_STAMP")" == "$SOURCE_HASH" ]]; then
     BINDINGS_READY=1
 fi
 if [[ "$BINDINGS_READY" == "1" ]]; then
-    echo "   · dylib 未变化，沿用已有绑定"
+    echo "   · Rust 源码未变化，沿用已有绑定"
 else
     BINDGEN_TMP="$(mktemp -d)"
     cargo run --bin uniffi-bindgen generate \
@@ -177,7 +184,7 @@ else
         fi
     done
     rm -rf "$BINDGEN_TMP"
-    echo "$DYLIB_HASH" > "$BINDGEN_STAMP"
+    echo "$SOURCE_HASH" > "$BINDGEN_STAMP"
     if [[ "$CHANGED" == "0" ]]; then
         echo "   · 绑定内容未变化"
     else
@@ -221,6 +228,7 @@ if [[ "$ARCH_MODE" == "host" ]]; then
         -destination "platform=macOS" \
         -derivedDataPath "$DERIVED_DATA" \
         ONLY_ACTIVE_ARCH=YES \
+        COMPILER_INDEX_STORE_ENABLE=NO \
         CODE_SIGN_IDENTITY="" \
         CODE_SIGNING_REQUIRED=NO \
         CODE_SIGNING_ALLOWED=NO
@@ -235,7 +243,9 @@ else
         -configuration Release \
         -archivePath "$ARCHIVE_PATH" \
         -destination "generic/platform=macOS" \
+        -derivedDataPath "$DERIVED_DATA" \
         SKIP_INSTALL=NO \
+        COMPILER_INDEX_STORE_ENABLE=NO \
         CODE_SIGN_IDENTITY="" \
         CODE_SIGNING_REQUIRED=NO \
         CODE_SIGNING_ALLOWED=NO

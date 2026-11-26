@@ -24,13 +24,29 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-darwin, x86_64-apple-darwin
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: lumen-pdf-core
+          shared-key: release
+          cache-all-crates: true
+          cache-on-failure: true
+
+      - name: Read Xcode version
+        id: xcode
+        run: echo "version=$(xcodebuild -version | awk 'NR==1 { print $2 }')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Xcode compilation
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/DerivedData/SourcePackages
+            build/DerivedData/Build
+            ~/Library/Caches/org.swift.swiftpm
+          key: xcode-v1-${{ steps.xcode.outputs.version }}-${{ hashFiles('LumenPDF/LumenPDF.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}-${{ hashFiles('LumenPDF/**/*.swift', 'LumenPDF/project.yml', 'LumenPDF/Info.plist') }}
+          restore-keys: |
+            xcode-v1-${{ steps.xcode.outputs.version }}-${{ hashFiles('LumenPDF/LumenPDF.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}-
 
       - name: Install xcodegen
         run: brew install xcodegen
