@@ -446,6 +446,14 @@ fn row_to_doc(row: &rusqlite::Row<'_>) -> rusqlite::Result<PdfDocument> {
     })
 }
 
+fn row_to_located(row: &rusqlite::Row<'_>) -> rusqlite::Result<LocatedDocument> {
+    Ok(LocatedDocument {
+        id: row.get(0)?,
+        file_path: row.get(1)?,
+        original_path: row.get(2)?,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -477,12 +485,4 @@ mod tests {
         ));
         let _ = std::fs::remove_dir_all(dir);
     }
-}
-
-fn row_to_located(row: &rusqlite::Row<'_>) -> rusqlite::Result<LocatedDocument> {
-    Ok(LocatedDocument {
-        id: row.get(0)?,
-        file_path: row.get(1)?,
-        original_path: row.get(2)?,
-    })
 }
