@@ -2,6 +2,8 @@
 version: v1.0.39
 date: 2026-11-27
 prd: prd/prd-2026-11-27-library-shelves.md
+successor:
+  - tdd/tdd-2026-11-27-library-tabs.md
 predecessor:
   - tdd/tdd-2026-10-04-library-folder-import.md
   - tdd/tdd-2026-10-04-library-copy.md
@@ -15,7 +17,7 @@ predecessor:
 
 `SqliteShelfRepo` 负责读写。删除时按 `document_id` 或路径删掉这些书的笔记和单词行，再删书库副本。`delete_pdf_document` 仍只移出文库并保留笔记和单词，导入撤回走这条。
 
-Swift 的 `LibraryShelfPage` 画当前层。`AppState.browsingLibrary` 只活在这次运行里，不进窗口恢复。文件夹导入先在 `LibraryFolderImporter` 里组成目录树，再逐层建书架。
+Swift 的 `LibraryShelfPage` 画当前层。`AppState.browsingLibrary` 只活在这次运行里，不进窗口恢复。后续修订：文库标签、目录收起和封面时间见 [tdd-2026-11-27-library-tabs.md](tdd-2026-11-27-library-tabs.md)。文件夹导入先在 `LibraryFolderImporter` 里组成目录树，再逐层建书架。
 
 ## 测试
 

@@ -2,6 +2,10 @@ import SwiftUI
 import PDFKit
 import AppKit
 
+private enum WorkspaceTab: Hashable {
+    case library, reader, vocabulary, notes
+}
+
 struct ContentView: View {
     @EnvironmentObject private var appState: AppState
     @State private var showSetupSheet = false
@@ -50,7 +54,7 @@ struct ContentView: View {
                     restoredWidth: clampedOutlineSidebarWidth,
                     isRestoring: restorationStore.isRestoringLayout
                 ) { width in
-                    guard isOutlineSidebarVisible else { return }
+                    guard isOutlineSidebarVisible, !appState.showsLibraryShelf else { return }
                     restorationStore.updateOutlineWidth(Double(width))
                 }
             }
@@ -186,46 +190,19 @@ struct ContentView: View {
             .animation(.easeOut(duration: 0.16), value: workspaceSearch.isPresented)
         }
         .toolbar {
-            // Left: Library picker
-            ToolbarItem(placement: .navigation) {
-                Button {
-                    appState.openLibrary()
-                } label: {
-                    Label("文库", systemImage: "books.vertical")
-                }
-                .accessibilityIdentifier("toolbar.library")
-            }
-
-            // Center: Tab switcher + filename + page indicator
             ToolbarItem(placement: .principal) {
-                HStack(spacing: 10) {
-                    Picker("", selection: $appState.activeTab) {
-                        Text("PDF 阅读").tag(MainTab.reader)
-                        Text("单词本").tag(MainTab.vocabulary)
-                        Text("笔记").tag(MainTab.notes)
+                HStack(alignment: .center, spacing: 8) {
+                    Picker("", selection: workspaceTab) {
+                        Text("文库").tag(WorkspaceTab.library)
+                        Text("阅读").tag(WorkspaceTab.reader)
+                        Text("单词").tag(WorkspaceTab.vocabulary)
+                        Text("笔记").tag(WorkspaceTab.notes)
                     }
                     .accessibilityIdentifier("toolbar.mainTabs")
                     .pickerStyle(.segmented)
-                    .frame(width: 280)
+                    .fixedSize()
 
-                    // O8: Always show filename when a document is selected (not just in reader mode)
-                    if let fileName = appState.selectedDocument?.fileName {
-                        Divider().frame(height: 14)
-
-                        Text(fileName)
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .fixedSize()
-
-                        // Page indicator only in reader mode
-                        if appState.activeTab == .reader && appState.totalPages > 0 {
-                            Text("\(appState.currentPageIndex + 1) / \(appState.totalPages)")
-                                .font(.callout.monospacedDigit())
-                                .foregroundStyle(.tertiary)
-                                .animation(.none, value: appState.currentPageIndex)
-                        }
-                    }
+                    readerLocationLabel
                 }
             }
 
@@ -239,7 +216,9 @@ struct ContentView: View {
                 .help("查找…")
                 .accessibilityIdentifier("toolbar.workspaceSearch")
 
-                if appState.activeTab == .reader && appState.selectedDocument != nil {
+                if appState.activeTab == .reader
+                    && !appState.showsLibraryShelf
+                    && appState.selectedDocument != nil {
                     Button {
                         setReadingInspectorVisible(!inspectorModel.isVisible)
                     } label: {
@@ -340,9 +319,63 @@ struct ContentView: View {
 
     private var outlineColumnVisibility: Binding<NavigationSplitViewVisibility> {
         Binding(
-            get: { isOutlineSidebarVisible ? .all : .detailOnly },
-            set: { restorationStore.updateOutlineVisibility($0 != .detailOnly) }
+            get: {
+                if appState.showsLibraryShelf || !isOutlineSidebarVisible {
+                    return .detailOnly
+                }
+                return .all
+            },
+            set: { newValue in
+                guard !appState.showsLibraryShelf else { return }
+                restorationStore.updateOutlineVisibility(newValue != .detailOnly)
+            }
         )
+    }
+
+    private var workspaceTab: Binding<WorkspaceTab> {
+        Binding(
+            get: {
+                if appState.showsLibraryShelf { return .library }
+                switch appState.activeTab {
+                case .reader: return .reader
+                case .vocabulary: return .vocabulary
+                case .notes: return .notes
+                }
+            },
+            set: { tab in
+                switch tab {
+                case .library: appState.openLibrary()
+                case .reader: appState.showReading()
+                case .vocabulary: appState.showSection(.vocabulary)
+                case .notes: appState.showSection(.notes)
+                }
+            }
+        )
+    }
+
+    @ViewBuilder
+    private var readerLocationLabel: some View {
+        if let fileName = appState.selectedDocument?.fileName, !appState.showsLibraryShelf {
+            Divider().frame(height: 12)
+            HStack(spacing: 6) {
+                Text(fileName)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                if appState.activeTab == .reader, appState.totalPages > 0 {
+                    Text("\(appState.currentPageIndex + 1) / \(appState.totalPages)")
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                        .fixedSize(horizontal: true, vertical: false)
+                        .layoutPriority(1)
+                        .animation(.none, value: appState.currentPageIndex)
+                }
+            }
+            .font(.subheadline)
+            .frame(maxWidth: 220, alignment: .leading)
+            .padding(.trailing, 10)
+            .padding(.vertical, 3)
+        }
     }
 
     private func presentWorkspaceSearch() {

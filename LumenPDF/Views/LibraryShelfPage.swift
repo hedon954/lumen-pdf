@@ -3,10 +3,6 @@ import SwiftUI
 struct LibraryShelfPage: View {
     @EnvironmentObject private var appState: AppState
 
-    private var showsReturn: Bool {
-        appState.selectedDocument != nil
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
@@ -28,10 +24,6 @@ struct LibraryShelfPage: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            if showsReturn {
-                Button("返回阅读") { appState.closeLibrary() }
-                    .buttonStyle(.borderless)
-            }
             crumbs
             Spacer(minLength: 8)
             Button("新建书架") { promptNewShelf() }
@@ -50,9 +42,10 @@ struct LibraryShelfPage: View {
 
     private var crumbs: some View {
         HStack(spacing: 6) {
-            Button("文库") { appState.openShelfCrumb(nil) }
-                .buttonStyle(.borderless)
-                .fontWeight(appState.shelfParentId == nil ? .semibold : .regular)
+            if appState.shelfParentId != nil {
+                Button("文库") { appState.openShelfCrumb(nil) }
+                    .buttonStyle(.borderless)
+            }
             ForEach(appState.shelfPage.crumbs, id: \.id) { shelf in
                 Text("/")
                     .foregroundStyle(.tertiary)
@@ -105,7 +98,7 @@ private struct ShelfItem: View {
 
     var body: some View {
         Button(action: open) {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 2) {
                 visual
                 Text(title)
                     .font(.callout)
@@ -113,10 +106,8 @@ private struct ShelfItem: View {
                     .foregroundStyle(.primary)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
-                    .frame(width: ShelfMetrics.cover.width, height: 40, alignment: .topLeading)
-                Text(meta)
-                    .font(.caption)
-                    .foregroundStyle(isMissing ? .orange : .secondary)
+                    .frame(width: ShelfMetrics.cover.width, alignment: .leading)
+                metaLine
             }
         }
         .buttonStyle(.plain)
@@ -142,20 +133,11 @@ private struct ShelfItem: View {
             }
             .frame(width: ShelfMetrics.cover.width, height: ShelfMetrics.cover.height)
         case .document(let document):
-            PDFCoverThumbnailView(filePath: document.filePath, size: ShelfMetrics.cover)
-                .overlay(alignment: .topTrailing) {
-                    if isCurrent {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.blue)
-                            .padding(4)
-                    }
-                }
-                .overlay {
-                    if isCurrent {
-                        RoundedRectangle(cornerRadius: 4, style: .continuous)
-                            .strokeBorder(Color.accentColor, lineWidth: 2)
-                    }
-                }
+            PDFCoverThumbnailView(
+                filePath: document.filePath,
+                size: ShelfMetrics.cover,
+                showsCurrent: isCurrent
+            )
         }
     }
 
@@ -166,21 +148,33 @@ private struct ShelfItem: View {
         }
     }
 
-    private var meta: String {
+    @ViewBuilder
+    private var metaLine: some View {
         switch child {
         case .shelf(let shelf):
-            return "\(shelf.bookCount) 本"
+            Text("\(shelf.bookCount) 本")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: ShelfMetrics.cover.width, alignment: .leading)
         case .document(let document):
-            if document.isFileMissing { return "找不到文件" }
-            if isCurrent { return "正在读 · P\(document.lastPage + 1) / \(document.totalPages)" }
-            if document.totalPages > 0 { return "P\(document.lastPage + 1) / \(document.totalPages)" }
-            return ""
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(progressText(document))
+                    .foregroundStyle(document.isFileMissing ? .orange : .secondary)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                Text(ShelfReadStamp.text(unixSeconds: document.openedAt))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+            .font(.caption)
+            .frame(width: ShelfMetrics.cover.width)
         }
     }
 
-    private var isMissing: Bool {
-        if case .document(let document) = child { return document.isFileMissing }
-        return false
+    private func progressText(_ document: PdfDocument) -> String {
+        if document.isFileMissing { return "找不到文件" }
+        if document.totalPages > 0 { return "P\(document.lastPage + 1) / \(document.totalPages)" }
+        return ""
     }
 
     private var isCurrent: Bool {
@@ -202,9 +196,10 @@ private struct ShelfItem: View {
         case .shelf(let shelf):
             appState.openShelf(shelf.id)
         case .document(let document):
-            appState.selectedDocument = document
-            appState.activeTab = .reader
-            appState.closeLibrary()
+            if appState.selectedDocument?.id != document.id {
+                appState.selectedDocument = document
+            }
+            appState.showReading()
         }
     }
 

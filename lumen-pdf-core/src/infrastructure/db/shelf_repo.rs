@@ -39,18 +39,19 @@ impl ShelfRepository for SqliteShelfRepo {
             Some(id) => crumbs(&conn, id)?,
             None => Vec::new(),
         };
-        let mut placed: Vec<(i32, String, ShelfChild)> = Vec::new();
+        let mut placed: Vec<(i64, String, ShelfChild)> = Vec::new();
         for shelf in shelves_in(&conn, parent_id)? {
+            let recency = shelf_recency(&conn, &shelf.id)?;
+            placed.push((recency, shelf.name.clone(), ShelfChild::Shelf { shelf }));
+        }
+        for document in documents_in(&conn, parent_id)? {
             placed.push((
-                shelf.position,
-                shelf.name.clone(),
-                ShelfChild::Shelf { shelf },
+                document.opened_at,
+                document.file_name.clone(),
+                ShelfChild::Document { document },
             ));
         }
-        for (position, name, document) in documents_in(&conn, parent_id)? {
-            placed.push((position, name, ShelfChild::Document { document }));
-        }
-        placed.sort_by(|left, right| left.0.cmp(&right.0).then(left.1.cmp(&right.1)));
+        placed.sort_by(|left, right| right.0.cmp(&left.0).then(left.1.cmp(&right.1)));
         Ok(ShelfPage {
             crumbs,
             children: placed.into_iter().map(|(_, _, child)| child).collect(),
@@ -263,18 +264,37 @@ fn shelves_in(conn: &Connection, parent_id: Option<&str>) -> Result<Vec<Shelf>, 
 fn documents_in(
     conn: &Connection,
     parent_id: Option<&str>,
-) -> Result<Vec<(i32, String, PdfDocument)>, LumenError> {
+) -> Result<Vec<PdfDocument>, LumenError> {
     let mut stmt = conn.prepare(&format!(
-        "SELECT {DOC_COLUMNS} FROM pdf_documents WHERE shelf_id IS ?1 ORDER BY position, file_name"
+        "SELECT {DOC_COLUMNS} FROM pdf_documents WHERE shelf_id IS ?1"
     ))?;
     let docs = stmt
-        .query_map(params![parent_id], |row| {
-            let document = row_to_doc(row)?;
-            let position = row.get::<_, i64>(9)? as i32;
-            Ok((position, document.file_name.clone(), document))
-        })?
+        .query_map(params![parent_id], row_to_doc)?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(docs)
+}
+
+/// 书架的最近打开时间：里面任意一本书的 `opened_at`，没有书时用书架的创建时间。
+fn shelf_recency(conn: &Connection, id: &str) -> Result<i64, LumenError> {
+    let latest: Option<i64> = conn.query_row(
+        "WITH RECURSIVE tree(id) AS (
+            SELECT id FROM shelves WHERE id = ?1
+            UNION ALL
+            SELECT shelves.id FROM shelves JOIN tree ON shelves.parent_id = tree.id
+         )
+         SELECT MAX(opened_at) FROM pdf_documents WHERE shelf_id IN (SELECT id FROM tree)",
+        params![id],
+        |row| row.get(0),
+    )?;
+    if let Some(opened_at) = latest {
+        return Ok(opened_at);
+    }
+    conn.query_row(
+        "SELECT created_at FROM shelves WHERE id = ?1",
+        params![id],
+        |row| row.get(0),
+    )
+    .map_err(Into::into)
 }
 
 fn next_position(conn: &Connection, parent_id: Option<&str>) -> Result<i32, LumenError> {

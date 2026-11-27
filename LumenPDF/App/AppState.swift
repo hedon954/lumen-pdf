@@ -79,7 +79,10 @@ final class AppState: ObservableObject {
     /// 阅读日志：只在阅读页、窗口在最前面且最近有输入时计时。
     private lazy var readingActivity = ReadingActivityMonitor(
         report: { BridgeService.shared.recordReadingEvent($0) },
-        isReaderTabActive: { [weak self] in self?.activeTab == .reader }
+        isReaderTabActive: { [weak self] in
+            guard let self else { return false }
+            return self.activeTab == .reader && !self.showsLibraryShelf
+        }
     )
     private var shouldPersistActiveTab = true
 
@@ -124,10 +127,24 @@ final class AppState: ObservableObject {
     func openLibrary() {
         browsingLibrary = true
         refreshShelf()
+        readingActivity.updateFront()
     }
 
-    func closeLibrary() {
+    /// 回到进文库之前打开的那本，停在当前阅读位置。没有打开的书时仍是文库。
+    func showReading() {
+        guard selectedDocument != nil else {
+            openLibrary()
+            return
+        }
         browsingLibrary = false
+        activeTab = .reader
+        readingActivity.updateFront()
+    }
+
+    func showSection(_ tab: MainTab) {
+        browsingLibrary = false
+        activeTab = tab
+        readingActivity.updateFront()
     }
 
     func openShelf(_ id: String) {
@@ -244,7 +261,7 @@ final class AppState: ObservableObject {
         if let current = selectedDocument {
             ReaderEventBus.shared.postSaveReadingPositionNow(filePath: current.filePath)
             if current.matches(path: url.path) {
-                activeTab = .reader
+                showReading()
                 return
             }
         }
@@ -264,8 +281,7 @@ final class AppState: ObservableObject {
             try? bridge.placeDocument(id: imported.document.id, parentId: importShelfId)
         }
         selectedDocument = imported.document
-        browsingLibrary = false
-        activeTab = .reader
+        showReading()
         refreshLibrary()
     }
 
@@ -559,7 +575,7 @@ final class AppState: ObservableObject {
     func openLibraryDocument(filePath: String, page: Int) {
         if let doc = library.first(where: { $0.matches(path: filePath) }) {
             selectedDocument = doc
-            activeTab = .reader
+            showReading()
         } else {
             openPDF(url: URL(fileURLWithPath: filePath))
             guard selectedDocument?.matches(path: filePath) == true else { return }

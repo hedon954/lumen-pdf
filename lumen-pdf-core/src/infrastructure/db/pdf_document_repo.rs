@@ -191,8 +191,10 @@ impl PdfDocumentRepository for SqlitePdfDocumentRepo {
     ) -> Result<(), LumenError> {
         let conn = self.pool.get()?;
         conn.execute(
-            "UPDATE pdf_documents SET last_page = ?1, last_scroll_offset = ?2 WHERE file_path = ?3",
-            params![page, scroll_offset, file_path],
+            "UPDATE pdf_documents
+             SET last_page = ?1, last_scroll_offset = ?2, opened_at = ?3
+             WHERE file_path = ?4",
+            params![page, scroll_offset, Utc::now().timestamp(), file_path],
         )?;
         Ok(())
     }

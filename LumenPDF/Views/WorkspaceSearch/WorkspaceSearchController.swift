@@ -119,8 +119,6 @@ enum WorkspaceSearchOpener {
         setInspectorVisible: (Bool) -> Void
     ) {
         let record = hit.record
-        appState.activeTab = .reader
-
         let needsDocumentSwitch = !record.pdfPath.isEmpty
             && appState.selectedDocument?.filePath != record.pdfPath
         if needsDocumentSwitch {
@@ -130,6 +128,7 @@ enum WorkspaceSearchOpener {
             }
             appState.selectedDocument = doc
         }
+        appState.showReading()
 
         if let mode = record.kind.inspectorMode {
             inspectorModel.mode = mode

@@ -63,6 +63,7 @@ PRD 记录**用户可感知的行为与验收标准**。TDD 记录**如何实现
 | v1.0.38 | 2026-11-25 | 检查更新失败时附上接口错误并可重试 | [prd-2026-11-25-update-rate-limit.md](prd/prd-2026-11-25-update-rate-limit.md) | [tdd-2026-11-25-update-rate-limit.md](tdd/tdd-2026-11-25-update-rate-limit.md) |
 | v1.0.39 | 2026-11-27 | 检查更新和翻译跟随系统代理 | [prd-2026-11-27-system-proxy.md](prd/prd-2026-11-27-system-proxy.md) | [tdd-2026-11-27-system-proxy.md](tdd/tdd-2026-11-27-system-proxy.md) |
 | v1.0.39 | 2026-11-27 | 书架 | [prd-2026-11-27-library-shelves.md](prd/prd-2026-11-27-library-shelves.md) | [tdd-2026-11-27-library-shelves.md](tdd/tdd-2026-11-27-library-shelves.md) |
+| unreleased | 2026-11-27 | 文库与阅读切换 | [prd-2026-11-27-library-tabs.md](prd/prd-2026-11-27-library-tabs.md) | [tdd-2026-11-27-library-tabs.md](tdd/tdd-2026-11-27-library-tabs.md) |
 
 未单独成对的发布：
 
@@ -152,6 +153,7 @@ v1.0.0 打开过的 PDF 按最近打开倒序，可移除
   → v1.0.33 可导入文件夹中的 PDF（默认不含子文件夹，导入可撤回）；可清空文库列表；列表标题为「文库」
   → v1.0.35 打开的 PDF 复制进书库，原文件改名或移动后进度还在
   → v1.0.39 文库改为书架，文件夹是一层书架，删除会清掉这些书自己的笔记和单词语境
+  → unreleased 文库成为顶部标签；进入时收起目录，封面不铺底并显示阅读时间
 ```
 
 ### 安装与更新
