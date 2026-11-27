@@ -43,6 +43,13 @@ make dmg
   - `CFBundleVersion` is the internal build number, for example `9`.
 - User-facing release labels, tags, DMG filenames, and docs should normally use only the short version (`1.0.9`). Include the build number only when debugging or explicitly discussing build metadata.
 - When asked to commit, push, and tag a release, commit the code/docs/version/changelog changes, push the branch, create an annotated `vX.Y.Z` tag, and push the tag.
+- Before creating or pushing a release tag, run the same Rust checks as CI from `lumen-pdf-core` and stop if any command fails. Pre-commit on the release commit is not a substitute, because it does not cover every target CI lints:
+
+  ```bash
+  cargo fmt --all -- --check
+  cargo clippy --all-targets -- -D warnings
+  cargo test
+  ```
 
 ## Pull Request Branch Naming
 
@@ -121,7 +128,7 @@ chore(release): 更新版本到 1.0.12
 Before every git commit, these checks run automatically via `.pre-commit-config.yaml`:
 
 - `cargo fmt --check`
-- `cargo clippy -- -D warnings`
+- `cargo clippy --all-targets -- -D warnings`
 - `cargo test`
 
 Install pre-commit hooks:

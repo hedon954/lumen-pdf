@@ -20,7 +20,16 @@ description: 快速完成 LumenPDF 版本发布：更新版本与中文 Changelo
    - `CFBundleShortVersionString` 与 `CFBundleVersion`
    - `CHANGELOG.md` 顶部版本段落、compare URL、中文摘要和 commit URL
    - 本次发布涉及的 PRD/TDD frontmatter 与 `docs/README.md` 版本列
-3. 只做轻量发布检查：`git diff --check`，并确认暂存区只含本次发布文件。不要默认运行 `make dmg`、挂载 DMG、重复全量测试、安装 App、等待 Actions 或下载远端产物。
+3. 创建或推送 tag 之前，必须先在本地跑过和 CI 相同的 Rust 检查。任何一条失败就停止，不要打 tag：
+
+   ```bash
+   cd lumen-pdf-core
+   cargo fmt --all -- --check
+   cargo clippy --all-targets -- -D warnings
+   cargo test
+   ```
+
+   发布提交上的 pre-commit 不能代替这组命令。同时做 `git diff --check`，并确认暂存区只含本次发布文件。不要默认运行 `make dmg`、挂载 DMG、安装 App、等待 Actions 或下载远端产物。
 4. 使用仓库约定的中文 Conventional Commit 提交，先推送当前分支，再创建并推送 tag：
 
 ```bash

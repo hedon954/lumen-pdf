@@ -10,7 +10,7 @@ repos:
 
       - id: cargo-clippy
         name: cargo clippy
-        entry: bash -c 'cd lumen-pdf-core && cargo clippy -- -D warnings'
+        entry: bash -c 'cd lumen-pdf-core && cargo clippy --all-targets -- -D warnings'
         language: system
         pass_filenames: false
         types: [rust]
