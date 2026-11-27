@@ -2,7 +2,7 @@
 
 PRD 记录**用户可感知的行为与验收标准**。TDD 记录**如何实现这些行为**、模块边界和自动化验证。两者成对维护；配对与演进只在本文索引，各文件用 YAML frontmatter 记录版本、日期、对应文档、前序和后续。
 
-维护规则见 [`CLAUDE.md`](../CLAUDE.md) 中的「PRD 与 TDD」。
+维护规则见 [`AGENTS.md`](../AGENTS.md) 的 Product docs。`CLAUDE.md` 指向同一文件。
 
 ## 怎么读
 
@@ -66,7 +66,7 @@ PRD 记录**用户可感知的行为与验收标准**。TDD 记录**如何实现
 
 未单独成对的发布：
 
-- v1.0.17 取消 App Sandbox、继续使用历史数据目录：见 [code-signing.md](code-signing.md) 与 `CLAUDE.md` 签名约束。
+- v1.0.17 取消 App Sandbox、继续使用历史数据目录：见 [code-signing.md](code-signing.md) 与 `AGENTS.md` 的 Signing。
 - v1.0.18 右侧栏开关/拖拽过渡：延续 [v1.0.16](prd/prd-2026-07-13-v1016-reader-selection-overlays.md) 的视口与分栏恢复。
 
 ## 主题演进

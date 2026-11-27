@@ -1,15 +1,15 @@
 ---
-description: PRD 与 TDD 必须成对更新，元数据放在 YAML frontmatter
+description: Update paired PRD and TDD docs when user-visible behavior or a module boundary changes
 alwaysApply: true
 ---
 
-# PRD / TDD 维护
+# PRD / TDD
 
-用户可感知行为、交互规则或模块边界发生变化时，同一 PR 必须更新或新增成对的：
+A user-visible behavior change, an interaction-rule change, or a module, persistence, or bridge boundary change needs both of these in the same PR:
 
 - `docs/prd/prd-YYYY-MM-DD-<topic>.md`
 - `docs/tdd/tdd-YYYY-MM-DD-<topic>.md`
 
-版本、日期、对应文档、前序、后续放在 YAML frontmatter（`version` / `date` / `tdd` 或 `prd` / `predecessor` / `successor`，可选 `related`）。路径相对 `docs/`。不要在正文重复这些字段，也不要链到 `docs/README.md`。若新规则改写旧需求，在旧文档原条款旁标注「后续修订」并链接新文档，同时更新 `docs/README.md` 配对表与主题演进。
+Put version, date, the paired path, predecessor, and successor in YAML frontmatter only. Paths are relative to `docs/`. When a new rule replaces an old one, mark the old clause with `后续修订` and a link, and update `docs/README.md`. Do not use `CHANGELOG.md` as a substitute.
 
-不要只改代码或只写 CHANGELOG。完整规则见 `CLAUDE.md` 的「PRD 与 TDD」。
+Full rules are in `AGENTS.md` under Product docs.
