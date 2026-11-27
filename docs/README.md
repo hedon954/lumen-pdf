@@ -61,8 +61,8 @@ PRD 记录**用户可感知的行为与验收标准**。TDD 记录**如何实现
 | v1.0.37 | 2026-11-25 | 笔记展示、临时选区、完整语境与语法树 | [prd-2026-11-25-notes-context-grammar.md](prd/prd-2026-11-25-notes-context-grammar.md) | [tdd-2026-11-25-notes-context-grammar.md](tdd/tdd-2026-11-25-notes-context-grammar.md) |
 | v1.0.38 | 2026-11-26 | 选区即语境，滚动不关掉翻译 | [prd-2026-11-26-selection-span.md](prd/prd-2026-11-26-selection-span.md) | [tdd-2026-11-26-selection-span.md](tdd/tdd-2026-11-26-selection-span.md) |
 | v1.0.38 | 2026-11-25 | 检查更新失败时附上接口错误并可重试 | [prd-2026-11-25-update-rate-limit.md](prd/prd-2026-11-25-update-rate-limit.md) | [tdd-2026-11-25-update-rate-limit.md](tdd/tdd-2026-11-25-update-rate-limit.md) |
-| unreleased | 2026-11-27 | 检查更新和翻译跟随系统代理 | [prd-2026-11-27-system-proxy.md](prd/prd-2026-11-27-system-proxy.md) | [tdd-2026-11-27-system-proxy.md](tdd/tdd-2026-11-27-system-proxy.md) |
-| unreleased | 2026-11-27 | 书架 | [prd-2026-11-27-library-shelves.md](prd/prd-2026-11-27-library-shelves.md) | [tdd-2026-11-27-library-shelves.md](tdd/tdd-2026-11-27-library-shelves.md) |
+| v1.0.39 | 2026-11-27 | 检查更新和翻译跟随系统代理 | [prd-2026-11-27-system-proxy.md](prd/prd-2026-11-27-system-proxy.md) | [tdd-2026-11-27-system-proxy.md](tdd/tdd-2026-11-27-system-proxy.md) |
+| v1.0.39 | 2026-11-27 | 书架 | [prd-2026-11-27-library-shelves.md](prd/prd-2026-11-27-library-shelves.md) | [tdd-2026-11-27-library-shelves.md](tdd/tdd-2026-11-27-library-shelves.md) |
 
 未单独成对的发布：
 
@@ -151,7 +151,7 @@ v1.0.0 打开过的 PDF 按最近打开倒序，可移除
   → v1.0.25 列表显示首页封面
   → v1.0.33 可导入文件夹中的 PDF（默认不含子文件夹，导入可撤回）；可清空文库列表；列表标题为「文库」
   → v1.0.35 打开的 PDF 复制进书库，原文件改名或移动后进度还在
-  → unreleased 文库改为书架，文件夹是一层书架，删除会清掉这些书自己的笔记和单词语境
+  → v1.0.39 文库改为书架，文件夹是一层书架，删除会清掉这些书自己的笔记和单词语境
 ```
 
 ### 安装与更新
@@ -162,7 +162,7 @@ v1.0.9 开发者 make upgrade 替换 /Applications
   → v1.0.36 手动检查立即给出面板反馈；发布说明渲染 Markdown；退出后再由脱离的助手替换 bundle
   → v1.0.36 开发者 make upgrade 只编本机架构，未变化的步骤直接跳过，不再每次打 DMG
   → v1.0.38 检查失败时附上接口原文，并可以重试
-  → unreleased 检查更新和翻译跟随当前系统代理，端口不写死
+  → v1.0.39 检查更新和翻译跟随当前系统代理，端口不写死
 ```
 
 ## 其他文档

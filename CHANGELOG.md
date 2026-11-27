@@ -3,6 +3,21 @@
 LumenPDF 的版本记录由人工/AI 维护。每个版本只记录对用户或后续开发有意义的变化，并为具体变更附上对应的 GitHub commit URL。
 
 ---
+## [1.0.39](https://github.com/hedon954/lumen-pdf/compare/v1.0.38..v1.0.39) - 2026-11-27
+
+这一版把文库改成可以嵌套的书架，并让检查更新和翻译走当前系统代理。
+
+### 主要变化
+
+- 工具栏「文库」打开阅读区里的书架。文件夹是一层书架，里面可以再放书架或 PDF。已经在文库里的书留在根上。封面更大，每一排底下不再画横杆。导入文件夹会建成同名书架；包含子文件夹时，子目录成为嵌套书架（[243d1ee](https://github.com/hedon954/lumen-pdf/commit/243d1ee122f16146fca84a560f940821ca753800)）。
+- 删除书架、删除一本书或清空文库前，会说明将删除的笔记条数和单词语境条数。只清这些书自己的笔记和语境，同一个单词在其他书里的语境会留下。导入后的撤回仍然不删笔记和单词（[243d1ee](https://github.com/hedon954/lumen-pdf/commit/243d1ee122f16146fca84a560f940821ca753800)）。
+
+### 修复
+
+- 检查更新和翻译按当前系统代理连接。HTTP、HTTPS 隧道和 SOCKS 使用系统里当时的端口；代理开、关或改端口后，下一次请求就跟着变。本机地址仍然直连（[de2de06](https://github.com/hedon954/lumen-pdf/commit/de2de06a3539121a04942256e8b995e7265db769)）。
+- 去掉已经用不上的 UniFFI 构建依赖，发布编译不再提示未使用依赖（[b7ff7ec](https://github.com/hedon954/lumen-pdf/commit/b7ff7ecb0ae6597c4226bbc4446b6cdd13c4cab9)）。
+
+---
 ## [1.0.38](https://github.com/hedon954/lumen-pdf/compare/v1.0.37..v1.0.38) - 2026-11-27
 
 这一版让翻译跟着用户实际选中的文字走。滚动和缩放不再关掉翻译浮窗。检查更新失败时会显示接口返回的错误，并可以重试。
