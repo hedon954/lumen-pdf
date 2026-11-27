@@ -18,6 +18,20 @@ private let _importPdf: (UpsertPdfRequest) throws -> ImportedPdf         = impor
 private let _savePosition: (String, UInt32, Double) throws -> Void       = saveReadingPosition(filePath:page:scrollOffset:)
 private let _listPdfDocuments: () throws -> [PdfDocument]                = listPdfDocuments
 private let _deletePdfDocument: (String) throws -> Void                  = deletePdfDocument(filePath:)
+private let _listShelf: (String?) throws -> ShelfPage                    = listShelf(parentId:)
+private let _createShelf: (String?, String) throws -> Shelf              = createShelf(parentId:name:)
+private let _renameShelf: (String, String) throws -> Shelf               = renameShelf(id:name:)
+private let _moveShelf: (String, String?) throws -> Void                 = moveShelf(id:parentId:)
+private let _moveDocument: (String, String?) throws -> Void              = moveDocument(id:parentId:)
+private let _reorderShelf: (String?, [ShelfPlacement]) throws -> Void    = reorderShelf(parentId:order:)
+private let _placeDocument: (String, String?) throws -> Void             = placeDocument(id:parentId:)
+private let _previewDocumentDeletion: ([String]) throws -> DeletionPreview = previewDocumentDeletion(ids:)
+private let _previewShelfDeletion: (String) throws -> DeletionPreview    = previewShelfDeletion(id:)
+private let _previewLibraryDeletion: () throws -> DeletionPreview        = previewLibraryDeletion
+private let _deleteDocuments: ([String]) throws -> Void                  = deleteDocuments(ids:)
+private let _deleteShelf: (String) throws -> Void                        = deleteShelf(id:)
+private let _deleteLibrary: () throws -> Void                            = deleteLibrary
+private let _deleteShelfIfEmpty: (String) throws -> Void                 = deleteShelfIfEmpty(id:)
 private let _saveNote: (SaveNoteRequest) throws -> NoteEntry             = saveNote(req:)
 private let _applyNoteHistorySnapshot: ([String], [NoteEntry]) throws -> Void = applyNoteHistorySnapshot(removeIds:restoreNotes:)
 private let _listNotes: () throws -> [NoteEntry]                         = listNotes
@@ -374,6 +388,62 @@ final class BridgeService {
     /// 移出文库并删除书库里的副本；笔记、单词和原文件保留。
     func deletePdfDocument(filePath: String) throws {
         try _deletePdfDocument(filePath)
+    }
+
+    func listShelf(parentId: String?) throws -> ShelfPage {
+        try _listShelf(parentId)
+    }
+
+    func createShelf(parentId: String?, name: String) throws -> Shelf {
+        try _createShelf(parentId, name)
+    }
+
+    func renameShelf(id: String, name: String) throws -> Shelf {
+        try _renameShelf(id, name)
+    }
+
+    func moveShelf(id: String, parentId: String?) throws {
+        try _moveShelf(id, parentId)
+    }
+
+    func moveDocument(id: String, parentId: String?) throws {
+        try _moveDocument(id, parentId)
+    }
+
+    func reorderShelf(parentId: String?, order: [ShelfPlacement]) throws {
+        try _reorderShelf(parentId, order)
+    }
+
+    func placeDocument(id: String, parentId: String?) throws {
+        try _placeDocument(id, parentId)
+    }
+
+    func previewDocumentDeletion(ids: [String]) throws -> DeletionPreview {
+        try _previewDocumentDeletion(ids)
+    }
+
+    func previewShelfDeletion(id: String) throws -> DeletionPreview {
+        try _previewShelfDeletion(id)
+    }
+
+    func previewLibraryDeletion() throws -> DeletionPreview {
+        try _previewLibraryDeletion()
+    }
+
+    func deleteDocuments(ids: [String]) throws {
+        try _deleteDocuments(ids)
+    }
+
+    func deleteShelf(id: String) throws {
+        try _deleteShelf(id)
+    }
+
+    func deleteLibrary() throws {
+        try _deleteLibrary()
+    }
+
+    func deleteShelfIfEmpty(id: String) throws {
+        try _deleteShelfIfEmpty(id)
     }
 
     // MARK: - Reading log

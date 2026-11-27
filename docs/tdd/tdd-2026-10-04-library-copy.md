@@ -5,6 +5,8 @@ prd: prd/prd-2026-10-04-library-copy.md
 predecessor:
   - tdd/tdd-2026-10-04-library-folder-import.md
   - tdd/tdd-2026-10-04-reading-log.md
+successor:
+  - tdd/tdd-2026-11-27-library-shelves.md
 ---
 
 # 书库副本

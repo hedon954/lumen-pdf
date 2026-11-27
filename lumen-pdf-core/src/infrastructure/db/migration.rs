@@ -87,7 +87,36 @@ pub fn run(conn: &Connection) -> Result<(), LumenError> {
 
     migrate_translation_cache_language_key(conn)?;
     add_library_columns(conn)?;
+    add_shelves(conn)?;
 
+    Ok(())
+}
+
+fn add_shelves(conn: &Connection) -> Result<(), LumenError> {
+    conn.execute_batch(
+        "
+        CREATE TABLE IF NOT EXISTS shelves (
+            id TEXT PRIMARY KEY,
+            parent_id TEXT,
+            name TEXT NOT NULL,
+            position INTEGER NOT NULL,
+            created_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_shelves_parent ON shelves(parent_id);
+        ",
+    )?;
+    add_column_if_missing(
+        conn,
+        "pdf_documents",
+        "shelf_id",
+        "ALTER TABLE pdf_documents ADD COLUMN shelf_id TEXT;",
+    )?;
+    add_column_if_missing(
+        conn,
+        "pdf_documents",
+        "position",
+        "ALTER TABLE pdf_documents ADD COLUMN position INTEGER NOT NULL DEFAULT 0;",
+    )?;
     Ok(())
 }
 
@@ -278,5 +307,46 @@ mod tests {
             .unwrap();
         assert_eq!(count, 1);
         assert_eq!(page_markups, "");
+    }
+
+    #[test]
+    fn shelves_leave_existing_books_on_the_root() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "
+            CREATE TABLE pdf_documents (
+                id TEXT PRIMARY KEY,
+                file_path TEXT NOT NULL UNIQUE,
+                file_name TEXT NOT NULL,
+                total_pages INTEGER NOT NULL DEFAULT 0,
+                last_page INTEGER NOT NULL DEFAULT 0,
+                last_scroll_offset REAL NOT NULL DEFAULT 0.0,
+                opened_at INTEGER NOT NULL,
+                added_at INTEGER NOT NULL
+            );
+            INSERT INTO pdf_documents
+                (id, file_path, file_name, opened_at, added_at)
+            VALUES
+                ('book', '/tmp/book.pdf', 'book.pdf', 1, 1);
+            ",
+        )
+        .unwrap();
+
+        run(&conn).unwrap();
+        run(&conn).unwrap();
+
+        let (shelf_id, position): (Option<String>, i64) = conn
+            .query_row(
+                "SELECT shelf_id, position FROM pdf_documents WHERE id = 'book'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        let shelf_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM shelves", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(shelf_id, None);
+        assert_eq!(position, 0);
+        assert_eq!(shelf_count, 0);
     }
 }

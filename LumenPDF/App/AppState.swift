@@ -14,6 +14,20 @@ struct ReaderToast: Identifiable {
 @MainActor
 final class AppState: ObservableObject {
     @Published var library: [PdfDocument] = []
+    /// 工具栏「文库」打开的书架页。没有打开的 PDF 时，阅读区也会显示书架。
+    @Published var browsingLibrary = false
+    /// 当前书架。空表示文库根。只在这次运行里记住。
+    @Published var shelfParentId: String?
+    @Published var shelfPage = ShelfPage(crumbs: [], children: [])
+
+    var showsLibraryShelf: Bool {
+        browsingLibrary || (selectedDocument == nil && activeTab == .reader)
+    }
+
+    /// 人正在看书架时，新书落在当前层；否则落在文库根上。
+    private var importShelfId: String? {
+        showsLibraryShelf ? shelfParentId : nil
+    }
     @Published var selectedDocument: PdfDocument? {
         didSet {
             // Persist last opened file path for auto-restore on launch
@@ -100,6 +114,32 @@ final class AppState: ObservableObject {
 
     func refreshLibrary() {
         library = (try? bridge.listPdfDocuments()) ?? []
+        refreshShelf()
+    }
+
+    func refreshShelf() {
+        shelfPage = (try? bridge.listShelf(parentId: shelfParentId)) ?? ShelfPage(crumbs: [], children: [])
+    }
+
+    func openLibrary() {
+        browsingLibrary = true
+        refreshShelf()
+    }
+
+    func closeLibrary() {
+        browsingLibrary = false
+    }
+
+    func openShelf(_ id: String) {
+        shelfParentId = id
+        browsingLibrary = true
+        refreshShelf()
+    }
+
+    func openShelfCrumb(_ id: String?) {
+        shelfParentId = id
+        browsingLibrary = true
+        refreshShelf()
     }
 
     func refreshVocabulary() {
@@ -171,6 +211,7 @@ final class AppState: ObservableObject {
     private func importPDFs(in folder: URL, includingSubfolders: Bool) {
         let accessing = folder.startAccessingSecurityScopedResource()
         let existingAtStart = libraryPaths
+        let parentShelfId = importShelfId
         Task {
             defer {
                 if accessing { folder.stopAccessingSecurityScopedResource() }
@@ -182,7 +223,13 @@ final class AppState: ObservableObject {
                     includingSubfolders: includingSubfolders
                 )
             }.value
-            commitFolderImport(collected)
+            commitFolderImport(
+                collected,
+                rootPath: folder.path,
+                rootName: folder.lastPathComponent,
+                includingSubfolders: includingSubfolders,
+                parentShelfId: parentShelfId
+            )
         }
     }
 
@@ -213,7 +260,11 @@ final class AppState: ObservableObject {
             showToast("无法把这个 PDF 加入文库")
             return
         }
+        if imported.isNew {
+            try? bridge.placeDocument(id: imported.document.id, parentId: importShelfId)
+        }
         selectedDocument = imported.document
+        browsingLibrary = false
         activeTab = .reader
         refreshLibrary()
     }
@@ -224,7 +275,13 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func commitFolderImport(_ collected: [CollectedLibraryPDF]) {
+    private func commitFolderImport(
+        _ collected: [CollectedLibraryPDF],
+        rootPath: String,
+        rootName: String,
+        includingSubfolders: Bool,
+        parentShelfId: String?
+    ) {
         let existing = libraryPaths
         let partition = LibraryFolderImporter.partition(
             collected.map(\.pdf),
@@ -237,26 +294,25 @@ final class AppState: ObservableObject {
             }
         }
 
+        let tree = LibraryFolderImporter.shelfTree(
+            rootPath: rootPath,
+            rootName: rootName,
+            pdfs: partition.adding,
+            includingSubfolders: includingSubfolders
+        )
         var addedPaths: [String] = []
+        var createdShelfIds: [String] = []
         var reused = 0
         var failed = 0
-        for pdf in partition.adding {
-            do {
-                let imported = try bridge.importPdfDocument(filePath: pdf.path, fileName: pdf.fileName)
-                guard imported.isNew else {
-                    // 内容和文库里已有的书相同。
-                    reused += 1
-                    continue
-                }
-                if let bookmark = bookmarks[pdf.path] {
-                    UserDefaults.standard.set(bookmark, forKey: "bm_\(pdf.path)")
-                }
-                // 撤回时按书库副本的路径移出。
-                addedPaths.append(imported.document.filePath)
-            } catch {
-                failed += 1
-            }
-        }
+        importShelfTree(
+            tree,
+            parentId: parentShelfId,
+            bookmarks: bookmarks,
+            addedPaths: &addedPaths,
+            createdShelfIds: &createdShelfIds,
+            reused: &reused,
+            failed: &failed
+        )
         if !addedPaths.isEmpty || reused > 0 {
             refreshLibrary()
         }
@@ -269,15 +325,62 @@ final class AppState: ObservableObject {
             showToast(message)
         } else {
             showToast(message) { [weak self] in
-                self?.undoFolderImport(paths: addedPaths)
+                self?.undoFolderImport(paths: addedPaths, shelfIds: createdShelfIds)
             }
         }
     }
 
-    private func undoFolderImport(paths: [String]) {
+    private func importShelfTree(
+        _ node: LibraryShelfImportNode,
+        parentId: String?,
+        bookmarks: [String: Data],
+        addedPaths: inout [String],
+        createdShelfIds: inout [String],
+        reused: inout Int,
+        failed: inout Int
+    ) {
+        guard !node.pdfs.isEmpty || !node.children.isEmpty else { return }
+        guard let shelf = try? bridge.createShelf(parentId: parentId, name: node.name) else {
+            failed += node.pdfs.count
+            return
+        }
+        createdShelfIds.append(shelf.id)
+        for pdf in node.pdfs {
+            do {
+                let imported = try bridge.importPdfDocument(filePath: pdf.path, fileName: pdf.fileName)
+                guard imported.isNew else {
+                    reused += 1
+                    continue
+                }
+                try? bridge.placeDocument(id: imported.document.id, parentId: shelf.id)
+                if let bookmark = bookmarks[pdf.path] {
+                    UserDefaults.standard.set(bookmark, forKey: "bm_\(pdf.path)")
+                }
+                addedPaths.append(imported.document.filePath)
+            } catch {
+                failed += 1
+            }
+        }
+        for child in node.children {
+            importShelfTree(
+                child,
+                parentId: shelf.id,
+                bookmarks: bookmarks,
+                addedPaths: &addedPaths,
+                createdShelfIds: &createdShelfIds,
+                reused: &reused,
+                failed: &failed
+            )
+        }
+    }
+
+    private func undoFolderImport(paths: [String], shelfIds: [String]) {
         let pathSet = Set(paths)
         for path in paths {
             try? bridge.deletePdfDocument(filePath: path)
+        }
+        for id in shelfIds.reversed() {
+            try? bridge.deleteShelfIfEmpty(id: id)
         }
         if let selected = selectedDocument, pathSet.contains(selected.filePath) {
             selectedDocument = nil
@@ -308,34 +411,103 @@ final class AppState: ObservableObject {
     }
 
     func removeFromLibrary(_ doc: PdfDocument) {
-        try? bridge.deletePdfDocument(filePath: doc.filePath)
-        if selectedDocument?.id == doc.id {
-            selectedDocument = nil
-            kitDocument = nil
-        }
-        refreshLibrary()
+        confirmDeleteDocument(doc)
     }
 
     func confirmClearLibrary() {
-        guard !library.isEmpty else { return }
-        let alert = NSAlert()
-        alert.messageText = "清空文库？"
-        alert.informativeText = "PDF 会从文库移出，LumenPDF 书库里的副本会删除。笔记、单词和原来的文件都会保留。"
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "清空")
-        alert.addButton(withTitle: "取消")
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        clearLibrary()
+        guard let preview = try? bridge.previewLibraryDeletion(), preview.bookCount > 0 else { return }
+        confirmDeletion(title: "清空文库？", actionTitle: "清空", preview: preview) { [weak self] in
+            guard let self else { return }
+            try? self.bridge.deleteLibrary()
+            self.shelfParentId = nil
+            self.selectedDocument = nil
+            self.kitDocument = nil
+            self.refreshLibrary()
+            self.showToast("已清空文库")
+        }
     }
 
-    private func clearLibrary() {
-        for doc in library {
-            try? bridge.deletePdfDocument(filePath: doc.filePath)
+    func confirmDeleteShelf(_ shelf: Shelf) {
+        guard let preview = try? bridge.previewShelfDeletion(id: shelf.id) else { return }
+        confirmDeletion(title: "删除书架「\(shelf.name)」？", preview: preview) { [weak self] in
+            guard let self else { return }
+            try? self.bridge.deleteShelf(id: shelf.id)
+            self.closeDocuments(preview.documentIds)
+            self.refreshLibrary()
         }
+    }
+
+    func confirmDeleteDocument(_ document: PdfDocument) {
+        guard let preview = try? bridge.previewDocumentDeletion(ids: [document.id]) else { return }
+        confirmDeletion(title: "删除「\(document.fileName)」？", preview: preview) { [weak self] in
+            guard let self else { return }
+            try? self.bridge.deleteDocuments(ids: [document.id])
+            self.closeDocuments(preview.documentIds)
+            self.refreshLibrary()
+        }
+    }
+
+    func createShelf(named name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        _ = try? bridge.createShelf(parentId: shelfParentId, name: trimmed)
+        refreshShelf()
+    }
+
+    func renameShelf(_ id: String, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        _ = try? bridge.renameShelf(id: id, name: trimmed)
+        refreshShelf()
+    }
+
+    func moveShelfItem(kind: ShelfItemKind, id: String, toParent parentId: String?) {
+        switch kind {
+        case .shelf:
+            try? bridge.moveShelf(id: id, parentId: parentId)
+        case .document:
+            try? bridge.moveDocument(id: id, parentId: parentId)
+        }
+        refreshLibrary()
+    }
+
+    func reorderShelf(to children: [ShelfChild]) {
+        let order = children.map { child in
+            switch child {
+            case .shelf(let shelf):
+                return ShelfPlacement(kind: .shelf, id: shelf.id)
+            case .document(let document):
+                return ShelfPlacement(kind: .document, id: document.id)
+            }
+        }
+        try? bridge.reorderShelf(parentId: shelfParentId, order: order)
+        refreshShelf()
+    }
+
+    private func confirmDeletion(
+        title: String,
+        actionTitle: String = "删除",
+        preview: DeletionPreview,
+        perform: () -> Void
+    ) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = deletionMessage(preview)
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: actionTitle)
+        alert.addButton(withTitle: "取消")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        perform()
+    }
+
+    private func deletionMessage(_ preview: DeletionPreview) -> String {
+        "\(preview.bookCount) 本 PDF 会从文库移出，书库副本会删除。这 \(preview.bookCount) 本书的 \(preview.noteCount) 条笔记会删除，\(preview.vocabularyContextCount) 条单词语境会删除。同一单词在其他书里的语境会保留。原来的文件还在。"
+    }
+
+    private func closeDocuments(_ ids: [String]) {
+        guard let selected = selectedDocument, ids.contains(selected.id) else { return }
         selectedDocument = nil
         kitDocument = nil
-        refreshLibrary()
-        showToast("已清空文库")
     }
 
     func saveReadingPosition(filePath: String, page: UInt32, scrollOffset: Double) {

@@ -4,7 +4,6 @@ import AppKit
 
 struct ContentView: View {
     @EnvironmentObject private var appState: AppState
-    @State private var showLibrary = false
     @State private var showSetupSheet = false
     @State private var inspectorTransitionID: UUID?
     @StateObject private var inspectorModel = ReadingInspectorModel()
@@ -59,6 +58,7 @@ struct ContentView: View {
             ZStack(alignment: .bottom) {
                 // Keep PDFReaderView alive (never destroyed on tab switch),
                 // so scroll position is preserved.
+                let showShelf = appState.showsLibraryShelf
                 if let doc = appState.selectedDocument {
                     ReadingWorkspaceView(
                         document: doc,
@@ -68,17 +68,19 @@ struct ContentView: View {
                         viewportTransitionController: viewportTransitionController,
                         setInspectorVisible: setReadingInspectorVisible
                     )
-                    .opacity(appState.activeTab == .reader ? 1 : 0)
-                    .allowsHitTesting(appState.activeTab == .reader)
-                } else if appState.activeTab == .reader {
-                    EmptyStateView()
+                    .opacity(appState.activeTab == .reader && !showShelf ? 1 : 0)
+                    .allowsHitTesting(appState.activeTab == .reader && !showShelf)
                 }
 
-                if appState.activeTab == .vocabulary {
+                if showShelf {
+                    LibraryShelfPage()
+                }
+
+                if appState.activeTab == .vocabulary && !showShelf {
                     VocabularyListView()
                 }
 
-                if appState.activeTab == .notes {
+                if appState.activeTab == .notes && !showShelf {
                     NoteListView()
                 }
 
@@ -92,12 +94,12 @@ struct ContentView: View {
         }
         .coordinateSpace(name: ReaderRootCoordinateSpace.name)
         .overlay {
-            if appState.activeTab == .reader {
+            if appState.activeTab == .reader && !appState.showsLibraryShelf {
                 SelectionActionBarOverlay(model: selectionActionBarModel)
             }
         }
         .overlay {
-            if appState.activeTab == .reader,
+            if appState.activeTab == .reader && !appState.showsLibraryShelf,
                let presentation = readingPopoverModel.presentation
             {
                 GeometryReader { proxy in
@@ -187,15 +189,11 @@ struct ContentView: View {
             // Left: Library picker
             ToolbarItem(placement: .navigation) {
                 Button {
-                    showLibrary.toggle()
+                    appState.openLibrary()
                 } label: {
                     Label("文库", systemImage: "books.vertical")
                 }
                 .accessibilityIdentifier("toolbar.library")
-                .popover(isPresented: $showLibrary, arrowEdge: .bottom) {
-                    LibraryPickerView()
-                        .frame(width: 320, height: 360)
-                }
             }
 
             // Center: Tab switcher + filename + page indicator
@@ -556,7 +554,7 @@ struct ContentView: View {
 
 // MARK: - Library add menu
 
-private struct LibraryAddMenu: View {
+struct LibraryAddMenu: View {
     @EnvironmentObject private var appState: AppState
     var showsTitle: Bool
 
@@ -581,118 +579,6 @@ private struct LibraryAddMenu: View {
         .menuStyle(.borderlessButton)
         .fixedSize()
         .help("打开 PDF 或导入文件夹")
-    }
-}
-
-// MARK: - Library Picker Popover
-
-private struct LibraryPickerView: View {
-    @EnvironmentObject private var appState: AppState
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text("文库")
-                    .font(.headline)
-                Spacer()
-                if !appState.library.isEmpty {
-                    Button("清空") {
-                        appState.confirmClearLibrary()
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                    .help("移出文库中的全部 PDF，保留笔记和单词")
-                    .accessibilityIdentifier("library.clear")
-                }
-                LibraryAddMenu(showsTitle: false)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-
-            Divider()
-
-            if appState.library.isEmpty {
-                VStack(spacing: 8) {
-                    Image(systemName: "doc.text")
-                        .font(.system(size: 32))
-                        .foregroundStyle(.tertiary)
-                    Text("还没有打开文件")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                List(appState.library, id: \.id) { doc in
-                    Button {
-                        appState.selectedDocument = doc
-                        appState.activeTab = .reader
-                    } label: {
-                        HStack(alignment: .center, spacing: 10) {
-                            PDFCoverThumbnailView(filePath: doc.filePath)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(doc.fileName)
-                                    .font(.callout)
-                                    .fontWeight(appState.selectedDocument?.id == doc.id ? .semibold : .regular)
-                                    .lineLimit(2)
-                                    .foregroundStyle(.primary)
-                                if doc.isFileMissing {
-                                    Text("找不到文件")
-                                        .font(.caption2)
-                                        .foregroundStyle(.orange)
-                                } else if doc.totalPages > 0 {
-                                    Text("P\(doc.lastPage + 1) / \(doc.totalPages)")
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            Spacer(minLength: 8)
-                            if appState.selectedDocument?.id == doc.id {
-                                Image(systemName: "checkmark")
-                                    .foregroundStyle(.blue)
-                                    .font(.caption)
-                            }
-                        }
-                        .padding(.vertical, 2)
-                    }
-                    .buttonStyle(.plain)
-                    .contextMenu {
-                        Button(role: .destructive) {
-                            appState.removeFromLibrary(doc)
-                        } label: {
-                            Label("移除", systemImage: "trash")
-                        }
-                    }
-                }
-                .listStyle(.sidebar)
-            }
-        }
-    }
-}
-
-// MARK: - Empty State
-
-private struct EmptyStateView: View {
-    @EnvironmentObject private var appState: AppState
-
-    var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "doc.text.magnifyingglass")
-                .font(.system(size: 64))
-                .foregroundStyle(.tertiary)
-            Text("打开一个 PDF 开始阅读")
-                .font(.title3)
-                .foregroundStyle(.secondary)
-            HStack(spacing: 12) {
-                Button("选择文件…") {
-                    appState.openFilePicker()
-                }
-                .buttonStyle(.borderedProminent)
-                Button("导入文件夹…") {
-                    appState.openFolderPicker()
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

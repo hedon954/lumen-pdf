@@ -1,10 +1,12 @@
 use crate::application::note::use_case::NoteUseCase;
 use crate::application::pdf_document::use_case::PdfDocumentUseCase;
+use crate::application::shelf::use_case::ShelfUseCase;
 use crate::application::translation::use_case::TranslationUseCase;
 use crate::application::update::AppUpdateUseCase;
 use crate::application::vocabulary::use_case::VocabularyUseCase;
 use crate::domain::note::entity::{NoteEntry, SaveNoteRequest, UpdateNoteRequest};
 use crate::domain::pdf_document::entity::{ImportedPdf, PdfDocument, UpsertPdfRequest};
+use crate::domain::shelf::entity::{DeletionPreview, Shelf, ShelfPage, ShelfPlacement};
 use crate::domain::translation::entity::{
     ImageAttachment, ImageInputCapability, TranslationRequest, TranslationResult,
 };
@@ -17,7 +19,8 @@ use crate::error::LumenError;
 use crate::infrastructure::db::{self, DbPool};
 use crate::infrastructure::db::{
     note_repo::SqliteNoteRepo, pdf_document_repo::SqlitePdfDocumentRepo,
-    translation_cache_repo::SqliteTranslationCacheRepo, vocabulary_repo::SqliteVocabularyRepo,
+    shelf_repo::SqliteShelfRepo, translation_cache_repo::SqliteTranslationCacheRepo,
+    vocabulary_repo::SqliteVocabularyRepo,
 };
 use crate::infrastructure::library_store::LibraryStore;
 use crate::infrastructure::translator::{
@@ -179,6 +182,14 @@ fn pdf_document_use_case() -> Result<PdfDocumentUseCase, LumenError> {
     Ok(PdfDocumentUseCase::new(Arc::new(
         SqlitePdfDocumentRepo::new(pool()?.clone(), LibraryStore::new(root.clone())),
     )))
+}
+
+fn shelf_use_case() -> Result<ShelfUseCase, LumenError> {
+    let root = LIBRARY_ROOT.get().ok_or(LumenError::ConfigNotInitialized)?;
+    Ok(ShelfUseCase::new(Arc::new(SqliteShelfRepo::new(
+        pool()?.clone(),
+        LibraryStore::new(root.clone()),
+    ))))
 }
 
 fn note_use_case() -> Result<NoteUseCase, LumenError> {
@@ -358,6 +369,79 @@ pub fn list_pdf_documents() -> Result<Vec<PdfDocument>, LumenError> {
 #[uniffi::export]
 pub fn delete_pdf_document(file_path: String) -> Result<(), LumenError> {
     pdf_document_use_case()?.delete(&file_path)
+}
+
+#[uniffi::export]
+pub fn list_shelf(parent_id: Option<String>) -> Result<ShelfPage, LumenError> {
+    shelf_use_case()?.page(parent_id.as_deref())
+}
+
+#[uniffi::export]
+pub fn create_shelf(parent_id: Option<String>, name: String) -> Result<Shelf, LumenError> {
+    shelf_use_case()?.create(parent_id.as_deref(), &name)
+}
+
+#[uniffi::export]
+pub fn rename_shelf(id: String, name: String) -> Result<Shelf, LumenError> {
+    shelf_use_case()?.rename(&id, &name)
+}
+
+#[uniffi::export]
+pub fn move_shelf(id: String, parent_id: Option<String>) -> Result<(), LumenError> {
+    shelf_use_case()?.move_shelf(&id, parent_id.as_deref())
+}
+
+#[uniffi::export]
+pub fn move_document(id: String, parent_id: Option<String>) -> Result<(), LumenError> {
+    shelf_use_case()?.move_document(&id, parent_id.as_deref())
+}
+
+#[uniffi::export]
+pub fn reorder_shelf(
+    parent_id: Option<String>,
+    order: Vec<ShelfPlacement>,
+) -> Result<(), LumenError> {
+    shelf_use_case()?.reorder(parent_id.as_deref(), &order)
+}
+
+#[uniffi::export]
+pub fn place_document(id: String, parent_id: Option<String>) -> Result<(), LumenError> {
+    shelf_use_case()?.place_document(&id, parent_id.as_deref())
+}
+
+#[uniffi::export]
+pub fn preview_document_deletion(ids: Vec<String>) -> Result<DeletionPreview, LumenError> {
+    shelf_use_case()?.preview_documents(&ids)
+}
+
+#[uniffi::export]
+pub fn preview_shelf_deletion(id: String) -> Result<DeletionPreview, LumenError> {
+    shelf_use_case()?.preview_shelf(&id)
+}
+
+#[uniffi::export]
+pub fn preview_library_deletion() -> Result<DeletionPreview, LumenError> {
+    shelf_use_case()?.preview_library()
+}
+
+#[uniffi::export]
+pub fn delete_documents(ids: Vec<String>) -> Result<(), LumenError> {
+    shelf_use_case()?.delete_documents(&ids)
+}
+
+#[uniffi::export]
+pub fn delete_shelf(id: String) -> Result<(), LumenError> {
+    shelf_use_case()?.delete_shelf(&id)
+}
+
+#[uniffi::export]
+pub fn delete_library() -> Result<(), LumenError> {
+    shelf_use_case()?.delete_library()
+}
+
+#[uniffi::export]
+pub fn delete_shelf_if_empty(id: String) -> Result<(), LumenError> {
+    shelf_use_case()?.delete_if_empty(&id)
 }
 
 // ── Note API ───────────────────────────────────────────────────────────────

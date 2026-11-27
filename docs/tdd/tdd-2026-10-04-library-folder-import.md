@@ -4,6 +4,8 @@ date: 2026-10-04
 prd: prd/prd-2026-10-04-library-folder-import.md
 predecessor:
   - tdd/tdd-2026-03-22.md
+successor:
+  - tdd/tdd-2026-11-27-library-shelves.md
 ---
 
 # 从文件夹导入 PDF

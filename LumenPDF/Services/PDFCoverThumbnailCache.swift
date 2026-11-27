@@ -26,9 +26,9 @@ enum PDFCoverThumbnailGeometry {
         )
     }
 
-    static func cacheKey(filePath: String, modificationDate: Date?) -> String {
+    static func cacheKey(filePath: String, modificationDate: Date?, fitting: CGSize = displaySize) -> String {
         let stamp = modificationDate.map { String($0.timeIntervalSince1970) } ?? "0"
-        return "\(filePath)|\(stamp)"
+        return "\(filePath)|\(stamp)|\(Int(fitting.width))x\(Int(fitting.height))"
     }
 }
 
@@ -39,8 +39,11 @@ final class PDFCoverThumbnailCache {
     private let cache = NSCache<NSString, NSImage>()
     private var inflight: [String: Task<NSImage?, Never>] = [:]
 
-    func thumbnail(for filePath: String) async -> NSImage? {
-        let key = Self.cacheKey(for: filePath)
+    func thumbnail(
+        for filePath: String,
+        fitting: CGSize = PDFCoverThumbnailGeometry.displaySize
+    ) async -> NSImage? {
+        let key = Self.cacheKey(for: filePath, fitting: fitting)
         if let cached = cache.object(forKey: key as NSString) {
             return cached
         }
@@ -53,7 +56,7 @@ final class PDFCoverThumbnailCache {
                 return cached
             }
             await Task.yield()
-            let image = Self.render(filePath: filePath)
+            let image = Self.render(filePath: filePath, fitting: fitting)
             if let image {
                 self.cache.setObject(image, forKey: key as NSString)
             }
@@ -65,21 +68,25 @@ final class PDFCoverThumbnailCache {
         return image
     }
 
-    private static func cacheKey(for filePath: String) -> String {
+    private static func cacheKey(for filePath: String, fitting: CGSize) -> String {
         let url = URL(fileURLWithPath: filePath)
         let modified = try? url.resourceValues(forKeys: [.contentModificationDateKey])
             .contentModificationDate
-        return PDFCoverThumbnailGeometry.cacheKey(filePath: filePath, modificationDate: modified)
+        return PDFCoverThumbnailGeometry.cacheKey(
+            filePath: filePath,
+            modificationDate: modified,
+            fitting: fitting
+        )
     }
 
-    private static func render(filePath: String) -> NSImage? {
+    private static func render(filePath: String, fitting: CGSize) -> NSImage? {
         guard let document = PDFKitView.loadDocument(filePath: filePath),
               let page = document.page(at: 0)
         else {
             return nil
         }
         let pageSize = page.bounds(for: .mediaBox).size
-        let pixelSize = PDFCoverThumbnailGeometry.pixelSize(pageSize: pageSize)
+        let pixelSize = PDFCoverThumbnailGeometry.pixelSize(pageSize: pageSize, fitting: fitting)
         return page.thumbnail(of: pixelSize, for: .mediaBox)
     }
 }

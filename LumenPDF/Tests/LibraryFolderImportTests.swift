@@ -40,6 +40,33 @@ final class LibraryFolderImportTests: XCTestCase {
         XCTAssertEqual(partition.alreadyPresent, 1)
     }
 
+    func testShelfTreeNestsDirectoriesAndSkipsThemWhenSubfoldersAreOff() {
+        let pdfs = [
+            LibraryFolderPDF(path: "/books/Architecture/a.pdf", fileName: "a.pdf"),
+            LibraryFolderPDF(path: "/books/Architecture/DDD/b.pdf", fileName: "b.pdf")
+        ]
+
+        let nested = LibraryFolderImporter.shelfTree(
+            rootPath: "/books/Architecture",
+            rootName: "Architecture",
+            pdfs: pdfs,
+            includingSubfolders: true
+        )
+        XCTAssertEqual(nested.name, "Architecture")
+        XCTAssertEqual(nested.pdfs.map(\.fileName), ["a.pdf"])
+        XCTAssertEqual(nested.children.map(\.name), ["DDD"])
+        XCTAssertEqual(nested.children.first?.pdfs.map(\.fileName), ["b.pdf"])
+
+        let flat = LibraryFolderImporter.shelfTree(
+            rootPath: "/books/Architecture",
+            rootName: "Architecture",
+            pdfs: pdfs,
+            includingSubfolders: false
+        )
+        XCTAssertEqual(flat.pdfs.map(\.fileName), ["a.pdf"])
+        XCTAssertTrue(flat.children.isEmpty)
+    }
+
     func testNestedPDFsStayOutUnlessSubfoldersAreIncluded() {
         let entries = [
             entry(path: "/books/a.pdf", fileName: "a.pdf"),

@@ -25,6 +25,12 @@ struct LibraryFolderImportPartition: Equatable {
     var alreadyPresent: Int
 }
 
+struct LibraryShelfImportNode: Equatable {
+    var name: String
+    var pdfs: [LibraryFolderPDF]
+    var children: [LibraryShelfImportNode]
+}
+
 enum LibraryFolderImporter {
     static func importablePDFs(
         in entries: [LibraryFolderEntry],
@@ -41,6 +47,60 @@ enum LibraryFolderImporter {
         }
         result.sort { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
         return result
+    }
+
+    /// 把这次要加入的 PDF 收成一棵书架。根节点的名字是所选文件夹。
+    /// 不包含子文件夹时，只有直接放在根目录的 PDF。
+    static func shelfTree(
+        rootPath: String,
+        rootName: String,
+        pdfs: [LibraryFolderPDF],
+        includingSubfolders: Bool
+    ) -> LibraryShelfImportNode {
+        let root = standardized(rootPath)
+        var node = LibraryShelfImportNode(name: rootName, pdfs: [], children: [])
+        let sorted = pdfs.sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
+        for pdf in sorted {
+            let path = standardized(pdf.path)
+            guard path.hasPrefix(root + "/") else { continue }
+            let relative = String(path.dropFirst(root.count + 1))
+            let parts = relative.split(separator: "/").map(String.init)
+            guard let fileName = parts.last, !fileName.isEmpty else { continue }
+            let folders = parts.dropLast()
+            if !includingSubfolders && !folders.isEmpty { continue }
+            insert(pdf, folders: Array(folders), into: &node)
+        }
+        sortTree(&node)
+        return node
+    }
+
+    private static func insert(
+        _ pdf: LibraryFolderPDF,
+        folders: [String],
+        into node: inout LibraryShelfImportNode
+    ) {
+        guard let name = folders.first else {
+            node.pdfs.append(pdf)
+            return
+        }
+        if let index = node.children.firstIndex(where: { $0.name == name }) {
+            insert(pdf, folders: Array(folders.dropFirst()), into: &node.children[index])
+        } else {
+            node.children.append(LibraryShelfImportNode(name: name, pdfs: [], children: []))
+            let index = node.children.count - 1
+            insert(pdf, folders: Array(folders.dropFirst()), into: &node.children[index])
+        }
+    }
+
+    private static func sortTree(_ node: inout LibraryShelfImportNode) {
+        node.children.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        for index in node.children.indices {
+            sortTree(&node.children[index])
+        }
+    }
+
+    private static func standardized(_ path: String) -> String {
+        URL(fileURLWithPath: path).standardizedFileURL.path
     }
 
     static func partition(
