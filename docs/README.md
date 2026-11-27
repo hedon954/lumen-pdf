@@ -61,6 +61,7 @@ PRD 记录**用户可感知的行为与验收标准**。TDD 记录**如何实现
 | v1.0.37 | 2026-11-25 | 笔记展示、临时选区、完整语境与语法树 | [prd-2026-11-25-notes-context-grammar.md](prd/prd-2026-11-25-notes-context-grammar.md) | [tdd-2026-11-25-notes-context-grammar.md](tdd/tdd-2026-11-25-notes-context-grammar.md) |
 | v1.0.38 | 2026-11-26 | 选区即语境，滚动不关掉翻译 | [prd-2026-11-26-selection-span.md](prd/prd-2026-11-26-selection-span.md) | [tdd-2026-11-26-selection-span.md](tdd/tdd-2026-11-26-selection-span.md) |
 | v1.0.38 | 2026-11-25 | 检查更新失败时附上接口错误并可重试 | [prd-2026-11-25-update-rate-limit.md](prd/prd-2026-11-25-update-rate-limit.md) | [tdd-2026-11-25-update-rate-limit.md](tdd/tdd-2026-11-25-update-rate-limit.md) |
+| unreleased | 2026-11-27 | 检查更新和翻译跟随系统代理 | [prd-2026-11-27-system-proxy.md](prd/prd-2026-11-27-system-proxy.md) | [tdd-2026-11-27-system-proxy.md](tdd/tdd-2026-11-27-system-proxy.md) |
 
 未单独成对的发布：
 
@@ -158,6 +159,7 @@ v1.0.9 开发者 make upgrade 替换 /Applications
   → v1.0.36 手动检查立即给出面板反馈；发布说明渲染 Markdown；退出后再由脱离的助手替换 bundle
   → v1.0.36 开发者 make upgrade 只编本机架构，未变化的步骤直接跳过，不再每次打 DMG
   → v1.0.38 检查失败时附上接口原文，并可以重试
+  → unreleased 检查更新和翻译跟随当前系统代理，端口不写死
 ```
 
 ## 其他文档

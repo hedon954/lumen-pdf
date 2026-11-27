@@ -13,7 +13,7 @@ static HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
 
 pub fn shared_client() -> &'static Client {
     HTTP_CLIENT.get_or_init(|| {
-        Client::builder()
+        crate::infrastructure::net::proxy::configure(Client::builder())
             .connect_timeout(Duration::from_secs(3))
             // Total request timeout — caps both blocking RTT and slow streaming
             // responses while still giving explanation requests room to finish.

@@ -20,6 +20,7 @@ r2d2_sqlite = "0.24"
 reqwest = { version = "0.12", features = [
     "json",
     "rustls-tls",
+    "socks",
     "stream",
 ], default-features = false }
 futures-util = { version = "0.3", default-features = false, features = ["std"] }

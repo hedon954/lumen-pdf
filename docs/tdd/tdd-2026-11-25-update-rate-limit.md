@@ -4,6 +4,8 @@ date: 2026-11-25
 prd: prd/prd-2026-11-25-update-rate-limit.md
 predecessor:
   - tdd/tdd-2026-11-24-note-overlay-update.md
+successor:
+  - tdd/tdd-2026-11-27-system-proxy.md
 ---
 
 # 检查更新失败时说明接口错误并可以重试

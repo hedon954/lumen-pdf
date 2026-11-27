@@ -20,7 +20,7 @@ pub struct GithubReleaseFeed {
 
 impl GithubReleaseFeed {
     pub fn new() -> Option<Self> {
-        let client = Client::builder()
+        let client = crate::infrastructure::net::proxy::configure(Client::builder())
             .connect_timeout(Duration::from_secs(5))
             .timeout(Duration::from_secs(20))
             .user_agent("LumenPDF")
