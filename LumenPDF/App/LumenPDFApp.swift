@@ -22,6 +22,10 @@ private struct TestHostApp: App {
     }
 }
 
+enum AppSceneID {
+    static let settings = "settings"
+}
+
 struct LumenPDFApp: App {
     @StateObject private var appState = AppState()
     @StateObject private var appUpdate = AppUpdateCenter()
@@ -56,6 +60,9 @@ struct LumenPDFApp: App {
                 }
                 .keyboardShortcut("f", modifiers: .command)
             }
+            CommandGroup(replacing: .appSettings) {
+                OpenSettingsCommandButton()
+            }
             CommandGroup(after: .appInfo) {
                 Button("检查更新…") {
                     appUpdate.checkManually()
@@ -64,21 +71,32 @@ struct LumenPDFApp: App {
             }
         }
 
-        Settings {
+        Window("设置", id: AppSceneID.settings) {
             SettingsView()
                 .environmentObject(appUpdate)
-                .background(
-                    SettingsWindowConfigurator(minimumSize: NSSize(width: 860, height: 600))
-                )
+                .frame(minHeight: 600)
         }
         .defaultSize(width: 940, height: 680)
-        .windowResizability(.contentMinSize)
-        .windowToolbarStyle(.unifiedCompact(showsTitle: true))
+        .windowToolbarStyle(.unified(showsTitle: false))
+    }
+}
+
+private struct OpenSettingsCommandButton: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button("设置…") {
+            openWindow(id: AppSceneID.settings)
+        }
+        .keyboardShortcut(",", modifiers: .command)
     }
 }
 
 private func presentWorkspaceSearchIfMainWindow() {
-    if let key = NSApp.keyWindow, key.frameAutosaveName == "LumenPDFSettings" {
+    if let key = NSApp.keyWindow,
+       key.frameAutosaveName == "LumenPDFSettings"
+        || key.identifier?.rawValue.contains(AppSceneID.settings) == true
+    {
         return
     }
     ReaderEventBus.shared.postPresentWorkspaceSearch()
@@ -280,60 +298,6 @@ private struct WindowFramePersistence: NSViewRepresentable {
             layoutRestoreCompletionWorkItem?.cancel()
             observers.forEach(NotificationCenter.default.removeObserver)
         }
-    }
-}
-
-private struct SettingsWindowConfigurator: NSViewRepresentable {
-    let minimumSize: NSSize
-
-    func makeNSView(context: Context) -> SettingsWindowAttachmentView {
-        let view = SettingsWindowAttachmentView()
-        view.onWindowChange = { [weak coordinator = context.coordinator] window in
-            coordinator?.attach(window, minimumSize: minimumSize)
-        }
-        return view
-    }
-
-    func updateNSView(_ nsView: SettingsWindowAttachmentView, context: Context) {
-        nsView.onWindowChange = { [weak coordinator = context.coordinator] window in
-            coordinator?.attach(window, minimumSize: minimumSize)
-        }
-        context.coordinator.attach(nsView.window, minimumSize: minimumSize)
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-
-    final class Coordinator {
-        private weak var window: NSWindow?
-        private var didRestoreFrame = false
-
-        func attach(_ window: NSWindow?, minimumSize: NSSize) {
-            guard let window else { return }
-            if self.window !== window {
-                self.window = window
-                didRestoreFrame = false
-            }
-            window.styleMask.insert(.resizable)
-            window.minSize = NSSize(
-                width: max(window.minSize.width, minimumSize.width),
-                height: max(window.minSize.height, minimumSize.height)
-            )
-            _ = window.setFrameAutosaveName("LumenPDFSettings")
-            guard !didRestoreFrame else { return }
-            didRestoreFrame = true
-            _ = window.setFrameUsingName("LumenPDFSettings")
-        }
-    }
-}
-
-private final class SettingsWindowAttachmentView: NSView {
-    var onWindowChange: ((NSWindow?) -> Void)?
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        onWindowChange?(window)
     }
 }
 

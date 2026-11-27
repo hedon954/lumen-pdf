@@ -17,6 +17,7 @@ struct ContentView: View {
     @StateObject private var workspaceSearch = WorkspaceSearchController()
     @ObservedObject private var restorationStore = ReadingRestorationStore.shared
     @EnvironmentObject private var appUpdate: AppUpdateCenter
+    @Environment(\.openWindow) private var openWindow
     @AppStorage("llm_base_url") private var baseURL = ""
     @AppStorage("llm_model") private var model = ""
 
@@ -233,19 +234,12 @@ struct ContentView: View {
                 LibraryAddMenu(showsTitle: true)
                     .accessibilityIdentifier("toolbar.openPDF")
 
-                if #available(macOS 14, *) {
-                    SettingsLink {
-                        Label("设置", systemImage: "gear")
-                    }
-                    .accessibilityIdentifier("toolbar.settings")
-                } else {
-                    Button {
-                        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-                    } label: {
-                        Label("设置", systemImage: "gear")
-                    }
-                    .accessibilityIdentifier("toolbar.settings")
+                Button {
+                    openWindow(id: AppSceneID.settings)
+                } label: {
+                    Label("设置", systemImage: "gear")
                 }
+                .accessibilityIdentifier("toolbar.settings")
             }
         }
         .overlay(alignment: .top) {
@@ -281,6 +275,7 @@ struct ContentView: View {
         .sheet(isPresented: $showSetupSheet) {
             SettingsView(onDismiss: { showSetupSheet = false })
                 .environmentObject(appUpdate)
+                .frame(idealWidth: 940, minHeight: 600, idealHeight: 680)
         }
         .onChange(of: appState.activeTab) { _, _ in
             selectionActionBarModel.dismiss()

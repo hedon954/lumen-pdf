@@ -28,23 +28,26 @@ struct SettingsView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: $selectedDestination) {
-                Section("设置") {
-                    ForEach(SettingsDestination.allCases) { destination in
-                        Label(destination.title, systemImage: destination.systemImage)
-                            .tag(destination)
-                    }
+                ForEach(SettingsDestination.allCases) { destination in
+                    Label(destination.title, systemImage: destination.systemImage)
+                        .tag(destination)
                 }
             }
             .listStyle(.sidebar)
-            .navigationSplitViewColumnWidth(min: 180, ideal: 210, max: 240)
+            .navigationSplitViewColumnWidth(min: 180, ideal: 210, max: 260)
         } detail: {
             VStack(spacing: 0) {
                 detail
                 Divider()
                 saveBar
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .navigationSplitViewColumnWidth(min: 520, ideal: 730)
         }
-        .toolbarVisibility(.visible, for: .windowToolbar)
+        .navigationTitle(settingsWindowTitle)
+        .toolbar {
+            settingsTitleToolbar
+        }
         .onAppear(perform: load)
         .onChange(of: targetLanguage) { _, newLanguage in
             persistPromptTemplates(for: loadedPromptLanguage)
@@ -53,29 +56,57 @@ struct SettingsView: View {
             refreshPromptUpdateState()
             _ = applyRuntimeConfig()
         }
-        .frame(minWidth: 860, maxWidth: .infinity, minHeight: 600, maxHeight: .infinity)
+    }
+
+    @ToolbarContentBuilder
+    private var settingsTitleToolbar: some ToolbarContent {
+        if #available(macOS 26.0, *) {
+            ToolbarItem(placement: .principal) {
+                settingsTitleLabel
+            }
+            .sharedBackgroundVisibility(.hidden)
+        } else {
+            ToolbarItem(placement: .principal) {
+                settingsTitleLabel
+            }
+        }
+    }
+
+    private var settingsTitleLabel: some View {
+        Text(settingsWindowTitle)
+            .font(.headline)
+    }
+
+    private var settingsWindowTitle: String {
+        switch selectedDestination {
+        case .llm: return "LLM 配置"
+        case .translation: return "翻译设置"
+        case .prompts: return "提示词模板"
+        case .logs: return "调用日志"
+        case .usage: return "Token 与费用"
+        case .update: return "更新"
+        }
     }
 
     private var saveBar: some View {
         HStack(alignment: .center, spacing: 12) {
-            Group {
-                if showSavedBadge {
-                    Label("设置已保存", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                } else if let saveErrorMessage {
-                    Label {
-                        Text(saveErrorMessage)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .lineLimit(3)
-                    } icon: {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                    }
-                    .foregroundStyle(.orange)
-                    .help(saveErrorMessage)
-                    .accessibilityIdentifier("settings.saveError")
+            if showSavedBadge {
+                Label("设置已保存", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            } else if let saveErrorMessage {
+                Label {
+                    Text(saveErrorMessage)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(3)
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill")
                 }
+                .foregroundStyle(.orange)
+                .help(saveErrorMessage)
+                .accessibilityIdentifier("settings.saveError")
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Spacer(minLength: 12)
 
             if let dismiss = onDismiss {
                 Button("稍后设置", action: dismiss)
@@ -91,7 +122,9 @@ struct SettingsView: View {
             .keyboardShortcut(.defaultAction)
         }
         .padding(.horizontal, 20)
-        .padding(.vertical, 12)
+        .padding(.bottom, 16)
+        .padding(.top, 12)
+        .frame(maxWidth: .infinity, alignment: .trailing)
         .background(Color(nsColor: .windowBackgroundColor))
     }
 

@@ -54,7 +54,6 @@ struct LLMSettingsPage: View {
         }
         .formStyle(.grouped)
         .contentMargins(.top, 0, for: .scrollContent)
-        .navigationTitle("LLM 配置")
         .safeAreaInset(edge: .bottom, alignment: .trailing) {
             LLMProviderAPIKeyLink(baseURL: baseURL)
                 .padding(.trailing, 20)
@@ -85,7 +84,6 @@ struct TranslationSettingsPage: View {
         }
         .formStyle(.grouped)
         .contentMargins(.top, 0, for: .scrollContent)
-        .navigationTitle("翻译设置")
     }
 }
 
@@ -160,7 +158,6 @@ struct PromptSettingsPage: View {
             }
             .contentMargins(.top, 0, for: .scrollContent)
         }
-        .navigationTitle("提示词模板")
     }
 
     private var promptUpdateCard: some View {
@@ -904,7 +901,6 @@ struct LLMUsageSettingsPage: View {
             .padding(20)
         }
         .contentMargins(.top, 0, for: .scrollContent)
-        .navigationTitle("Token 与费用")
         .task(id: currentModel) { loadPricing() }
     }
 

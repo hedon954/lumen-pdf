@@ -264,6 +264,5 @@ struct AppUpdateSettingsPage: View {
             }
         }
         .formStyle(.grouped)
-        .navigationTitle("更新")
     }
 }

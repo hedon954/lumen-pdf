@@ -64,6 +64,7 @@ PRD 记录**用户可感知的行为与验收标准**。TDD 记录**如何实现
 | v1.0.39 | 2026-11-27 | 检查更新和翻译跟随系统代理 | [prd-2026-11-27-system-proxy.md](prd/prd-2026-11-27-system-proxy.md) | [tdd-2026-11-27-system-proxy.md](tdd/tdd-2026-11-27-system-proxy.md) |
 | v1.0.39 | 2026-11-27 | 书架 | [prd-2026-11-27-library-shelves.md](prd/prd-2026-11-27-library-shelves.md) | [tdd-2026-11-27-library-shelves.md](tdd/tdd-2026-11-27-library-shelves.md) |
 | unreleased | 2026-11-27 | 文库与阅读切换 | [prd-2026-11-27-library-tabs.md](prd/prd-2026-11-27-library-tabs.md) | [tdd-2026-11-27-library-tabs.md](tdd/tdd-2026-11-27-library-tabs.md) |
+| unreleased | 2026-11-27 | 设置窗口侧栏开关 | [prd-2026-11-27-settings-sidebar-toggle.md](prd/prd-2026-11-27-settings-sidebar-toggle.md) | [tdd-2026-11-27-settings-sidebar-toggle.md](tdd/tdd-2026-11-27-settings-sidebar-toggle.md) |
 
 未单独成对的发布：
 
