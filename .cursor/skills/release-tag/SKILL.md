@@ -1,13 +1,13 @@
 ---
 name: release-tag
-description: 快速完成 LumenPDF 版本发布：更新版本与中文 Changelog、提交、创建 annotated tag，并推送 main 和 tag。默认不做耗时的打包、安装或 CI 等待。
+description: 快速完成 LumenPDF 版本发布：更新版本与中文 Changelog、提交、创建 annotated tag，并推送 main 和 tag。打 tag 前必须先通过与 CI 相同的本地 Rust 检查。默认不做耗时的打包、安装或等待 Actions。
 ---
 
 # LumenPDF 快速发布
 
 ## 默认原则
 
-- 用户要求“发布”或“推送 release tag”时，直接完成发布，不把可选审计当成前置条件。
+- 用户要求“发布”或“推送 release tag”时，直接完成发布。打 tag 前的本地 Rust 检查是必做步骤；打包、安装和等待 Actions 不是前置条件。
 - 如果版本元数据已经提交，跳过改版本、重写 Changelog 和构建，直接创建并推送 tag。
 - 不覆盖或顺带提交无关改动；目标 tag 已存在时停止，说明冲突。
 - 新版本 Changelog 用中文手写，每条具体变更附 GitHub commit URL，不使用 git-cliff。
