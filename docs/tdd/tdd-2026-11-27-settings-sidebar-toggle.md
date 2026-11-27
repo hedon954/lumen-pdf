@@ -1,5 +1,5 @@
 ---
-version: unreleased
+version: v1.0.40
 date: 2026-11-27
 prd: prd/prd-2026-11-27-settings-sidebar-toggle.md
 ---
